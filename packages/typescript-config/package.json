@@ -1,0 +1,12 @@
+{
+  "name": "@hitlink/typescript-config",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node -e \"console.log('No tests yet')\""
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

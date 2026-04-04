@@ -76,3 +76,9 @@ The MVP includes:
 ```bash
 pnpm install
 pnpm dev
+```
+
+Current workspace assumptions:
+- No environment variables are required for the placeholder apps and packages in this repo.
+- Root quality checks are `pnpm lint` and `pnpm check-types`.
+- The apps boot on ports `3000` (`admin-web`), `3001` (`member-web`), and `3002` (`api`).
