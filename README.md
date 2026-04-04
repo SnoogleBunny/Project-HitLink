@@ -82,3 +82,6 @@ Current workspace assumptions:
 - No environment variables are required for the placeholder apps and packages in this repo.
 - Root quality checks are `pnpm lint` and `pnpm check-types`.
 - The apps boot on ports `3000` (`admin-web`), `3001` (`member-web`), and `3002` (`api`).
+
+Slice 1 Phase 1 complete
+current focus: Prisma + DB setup

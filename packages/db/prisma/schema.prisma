@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  COACH
+  CUSTOMER
+}
+
+enum WorkspaceStatus {
+  SETUP_INCOMPLETE
+  ACTIVE
+  DISABLED
+}
+
+enum StaffInviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+model User {
+  id               String          @id @default(cuid())
+  email            String          @unique @db.Citext
+  fullName         String?
+  workspaceUsers   WorkspaceUser[]
+  sentStaffInvites StaffInvite[]   @relation("StaffInviteSender")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@map("users")
+}
+
+model Workspace {
+  id             String           @id @default(cuid())
+  name           String
+  businessType   String?
+  logoUrl        String?
+  status         WorkspaceStatus  @default(SETUP_INCOMPLETE)
+  location       Location?
+  workspaceUsers WorkspaceUser[]
+  staffInvites   StaffInvite[]
+  settings       WorkspaceSetting?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@map("workspaces")
+}
+
+model Location {
+  id           String    @id @default(cuid())
+  workspaceId  String    @unique
+  name         String
+  timezone     String
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  region       String?
+  postalCode   String?
+  countryCode  String?
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rooms        Room[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("locations")
+}
+
+model Room {
+  id         String   @id @default(cuid())
+  locationId String
+  name       String
+  capacity   Int?
+  isActive   Boolean  @default(true)
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([locationId, name])
+  @@map("rooms")
+}
+
+model WorkspaceUser {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        UserRole
+  isActive    Boolean   @default(true)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_users")
+}
+
+model StaffInvite {
+  id              String            @id @default(cuid())
+  workspaceId     String
+  invitedByUserId String
+  email           String            @db.Citext
+  role            UserRole
+  status          StaffInviteStatus @default(PENDING)
+  token           String            @unique
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedByUser   User              @relation("StaffInviteSender", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@map("staff_invites")
+}
+
+model WorkspaceSetting {
+  id                 String    @id @default(cuid())
+  workspaceId        String    @unique
+  allowMultipleRooms Boolean   @default(false)
+  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@map("workspace_settings")
+}

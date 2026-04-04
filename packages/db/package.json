@@ -9,12 +9,23 @@
   "scripts": {
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit",
-    "test": "node -e \"console.log('No tests yet')\""
+    "test": "pnpm run db:validate",
+    "db:generate": "sh -c 'if [ -f ../../.env ]; then dotenv -e ../../.env -- prisma generate --schema prisma/schema.prisma; else DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/hitlink_dev?schema=public\" prisma generate --schema prisma/schema.prisma; fi'",
+    "db:migrate": "dotenv -e ../../.env -- prisma migrate dev --schema prisma/schema.prisma",
+    "db:migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy --schema prisma/schema.prisma",
+    "db:studio": "dotenv -e ../../.env -- prisma studio --schema prisma/schema.prisma",
+    "db:validate": "sh -c 'if [ -f ../../.env ]; then dotenv -e ../../.env -- prisma validate --schema prisma/schema.prisma; else DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/hitlink_dev?schema=public\" prisma validate --schema prisma/schema.prisma; fi'"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.18.0"
   },
   "devDependencies": {
     "@hitlink/eslint-config": "workspace:*",
     "@hitlink/typescript-config": "workspace:*",
+    "@types/node": "^22.15.3",
+    "dotenv-cli": "^10.0.0",
     "eslint": "^9.39.1",
+    "prisma": "^6.18.0",
     "typescript": "5.9.2"
   }
 }

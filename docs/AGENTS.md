@@ -21,6 +21,9 @@ Slice 1:
 - staff invites scaffold
 - initial schema only
 
+Phase 1 complete
+next task is schema + Prisma + local Postgres wiring
+
 ## Rules
 - read docs in /docs first
 - do not add out-of-scope features
