@@ -12,8 +12,9 @@ export const prisma =
 
 globalForPrisma.prisma = prisma;
 
-export { PrismaClient } from "@prisma/client";
+export { Prisma, PrismaClient } from "@prisma/client";
 export type {
+  AuthSession,
   Location,
   Room,
   StaffInvite,

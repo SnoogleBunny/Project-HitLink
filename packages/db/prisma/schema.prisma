@@ -30,7 +30,9 @@ model User {
   id               String          @id @default(cuid())
   email            String          @unique @db.Citext
   fullName         String?
+  passwordHash     String?
   workspaceUsers   WorkspaceUser[]
+  authSessions     AuthSession[]
   sentStaffInvites StaffInvite[]   @relation("StaffInviteSender")
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
@@ -90,7 +92,7 @@ model Room {
 model WorkspaceUser {
   id          String    @id @default(cuid())
   workspaceId String
-  userId      String
+  userId      String    @unique
   role        UserRole
   isActive    Boolean   @default(true)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -100,6 +102,20 @@ model WorkspaceUser {
 
   @@unique([workspaceId, userId])
   @@map("workspace_users")
+}
+
+model AuthSession {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
 }
 
 model StaffInvite {

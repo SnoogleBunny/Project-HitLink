@@ -14,7 +14,7 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   title: "HitLink Admin",
-  description: "Future admin web app for HitLink",
+  description: "Owner admin auth, onboarding, and dashboard for HitLink",
 };
 
 export default function RootLayout({
