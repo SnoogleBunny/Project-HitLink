@@ -16,8 +16,10 @@ export { Prisma, PrismaClient } from "@prisma/client";
 export type {
   AuthSession,
   Location,
+  Program,
   Room,
   StaffInvite,
+  StaffInviteStatus,
   User,
   UserRole,
   Workspace,

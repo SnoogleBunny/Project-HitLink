@@ -47,6 +47,7 @@ model Workspace {
   logoUrl        String?
   status         WorkspaceStatus  @default(SETUP_INCOMPLETE)
   location       Location?
+  programs       Program[]
   workspaceUsers WorkspaceUser[]
   staffInvites   StaffInvite[]
   settings       WorkspaceSetting?
@@ -81,12 +82,30 @@ model Room {
   name       String
   capacity   Int?
   isActive   Boolean  @default(true)
+  archivedAt DateTime?
   location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@unique([locationId, name])
   @@map("rooms")
+}
+
+model Program {
+  id                     String    @id @default(cuid())
+  workspaceId            String
+  name                   String
+  description            String?
+  ageGroupLabel          String?
+  levelLabel             String?
+  progressTrackingEnabled Boolean  @default(false)
+  archivedAt             DateTime?
+  workspace              Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([workspaceId, name])
+  @@map("programs")
 }
 
 model WorkspaceUser {

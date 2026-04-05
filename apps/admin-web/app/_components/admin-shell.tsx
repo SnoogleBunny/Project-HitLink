@@ -1,18 +1,26 @@
 import type { ReactNode } from "react";
 import type { AppSession } from "@hitlink/auth";
-import Link from "next/link";
 import { logoutAction } from "../actions/logout";
+import { AdminNav } from "./admin-nav";
 
 interface AdminShellProps {
   children: ReactNode;
   session: AppSession;
   workspaceName: string;
+  title: string;
+  description: string;
+  eyebrow?: string;
+  actions?: ReactNode;
 }
 
 export function AdminShell({
   children,
   session,
   workspaceName,
+  title,
+  description,
+  eyebrow = "Protected dashboard",
+  actions,
 }: AdminShellProps) {
   return (
     <div className="shell">
@@ -20,20 +28,10 @@ export function AdminShell({
         <div className="shell-brand">
           <span className="shell-brand-label">HitLink Admin</span>
           <h1>{workspaceName}</h1>
-          <p>Owner operations for your first Slice 1 workspace.</p>
+          <p>Owner operations for the current scheduling setup slice.</p>
         </div>
 
-        <nav className="shell-nav" aria-label="Admin navigation">
-          <Link className="shell-nav-link active" href="/dashboard">
-            Dashboard
-          </Link>
-          <span
-            aria-disabled="true"
-            className="shell-nav-link shell-nav-link-disabled"
-          >
-            Staff invites (next phase)
-          </span>
-        </nav>
+        <AdminNav />
 
         <div className="shell-sidebar-footer">
           <p className="shell-sidebar-caption">Signed in as</p>
@@ -45,15 +43,19 @@ export function AdminShell({
       <div className="shell-main">
         <header className="shell-header">
           <div>
-            <p className="shell-header-eyebrow">Protected dashboard</p>
-            <h2>Workspace overview</h2>
+            <p className="shell-header-eyebrow">{eyebrow}</p>
+            <h2>{title}</h2>
+            <p className="shell-header-description">{description}</p>
           </div>
 
-          <form action={logoutAction}>
-            <button className="button button-secondary" type="submit">
-              Log out
-            </button>
-          </form>
+          <div className="shell-header-actions">
+            {actions}
+            <form action={logoutAction}>
+              <button className="button button-secondary" type="submit">
+                Log out
+              </button>
+            </form>
+          </div>
         </header>
 
         <main className="shell-content">{children}</main>

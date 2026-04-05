@@ -1,35 +1,36 @@
 import { prisma } from "@hitlink/db";
 import Link from "next/link";
 import { AdminShell } from "../_components/admin-shell";
-import { requireDashboardSession } from "../../lib/admin-access";
+import { requireOwnerWorkspaceContext } from "../../lib/owner-workspace";
+import { expireStalePendingStaffInvites } from "../../lib/staff-invites";
 
 export default async function DashboardPage() {
-  const session = await requireDashboardSession();
-  const workspace = await prisma.workspace.findUnique({
-    where: {
-      id: session.workspaceId,
-    },
-    include: {
-      location: true,
-      settings: true,
-    },
+  const { session, workspace } = await requireOwnerWorkspaceContext();
+  await expireStalePendingStaffInvites({
+    workspaceId: workspace.id,
   });
 
-  if (!workspace || !workspace.location) {
-    return (
-      <main className="auth-page">
-        <section className="auth-card">
-          <h1>Workspace setup incomplete</h1>
-          <p className="auth-description">
-            The workspace record exists, but the primary location is missing.
-          </p>
-          <Link className="text-link" href="/onboarding">
-            Return to onboarding
-          </Link>
-        </section>
-      </main>
-    );
-  }
+  const [programCount, roomCount, pendingInviteCount] = await Promise.all([
+    prisma.program.count({
+      where: {
+        workspaceId: workspace.id,
+        archivedAt: null,
+      },
+    }),
+    prisma.room.count({
+      where: {
+        locationId: workspace.location.id,
+        archivedAt: null,
+      },
+    }),
+    prisma.staffInvite.count({
+      where: {
+        workspaceId: workspace.id,
+        role: "COACH",
+        status: "PENDING",
+      },
+    }),
+  ]);
 
   const address = [
     workspace.location.addressLine1,
@@ -42,7 +43,12 @@ export default async function DashboardPage() {
     .join(", ");
 
   return (
-    <AdminShell session={session} workspaceName={workspace.name}>
+    <AdminShell
+      session={session}
+      workspaceName={workspace.name}
+      title="Workspace overview"
+      description="Programs, rooms, and staff invite scaffolding are now ready for schedule setup."
+    >
       <div className="dashboard-grid">
         <section className="dashboard-card">
           <p className="dashboard-card-label">Workspace</p>
@@ -56,6 +62,25 @@ export default async function DashboardPage() {
             <div>
               <dt>Role</dt>
               <dd>{session.role}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="dashboard-card">
+          <p className="dashboard-card-label">Operations</p>
+          <h3>Admin setup status</h3>
+          <dl className="dashboard-list">
+            <div>
+              <dt>Programs</dt>
+              <dd>{programCount}</dd>
+            </div>
+            <div>
+              <dt>Rooms</dt>
+              <dd>{roomCount}</dd>
+            </div>
+            <div>
+              <dt>Pending coach invites</dt>
+              <dd>{pendingInviteCount}</dd>
             </div>
           </dl>
         </section>
@@ -80,10 +105,33 @@ export default async function DashboardPage() {
 
         <section className="dashboard-card dashboard-card-wide">
           <p className="dashboard-card-label">Next phase</p>
-          <h3>What waits until later</h3>
+          <h3>Class templates + weekly schedule</h3>
           <p>
-            Staff invites, programs, rooms, schedules, members, billing, Stripe,
-            messaging, and the member portal stay deferred until the next slices.
+            The next slice should build class templates and a weekly schedule on
+            top of unarchived programs plus active, unarchived rooms.
+          </p>
+          <div className="dashboard-actions">
+            <Link className="button" href="/dashboard/programs">
+              Manage programs
+            </Link>
+            <Link className="button button-secondary" href="/dashboard/rooms">
+              Manage rooms
+            </Link>
+            <Link
+              className="button button-secondary"
+              href="/dashboard/staff-invites"
+            >
+              Manage staff invites
+            </Link>
+          </div>
+        </section>
+
+        <section className="dashboard-card dashboard-card-wide">
+          <p className="dashboard-card-label">What remains later</p>
+          <h3>Still intentionally out of scope</h3>
+          <p>
+            Members, billing, scheduling details, Stripe, messaging, and coach
+            invite acceptance all stay deferred beyond this slice.
           </p>
         </section>
       </div>
