@@ -25,6 +25,9 @@ describe("room helpers", () => {
         }),
         updateMany: vi.fn(),
       },
+      classTemplate: {
+        count: vi.fn().mockResolvedValue(0),
+      },
     };
 
     await expect(
@@ -51,6 +54,9 @@ describe("room helpers", () => {
       room: {
         create: vi.fn(),
         updateMany: vi.fn(),
+      },
+      classTemplate: {
+        count: vi.fn().mockResolvedValue(0),
       },
     };
 
@@ -82,6 +88,9 @@ describe("room helpers", () => {
         }),
         updateMany: vi.fn(),
       },
+      classTemplate: {
+        count: vi.fn().mockResolvedValue(0),
+      },
     };
 
     await expect(
@@ -96,13 +105,53 @@ describe("room helpers", () => {
     });
   });
 
-  it("scopes updates to the location and persists the active toggle", async () => {
+  it("blocks room deactivation while an unarchived class template still uses the room", async () => {
+    const db = {
+      room: {
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+      classTemplate: {
+        count: vi.fn().mockResolvedValue(1),
+      },
+    };
+
+    await expect(
+      updateRoom({
+        locationId: "location_1",
+        roomId: "room_1",
+        input: {
+          name: "Secondary Mat",
+          capacity: "",
+          isActive: false,
+        },
+        db,
+      }),
+    ).resolves.toEqual({
+      status: "error",
+      message:
+        "This room is still used by active class templates. Archive or reassign those templates first.",
+    });
+
+    expect(db.room.updateMany).not.toHaveBeenCalled();
+    expect(db.classTemplate.count).toHaveBeenCalledWith({
+      where: {
+        roomId: "room_1",
+        archivedAt: null,
+      },
+    });
+  });
+
+  it("allows deactivation when only archived templates remain or none exist", async () => {
     const db = {
       room: {
         create: vi.fn(),
         updateMany: vi.fn().mockResolvedValue({
           count: 1,
         }),
+      },
+      classTemplate: {
+        count: vi.fn().mockResolvedValue(0),
       },
     };
 
@@ -135,13 +184,48 @@ describe("room helpers", () => {
     });
   });
 
-  it("archives a room by stamping archivedAt and disabling it", async () => {
+  it("blocks room archive while an unarchived class template still uses the room", async () => {
+    const db = {
+      room: {
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+      classTemplate: {
+        count: vi.fn().mockResolvedValue(1),
+      },
+    };
+
+    await expect(
+      archiveRoom({
+        locationId: "location_1",
+        roomId: "room_1",
+        db,
+      }),
+    ).resolves.toEqual({
+      status: "error",
+      message:
+        "This room is still used by active class templates. Archive or reassign those templates first.",
+    });
+
+    expect(db.room.updateMany).not.toHaveBeenCalled();
+    expect(db.classTemplate.count).toHaveBeenCalledWith({
+      where: {
+        roomId: "room_1",
+        archivedAt: null,
+      },
+    });
+  });
+
+  it("archives a room when only archived templates remain or none exist", async () => {
     const db = {
       room: {
         create: vi.fn(),
         updateMany: vi.fn().mockResolvedValue({
           count: 1,
         }),
+      },
+      classTemplate: {
+        count: vi.fn().mockResolvedValue(0),
       },
     };
 
@@ -175,6 +259,9 @@ describe("room helpers", () => {
         updateMany: vi.fn().mockResolvedValue({
           count: 0,
         }),
+      },
+      classTemplate: {
+        count: vi.fn().mockResolvedValue(0),
       },
     };
 

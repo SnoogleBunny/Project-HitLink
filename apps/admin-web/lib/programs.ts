@@ -42,6 +42,14 @@ interface ProgramDatabase {
       count: number;
     }>;
   };
+  classTemplate: {
+    count(args: {
+      where: {
+        programId: string;
+        archivedAt: null;
+      };
+    }): Promise<number>;
+  };
 }
 
 type ProgramMutationResult =
@@ -57,6 +65,8 @@ type ProgramMutationResult =
 const programDatabase = prisma as unknown as ProgramDatabase;
 const duplicateProgramNameMessage =
   "Programs in the same workspace must use unique names.";
+const activeTemplateDependencyMessage =
+  "This program is still used by active class templates. Archive or reassign those templates first.";
 
 function cleanNullable(value: string | undefined): string | null {
   const trimmed = value?.trim();
@@ -202,6 +212,20 @@ export async function archiveProgram(args: {
   db?: ProgramDatabase;
 }): Promise<ProgramMutationResult> {
   const db = args.db ?? programDatabase;
+  const activeTemplateCount = await db.classTemplate.count({
+    where: {
+      programId: args.programId,
+      archivedAt: null,
+    },
+  });
+
+  if (activeTemplateCount > 0) {
+    return {
+      status: "error",
+      message: activeTemplateDependencyMessage,
+    };
+  }
+
   const result = await db.program.updateMany({
     where: {
       id: args.programId,

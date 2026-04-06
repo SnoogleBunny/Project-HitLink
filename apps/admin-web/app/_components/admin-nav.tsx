@@ -17,6 +17,10 @@ const navItems = [
     label: "Rooms",
   },
   {
+    href: "/dashboard/schedule",
+    label: "Schedule",
+  },
+  {
     href: "/dashboard/staff-invites",
     label: "Staff invites",
   },

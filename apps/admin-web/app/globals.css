@@ -27,8 +27,16 @@ body {
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(226, 162, 114, 0.28), transparent 34%),
-    radial-gradient(circle at bottom right, rgba(74, 124, 89, 0.22), transparent 26%),
+    radial-gradient(
+      circle at top left,
+      rgba(226, 162, 114, 0.28),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at bottom right,
+      rgba(74, 124, 89, 0.22),
+      transparent 26%
+    ),
     var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), sans-serif;
@@ -40,7 +48,8 @@ a {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -101,12 +110,14 @@ input {
   font-weight: 600;
 }
 
-.field input {
+.field input,
+.field select {
   background: var(--surface-strong);
   border: 1px solid rgba(28, 42, 35, 0.16);
   border-radius: 16px;
   min-height: 3.2rem;
   padding: 0.9rem 1rem;
+  width: 100%;
 }
 
 .field input[type="checkbox"] {
@@ -114,7 +125,8 @@ input {
   padding: 0;
 }
 
-.field input:focus {
+.field input:focus,
+.field select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 4px rgba(178, 85, 45, 0.12);
   outline: none;
@@ -370,9 +382,14 @@ input {
 .management-copy,
 .empty-state,
 .field-checkbox p,
+.field-help,
 .inline-meta dt,
 .detail-list dt {
   color: var(--muted);
+}
+
+.field-help {
+  font-size: 0.92rem;
 }
 
 .field-checkbox {
@@ -479,6 +496,71 @@ input {
   justify-content: flex-start;
 }
 
+.info-callout {
+  background: rgba(178, 85, 45, 0.08);
+  border: 1px solid rgba(178, 85, 45, 0.18);
+  border-radius: 18px;
+  color: var(--foreground);
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.callout-list {
+  display: grid;
+  gap: 0.45rem;
+  padding-left: 1rem;
+}
+
+.schedule-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.schedule-day {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.schedule-day-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.schedule-day h3,
+.schedule-template-card h4 {
+  font-size: 1.15rem;
+  letter-spacing: -0.03em;
+}
+
+.schedule-template-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.schedule-template-card {
+  background: rgba(255, 252, 245, 0.72);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+}
+
+.schedule-template-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
 @media (max-width: 960px) {
   .shell {
     grid-template-columns: 1fr;
@@ -498,6 +580,10 @@ input {
 
   .dashboard-card-wide {
     grid-column: auto;
+  }
+
+  .schedule-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -534,5 +620,13 @@ input {
 
   .inline-meta {
     grid-template-columns: 1fr;
+  }
+
+  .schedule-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-template-header {
+    flex-direction: column;
   }
 }

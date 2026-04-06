@@ -26,6 +26,16 @@ enum StaffInviteStatus {
   REVOKED
 }
 
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
 model User {
   id               String          @id @default(cuid())
   email            String          @unique @db.Citext
@@ -41,18 +51,19 @@ model User {
 }
 
 model Workspace {
-  id             String           @id @default(cuid())
+  id             String            @id @default(cuid())
   name           String
   businessType   String?
   logoUrl        String?
-  status         WorkspaceStatus  @default(SETUP_INCOMPLETE)
+  status         WorkspaceStatus   @default(SETUP_INCOMPLETE)
   location       Location?
   programs       Program[]
+  classTemplates ClassTemplate[]
   workspaceUsers WorkspaceUser[]
   staffInvites   StaffInvite[]
   settings       WorkspaceSetting?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@map("workspaces")
 }
@@ -77,50 +88,82 @@ model Location {
 }
 
 model Room {
-  id         String   @id @default(cuid())
-  locationId String
-  name       String
-  capacity   Int?
-  isActive   Boolean  @default(true)
-  archivedAt DateTime?
-  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id             String          @id @default(cuid())
+  locationId     String
+  name           String
+  capacity       Int?
+  isActive       Boolean         @default(true)
+  archivedAt     DateTime?
+  location       Location        @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  classTemplates ClassTemplate[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@unique([locationId, name])
   @@map("rooms")
 }
 
 model Program {
-  id                     String    @id @default(cuid())
-  workspaceId            String
-  name                   String
-  description            String?
-  ageGroupLabel          String?
-  levelLabel             String?
-  progressTrackingEnabled Boolean  @default(false)
-  archivedAt             DateTime?
-  workspace              Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  id                      String          @id @default(cuid())
+  workspaceId             String
+  name                    String
+  description             String?
+  ageGroupLabel           String?
+  levelLabel              String?
+  progressTrackingEnabled Boolean         @default(false)
+  archivedAt              DateTime?
+  workspace               Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  classTemplates          ClassTemplate[]
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
 
   @@unique([workspaceId, name])
   @@map("programs")
 }
 
 model WorkspaceUser {
-  id          String    @id @default(cuid())
-  workspaceId String
-  userId      String    @unique
-  role        UserRole
-  isActive    Boolean   @default(true)
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                    String          @id @default(cuid())
+  workspaceId           String
+  userId                String          @unique
+  role                  UserRole
+  isActive              Boolean         @default(true)
+  workspace             Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coachedClassTemplates ClassTemplate[]
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
 
   @@unique([workspaceId, userId])
   @@map("workspace_users")
+}
+
+model ClassTemplate {
+  id                        String        @id @default(cuid())
+  workspaceId               String
+  programId                 String
+  roomId                    String
+  coachWorkspaceUserId      String
+  title                     String?
+  weekday                   Weekday
+  startTimeMinutes          Int
+  endTimeMinutes            Int
+  capacityOverride          Int?
+  bookingCutoffMinutes      Int
+  cancellationCutoffMinutes Int
+  archivedAt                DateTime?
+  workspace                 Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  program                   Program       @relation(fields: [programId], references: [id])
+  room                      Room          @relation(fields: [roomId], references: [id])
+  coachWorkspaceUser        WorkspaceUser @relation(fields: [coachWorkspaceUserId], references: [id])
+  createdAt                 DateTime      @default(now())
+  updatedAt                 DateTime      @updatedAt
+
+  @@index([workspaceId])
+  @@index([workspaceId, weekday])
+  @@index([coachWorkspaceUserId])
+  @@index([roomId])
+  @@index([programId])
+  @@map("class_templates")
 }
 
 model AuthSession {

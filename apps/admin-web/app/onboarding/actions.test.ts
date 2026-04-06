@@ -61,7 +61,7 @@ describe("onboardingAction", () => {
     createOwnerWorkspaceOnboardingMock.mockResolvedValue({
       status: "blocked",
       message:
-        "This account is already linked to a workspace membership that isn’t active. A new workspace can’t be created with this account right now. Contact support or use a different email.",
+        "This account is already linked to a workspace membership that isn't active. A new workspace can’t be created with this account right now. Contact support or use a different email.",
       workspaceUserId: "workspace_user_1",
       isActive: false,
     });
@@ -75,7 +75,7 @@ describe("onboardingAction", () => {
       ),
     ).resolves.toEqual({
       error:
-        "This account is already linked to a workspace membership that isn’t active. A new workspace can’t be created with this account right now. Contact support or use a different email.",
+        "This account is already linked to a workspace membership that isn't active. A new workspace can’t be created with this account right now. Contact support or use a different email.",
     });
 
     expect(redirectMock).not.toHaveBeenCalled();

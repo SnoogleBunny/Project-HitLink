@@ -103,7 +103,7 @@ export type OwnerOnboardingResult =
 
 const ownerOnboardingDatabase = prisma as unknown as OwnerOnboardingDatabase;
 const inactiveMembershipBlockedMessage =
-  "This account is already linked to a workspace membership that isn’t active. A new workspace can’t be created with this account right now. Contact support or use a different email.";
+  "This account is already linked to a workspace membership that isn't active. A new workspace can’t be created with this account right now. Contact support or use a different email.";
 
 function cleanNullable(value: string | undefined): string | null {
   const trimmed = value?.trim();

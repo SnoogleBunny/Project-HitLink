@@ -36,6 +36,14 @@ interface RoomDatabase {
       count: number;
     }>;
   };
+  classTemplate: {
+    count(args: {
+      where: {
+        roomId: string;
+        archivedAt: null;
+      };
+    }): Promise<number>;
+  };
 }
 
 type RoomMutationResult =
@@ -51,6 +59,8 @@ type RoomMutationResult =
 const roomDatabase = prisma as unknown as RoomDatabase;
 const duplicateRoomNameMessage =
   "Rooms in the same location must use unique names.";
+const activeTemplateDependencyMessage =
+  "This room is still used by active class templates. Archive or reassign those templates first.";
 
 function cleanNullable(value: string | undefined): string | null {
   const trimmed = value?.trim();
@@ -178,6 +188,22 @@ export async function updateRoom(args: {
 
   const db = args.db ?? roomDatabase;
 
+  if (!input.isActive) {
+    const activeTemplateCount = await db.classTemplate.count({
+      where: {
+        roomId: args.roomId,
+        archivedAt: null,
+      },
+    });
+
+    if (activeTemplateCount > 0) {
+      return {
+        status: "error",
+        message: activeTemplateDependencyMessage,
+      };
+    }
+  }
+
   try {
     const result = await db.room.updateMany({
       where: {
@@ -220,6 +246,20 @@ export async function archiveRoom(args: {
   db?: RoomDatabase;
 }): Promise<RoomMutationResult> {
   const db = args.db ?? roomDatabase;
+  const activeTemplateCount = await db.classTemplate.count({
+    where: {
+      roomId: args.roomId,
+      archivedAt: null,
+    },
+  });
+
+  if (activeTemplateCount > 0) {
+    return {
+      status: "error",
+      message: activeTemplateDependencyMessage,
+    };
+  }
+
   const result = await db.room.updateMany({
     where: {
       id: args.roomId,

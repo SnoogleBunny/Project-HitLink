@@ -6,16 +6,18 @@ import { useFormStatus } from "react-dom";
 interface SubmitButtonProps {
   children: ReactNode;
   pendingLabel: string;
+  disabled?: boolean;
 }
 
 export function SubmitButton({
   children,
   pendingLabel,
+  disabled = false,
 }: SubmitButtonProps) {
   const { pending } = useFormStatus();
 
   return (
-    <button className="button" disabled={pending} type="submit">
+    <button className="button" disabled={pending || disabled} type="submit">
       {pending ? pendingLabel : children}
     </button>
   );

@@ -15,6 +15,7 @@ globalForPrisma.prisma = prisma;
 export { Prisma, PrismaClient } from "@prisma/client";
 export type {
   AuthSession,
+  ClassTemplate,
   Location,
   Program,
   Room,
@@ -22,6 +23,7 @@ export type {
   StaffInviteStatus,
   User,
   UserRole,
+  Weekday,
   Workspace,
   WorkspaceSetting,
   WorkspaceStatus,

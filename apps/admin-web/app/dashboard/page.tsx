@@ -10,27 +10,34 @@ export default async function DashboardPage() {
     workspaceId: workspace.id,
   });
 
-  const [programCount, roomCount, pendingInviteCount] = await Promise.all([
-    prisma.program.count({
-      where: {
-        workspaceId: workspace.id,
-        archivedAt: null,
-      },
-    }),
-    prisma.room.count({
-      where: {
-        locationId: workspace.location.id,
-        archivedAt: null,
-      },
-    }),
-    prisma.staffInvite.count({
-      where: {
-        workspaceId: workspace.id,
-        role: "COACH",
-        status: "PENDING",
-      },
-    }),
-  ]);
+  const [programCount, roomCount, templateCount, pendingInviteCount] =
+    await Promise.all([
+      prisma.program.count({
+        where: {
+          workspaceId: workspace.id,
+          archivedAt: null,
+        },
+      }),
+      prisma.room.count({
+        where: {
+          locationId: workspace.location.id,
+          archivedAt: null,
+        },
+      }),
+      prisma.classTemplate.count({
+        where: {
+          workspaceId: workspace.id,
+          archivedAt: null,
+        },
+      }),
+      prisma.staffInvite.count({
+        where: {
+          workspaceId: workspace.id,
+          role: "COACH",
+          status: "PENDING",
+        },
+      }),
+    ]);
 
   const address = [
     workspace.location.addressLine1,
@@ -47,7 +54,7 @@ export default async function DashboardPage() {
       session={session}
       workspaceName={workspace.name}
       title="Workspace overview"
-      description="Programs, rooms, and staff invite scaffolding are now ready for schedule setup."
+      description="Programs, rooms, staff invites, and recurring weekly schedule setup now live together in the owner dashboard."
     >
       <div className="dashboard-grid">
         <section className="dashboard-card">
@@ -79,6 +86,10 @@ export default async function DashboardPage() {
               <dd>{roomCount}</dd>
             </div>
             <div>
+              <dt>Active templates</dt>
+              <dd>{templateCount}</dd>
+            </div>
+            <div>
               <dt>Pending coach invites</dt>
               <dd>{pendingInviteCount}</dd>
             </div>
@@ -96,23 +107,21 @@ export default async function DashboardPage() {
             </div>
             <div>
               <dt>Rooms enabled</dt>
-              <dd>
-                {workspace.settings?.allowMultipleRooms ? "Yes" : "No"}
-              </dd>
+              <dd>{workspace.settings?.allowMultipleRooms ? "Yes" : "No"}</dd>
             </div>
           </dl>
         </section>
 
         <section className="dashboard-card dashboard-card-wide">
-          <p className="dashboard-card-label">Next phase</p>
-          <h3>Class templates + weekly schedule</h3>
+          <p className="dashboard-card-label">Schedule</p>
+          <h3>Manage recurring weekly classes</h3>
           <p>
-            The next slice should build class templates and a weekly schedule on
-            top of unarchived programs plus active, unarchived rooms.
+            Build the weekly operating schedule from unarchived programs, active
+            rooms, and eligible owner or coach assignments.
           </p>
           <div className="dashboard-actions">
-            <Link className="button" href="/dashboard/programs">
-              Manage programs
+            <Link className="button" href="/dashboard/schedule">
+              Open schedule
             </Link>
             <Link className="button button-secondary" href="/dashboard/rooms">
               Manage rooms
@@ -130,8 +139,9 @@ export default async function DashboardPage() {
           <p className="dashboard-card-label">What remains later</p>
           <h3>Still intentionally out of scope</h3>
           <p>
-            Members, billing, scheduling details, Stripe, messaging, and coach
-            invite acceptance all stay deferred beyond this slice.
+            Class instances, bookings, waitlists, attendance, billing, Stripe,
+            messaging, and coach invite acceptance all stay deferred beyond this
+            slice.
           </p>
         </section>
       </div>
