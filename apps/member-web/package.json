@@ -9,9 +9,10 @@
     "start": "next start",
     "lint": "eslint --max-warnings 0",
     "check-types": "next typegen && tsc --noEmit",
-    "test": "node -e \"console.log('No tests yet')\""
+    "test": "vitest run"
   },
   "dependencies": {
+    "@hitlink/db": "workspace:*",
     "@hitlink/ui": "workspace:*",
     "next": "16.2.0",
     "react": "^19.2.0",

@@ -36,6 +36,21 @@ enum Weekday {
   SUNDAY
 }
 
+enum MemberStatus {
+  ACTIVE
+  TRIAL
+  OVERDUE
+  FROZEN
+  CANCELLED
+  WAITLISTED
+}
+
+enum MemberFormStatus {
+  NOT_REQUESTED
+  PENDING
+  COMPLETE
+}
+
 model User {
   id               String          @id @default(cuid())
   email            String          @unique @db.Citext
@@ -59,6 +74,10 @@ model Workspace {
   location       Location?
   programs       Program[]
   classTemplates ClassTemplate[]
+  members        Member[]
+  guardians      Guardian[]
+  familyLinks    FamilyLink[]
+  trialBookings  TrialBooking[]
   workspaceUsers WorkspaceUser[]
   staffInvites   StaffInvite[]
   settings       WorkspaceSetting?
@@ -155,6 +174,7 @@ model ClassTemplate {
   program                   Program       @relation(fields: [programId], references: [id])
   room                      Room          @relation(fields: [roomId], references: [id])
   coachWorkspaceUser        WorkspaceUser @relation(fields: [coachWorkspaceUserId], references: [id])
+  trialBookings             TrialBooking[]
   createdAt                 DateTime      @default(now())
   updatedAt                 DateTime      @updatedAt
 
@@ -164,6 +184,86 @@ model ClassTemplate {
   @@index([roomId])
   @@index([programId])
   @@map("class_templates")
+}
+
+model Member {
+  id            String           @id @default(cuid())
+  workspaceId   String
+  fullName      String
+  email         String?          @db.Citext
+  phone         String?
+  dateOfBirth   DateTime?        @db.Date
+  status        MemberStatus     @default(TRIAL)
+  notes         String?
+  tags          String[]         @default([])
+  formStatus    MemberFormStatus @default(NOT_REQUESTED)
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  familyLinks   FamilyLink[]     @relation("ChildMemberFamilyLinks")
+  trialBookings TrialBooking[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, fullName])
+  @@index([workspaceId, email])
+  @@map("members")
+}
+
+model Guardian {
+  id            String         @id @default(cuid())
+  workspaceId   String
+  fullName      String
+  email         String?        @db.Citext
+  phone         String?
+  notes         String?
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  familyLinks   FamilyLink[]
+  trialBookings TrialBooking[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([workspaceId, fullName])
+  @@index([workspaceId, email])
+  @@map("guardians")
+}
+
+model FamilyLink {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  guardianId        String
+  childMemberId     String
+  relationshipLabel String?
+  isPrimary         Boolean   @default(false)
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  guardian          Guardian  @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  childMember       Member    @relation("ChildMemberFamilyLinks", fields: [childMemberId], references: [id], onDelete: Cascade)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([guardianId, childMemberId])
+  @@index([workspaceId, childMemberId])
+  @@index([workspaceId, guardianId])
+  @@map("family_links")
+}
+
+model TrialBooking {
+  id               String        @id @default(cuid())
+  workspaceId      String
+  memberId         String
+  guardianId       String?
+  classTemplateId  String
+  scheduledForDate DateTime      @db.Date
+  workspace        Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member           Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  guardian         Guardian?     @relation(fields: [guardianId], references: [id], onDelete: SetNull)
+  classTemplate    ClassTemplate @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([workspaceId, scheduledForDate])
+  @@index([workspaceId, memberId])
+  @@index([workspaceId, classTemplateId])
+  @@map("trial_bookings")
 }
 
 model AuthSession {
