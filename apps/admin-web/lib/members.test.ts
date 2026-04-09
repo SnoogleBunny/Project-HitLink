@@ -92,6 +92,12 @@ function createMockDb(): MemberTestDb {
         id: "member_1",
       }),
     },
+    user: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      updateMany: vi.fn().mockResolvedValue({
+        count: 1,
+      }),
+    },
     guardian: {
       create: vi.fn().mockResolvedValue({
         id: "guardian_1",
@@ -247,6 +253,65 @@ describe("member helpers", () => {
         status: "ACTIVE",
         formStatus: "COMPLETE",
       }),
+    });
+  });
+
+  it("syncs linked member users only when the email remains unique", async () => {
+    const db = createMockDb();
+    db.member.findFirst = vi.fn().mockResolvedValue({
+      id: "member_1",
+      userId: "user_1",
+      user: {
+        id: "user_1",
+        email: "jordan@example.com",
+      },
+    });
+
+    await expect(
+      updateMember({
+        workspaceId: "workspace_1",
+        memberId: "member_1",
+        input: {
+          fullName: "Jordan Lee",
+          email: "jordan@example.com",
+          status: "ACTIVE",
+          formStatus: "COMPLETE",
+        },
+        db,
+      }),
+    ).resolves.toEqual({
+      status: "updated",
+      memberId: "member_1",
+    });
+    expect(db.user.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "user_1",
+      },
+      data: {
+        email: "jordan@example.com",
+        fullName: "Jordan Lee",
+      },
+    });
+
+    db.user.findUnique = vi.fn().mockResolvedValue({
+      id: "user_other",
+    });
+
+    await expect(
+      updateMember({
+        workspaceId: "workspace_1",
+        memberId: "member_1",
+        input: {
+          fullName: "Jordan Lee",
+          email: "taken@example.com",
+          status: "ACTIVE",
+          formStatus: "COMPLETE",
+        },
+        db,
+      }),
+    ).resolves.toEqual({
+      status: "error",
+      message: "That email already belongs to another user.",
     });
   });
 

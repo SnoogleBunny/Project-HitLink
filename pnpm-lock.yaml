@@ -103,6 +103,9 @@ importers:
 
   apps/member-web:
     dependencies:
+      '@hitlink/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@hitlink/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -118,6 +121,9 @@ importers:
       react-dom:
         specifier: ^19.2.0
         version: 19.2.4(react@19.2.4)
+      stripe:
+        specifier: ^22.0.0
+        version: 22.0.0(@types/node@22.19.17)
     devDependencies:
       '@hitlink/eslint-config':
         specifier: workspace:*

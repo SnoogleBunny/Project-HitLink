@@ -2,7 +2,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { prisma, type UserRole } from "@hitlink/db";
 import { AuthError } from "./errors.js";
 
-export const SESSION_COOKIE_NAME = "hitlink_admin_session";
+export const ADMIN_SESSION_COOKIE_NAME = "hitlink_admin_session";
+export const MEMBER_SESSION_COOKIE_NAME = "hitlink_member_session";
+export const SESSION_COOKIE_NAME = ADMIN_SESSION_COOKIE_NAME;
 export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface SessionCookieStore {
@@ -48,6 +50,10 @@ export interface SessionRepository {
   }): Promise<void>;
   findByTokenHash(tokenHash: string): Promise<StoredSessionRecord | null>;
   deleteByTokenHash(tokenHash: string): Promise<void>;
+}
+
+interface SessionCookieOptions {
+  cookieName?: string;
 }
 
 export const prismaSessionRepository: SessionRepository = {
@@ -127,8 +133,15 @@ export function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export function clearSessionCookie(cookieStore: SessionCookieStore): void {
-  cookieStore.set(SESSION_COOKIE_NAME, "", {
+function getCookieName(cookieName?: string): string {
+  return cookieName?.trim() || SESSION_COOKIE_NAME;
+}
+
+export function clearSessionCookie(
+  cookieStore: SessionCookieStore,
+  options?: SessionCookieOptions,
+): void {
+  cookieStore.set(getCookieName(options?.cookieName), "", {
     expires: new Date(0),
     httpOnly: true,
     path: "/",
@@ -141,8 +154,9 @@ export function setSessionCookie(
   cookieStore: SessionCookieStore,
   token: string,
   expiresAt: Date,
+  options?: SessionCookieOptions,
 ): void {
-  cookieStore.set(SESSION_COOKIE_NAME, token, {
+  cookieStore.set(getCookieName(options?.cookieName), token, {
     expires: expiresAt,
     httpOnly: true,
     path: "/",
@@ -173,6 +187,7 @@ export async function createSession(args: {
   userId: string;
   cookieStore: SessionCookieStore;
   repository?: SessionRepository;
+  cookieName?: string;
 }): Promise<void> {
   const repository = args.repository ?? prismaSessionRepository;
   const token = randomBytes(32).toString("hex");
@@ -185,7 +200,9 @@ export async function createSession(args: {
     expiresAt,
   });
 
-  setSessionCookie(args.cookieStore, token, expiresAt);
+  setSessionCookie(args.cookieStore, token, expiresAt, {
+    cookieName: args.cookieName,
+  });
 }
 
 export async function getSessionFromToken(args: {
@@ -214,15 +231,19 @@ export async function getSessionFromToken(args: {
 export async function getSession(args: {
   cookieStore: SessionCookieStore;
   repository?: SessionRepository;
+  cookieName?: string;
 }): Promise<AppSession | null> {
-  const token = args.cookieStore.get(SESSION_COOKIE_NAME)?.value?.trim() ?? "";
+  const token =
+    args.cookieStore.get(getCookieName(args.cookieName))?.value?.trim() ?? "";
   const session = await getSessionFromToken({
     token,
     repository: args.repository,
   });
 
   if (!session && token) {
-    clearSessionCookie(args.cookieStore);
+    clearSessionCookie(args.cookieStore, {
+      cookieName: args.cookieName,
+    });
   }
 
   return session;
@@ -231,20 +252,25 @@ export async function getSession(args: {
 export async function deleteSession(args: {
   cookieStore: SessionCookieStore;
   repository?: SessionRepository;
+  cookieName?: string;
 }): Promise<void> {
   const repository = args.repository ?? prismaSessionRepository;
-  const token = args.cookieStore.get(SESSION_COOKIE_NAME)?.value?.trim() ?? "";
+  const token =
+    args.cookieStore.get(getCookieName(args.cookieName))?.value?.trim() ?? "";
 
   if (token) {
     await repository.deleteByTokenHash(hashSessionToken(token));
   }
 
-  clearSessionCookie(args.cookieStore);
+  clearSessionCookie(args.cookieStore, {
+    cookieName: args.cookieName,
+  });
 }
 
 export async function requireUser(args: {
   cookieStore: SessionCookieStore;
   repository?: SessionRepository;
+  cookieName?: string;
 }): Promise<AppSession> {
   const session = await getSession(args);
 
@@ -259,6 +285,7 @@ export async function requireRole(args: {
   allowedRoles: UserRole[];
   cookieStore: SessionCookieStore;
   repository?: SessionRepository;
+  cookieName?: string;
 }): Promise<AppSession> {
   const session = await requireUser(args);
 

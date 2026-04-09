@@ -1,6 +1,7 @@
 export { AuthError, isAuthError, type AuthErrorCode } from "./errors.js";
 export { hashPassword, verifyPassword } from "./password.js";
 export {
+  ADMIN_SESSION_COOKIE_NAME,
   buildAppSession,
   clearSessionCookie,
   createSession,
@@ -8,6 +9,7 @@ export {
   getSession,
   getSessionFromToken,
   hashSessionToken,
+  MEMBER_SESSION_COOKIE_NAME,
   normalizeDisplayName,
   prismaSessionRepository,
   requireRole,

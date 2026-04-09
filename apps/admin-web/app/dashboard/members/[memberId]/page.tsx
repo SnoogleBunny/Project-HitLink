@@ -6,6 +6,7 @@ import { getMemberProfile } from "../../../../lib/members";
 import { requireOwnerWorkspaceContext } from "../../../../lib/owner-workspace";
 import { GuardianLinkForm } from "../guardian-link-form";
 import { MemberEditForm } from "../member-form";
+import { PortalAccessForm } from "../portal-access-form";
 
 function formatDate(value: Date | null): string {
   if (!value) {
@@ -174,6 +175,43 @@ export default async function MemberProfilePage({
           ) : (
             <GuardianLinkForm memberId={member.id} />
           )}
+        </section>
+      </div>
+
+      <div className="management-grid">
+        <section className="management-card">
+          <p className="dashboard-card-label">Portal access</p>
+          <h3>
+            {member.portalAccess ? "Member login is active" : "Create member login"}
+          </h3>
+          <p className="management-copy">
+            Keep member login scoped to this one profile only. This slice does not
+            reuse unrelated existing users or support family account linking.
+          </p>
+          <dl className="detail-list">
+            <div>
+              <dt>Status</dt>
+              <dd>{member.portalAccess ? "Enabled" : "Not created"}</dd>
+            </div>
+            <div>
+              <dt>Login email</dt>
+              <dd>{member.portalAccess?.email ?? member.email ?? "Add member email first"}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="management-card">
+          <p className="dashboard-card-label">
+            {member.portalAccess ? "Reset password" : "Provision login"}
+          </p>
+          <h3>
+            {member.portalAccess ? "Replace temporary password" : "Create member portal access"}
+          </h3>
+          <PortalAccessForm
+            memberEmail={member.email}
+            memberId={member.id}
+            portalAccessEmail={member.portalAccess?.email ?? null}
+          />
         </section>
       </div>
 

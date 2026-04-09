@@ -10,6 +10,10 @@ import {
   createMember,
   updateMember,
 } from "../../../lib/members";
+import {
+  createMemberPortalAccess,
+  resetMemberPortalPassword,
+} from "../../../lib/member-portal-access";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
 
 function getMemberInput(formData: FormData) {
@@ -22,6 +26,13 @@ function getMemberInput(formData: FormData) {
     notes: String(formData.get("notes") ?? ""),
     tags: String(formData.get("tags") ?? ""),
     formStatus: String(formData.get("formStatus") ?? ""),
+  };
+}
+
+function getPasswordInput(formData: FormData) {
+  return {
+    password: String(formData.get("password") ?? ""),
+    confirmPassword: String(formData.get("confirmPassword") ?? ""),
   };
 }
 
@@ -86,6 +97,68 @@ export async function addGuardianToMemberAction(
       isPrimary: formData.get("isPrimary") === "on",
       notes: String(formData.get("guardianNotes") ?? ""),
     },
+  });
+
+  if (result.status === "error") {
+    return {
+      error: result.message,
+    };
+  }
+
+  redirect(`/dashboard/members/${memberId}`);
+
+  return emptyFormState;
+}
+
+export async function createMemberPortalAccessAction(
+  _previousState: BasicFormState,
+  formData: FormData,
+): Promise<BasicFormState> {
+  const { workspace } = await requireOwnerWorkspaceContext();
+  const memberId = String(formData.get("memberId") ?? "");
+  const passwords = getPasswordInput(formData);
+
+  if (passwords.password !== passwords.confirmPassword) {
+    return {
+      error: "Passwords do not match.",
+    };
+  }
+
+  const result = await createMemberPortalAccess({
+    workspaceId: workspace.id,
+    memberId,
+    password: passwords.password,
+  });
+
+  if (result.status === "error") {
+    return {
+      error: result.message,
+    };
+  }
+
+  redirect(`/dashboard/members/${memberId}`);
+
+  return emptyFormState;
+}
+
+export async function resetMemberPortalPasswordAction(
+  _previousState: BasicFormState,
+  formData: FormData,
+): Promise<BasicFormState> {
+  const { workspace } = await requireOwnerWorkspaceContext();
+  const memberId = String(formData.get("memberId") ?? "");
+  const passwords = getPasswordInput(formData);
+
+  if (passwords.password !== passwords.confirmPassword) {
+    return {
+      error: "Passwords do not match.",
+    };
+  }
+
+  const result = await resetMemberPortalPassword({
+    workspaceId: workspace.id,
+    memberId,
+    password: passwords.password,
   });
 
   if (result.status === "error") {

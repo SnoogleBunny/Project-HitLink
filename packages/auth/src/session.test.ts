@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  deleteSession,
   getSessionFromToken,
   hashPassword,
   hashSessionToken,
+  MEMBER_SESSION_COOKIE_NAME,
   verifyPassword,
 } from "./index.js";
 
@@ -102,6 +104,37 @@ describe("session lookup", () => {
 
     expect(repository.deleteByTokenHash).toHaveBeenCalledWith(
       hashSessionToken("expired-token"),
+    );
+  });
+
+  it("uses the requested cookie name when deleting a member-scoped session", async () => {
+    const cookieStore = {
+      get: vi.fn((name: string) => {
+        if (name === MEMBER_SESSION_COOKIE_NAME) {
+          return {
+            value: "member-session-token",
+          };
+        }
+
+        return undefined;
+      }),
+      set: vi.fn(),
+    };
+    const repository = {
+      create: vi.fn(),
+      findByTokenHash: vi.fn(),
+      deleteByTokenHash: vi.fn(),
+    };
+
+    await deleteSession({
+      cookieStore,
+      repository,
+      cookieName: MEMBER_SESSION_COOKIE_NAME,
+    });
+
+    expect(cookieStore.get).toHaveBeenCalledWith(MEMBER_SESSION_COOKIE_NAME);
+    expect(repository.deleteByTokenHash).toHaveBeenCalledWith(
+      hashSessionToken("member-session-token"),
     );
   });
 });

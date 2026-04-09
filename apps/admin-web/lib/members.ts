@@ -95,6 +95,11 @@ interface AttendanceHistoryRecord {
   };
 }
 
+interface PortalUserRecord {
+  id: string;
+  email: string;
+}
+
 interface MemberListRecord {
   id: string;
   fullName: string;
@@ -112,8 +117,16 @@ interface MemberListRecord {
 }
 
 interface MemberProfileRecord extends MemberListRecord {
+  userId: string | null;
+  user: PortalUserRecord | null;
   classBookings: ClassBookingRecord[];
   attendanceRecords: AttendanceHistoryRecord[];
+}
+
+interface MemberIdentityRecord {
+  id: string;
+  userId: string | null;
+  user: PortalUserRecord | null;
 }
 
 interface MemberDatabase {
@@ -123,7 +136,11 @@ interface MemberDatabase {
     findMany(args: Record<string, unknown>): Promise<MemberListRecord[]>;
     findFirst(
       args: Record<string, unknown>,
-    ): Promise<MemberProfileRecord | { id: string } | null>;
+    ): Promise<MemberProfileRecord | MemberIdentityRecord | { id: string } | null>;
+  };
+  user: {
+    findUnique(args: Record<string, unknown>): Promise<{ id: string } | null>;
+    updateMany(args: Record<string, unknown>): Promise<{ count: number }>;
   };
   guardian: {
     create(args: Record<string, unknown>): Promise<{ id: string }>;
@@ -185,9 +202,15 @@ export interface MemberListItem {
   latestTrialBooking: MemberTrialBookingSummary | null;
 }
 
+export interface MemberPortalAccessSummary {
+  userId: string;
+  email: string;
+}
+
 export interface MemberProfile extends Omit<MemberListItem, "latestTrialBooking"> {
   trialBookings: MemberTrialBookingSummary[];
   attendanceRecords: MemberAttendanceSummary[];
+  portalAccess: MemberPortalAccessSummary | null;
 }
 
 type MemberMutationResult =
@@ -392,6 +415,72 @@ function validateSanitizedMemberInput(
   };
 }
 
+async function syncLinkedMemberUser(args: {
+  db: MemberDatabase;
+  member: MemberIdentityRecord;
+  fullName: string;
+  email: string | null;
+}):
+  Promise<
+    | {
+        status: "ok";
+      }
+    | {
+        status: "error";
+        message: string;
+      }
+  > {
+  if (!args.member.userId) {
+    return {
+      status: "ok",
+    };
+  }
+
+  if (!args.email) {
+    return {
+      status: "error",
+      message: "Members with portal access must keep an email address.",
+    };
+  }
+
+  const existingUser = await args.db.user.findUnique({
+    where: {
+      email: args.email,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (existingUser && existingUser.id !== args.member.userId) {
+    return {
+      status: "error",
+      message: "That email already belongs to another user.",
+    };
+  }
+
+  const result = await args.db.user.updateMany({
+    where: {
+      id: args.member.userId,
+    },
+    data: {
+      email: args.email,
+      fullName: args.fullName,
+    },
+  });
+
+  if (result.count === 0) {
+    return {
+      status: "error",
+      message: "Member portal access is linked to a missing user.",
+    };
+  }
+
+  return {
+    status: "ok",
+  };
+}
+
 function mapTrialBooking(
   booking: ClassBookingRecord,
 ): MemberTrialBookingSummary {
@@ -435,6 +524,19 @@ function mapGuardian(link: FamilyLinkRecord): MemberGuardianSummary {
     notes: link.guardian.notes ?? null,
     relationshipLabel: link.relationshipLabel,
     isPrimary: link.isPrimary,
+  };
+}
+
+function mapPortalAccess(
+  user: PortalUserRecord | null | undefined,
+): MemberPortalAccessSummary | null {
+  if (!user) {
+    return null;
+  }
+
+  return {
+    userId: user.id,
+    email: user.email,
   };
 }
 
@@ -585,9 +687,17 @@ export async function getMemberProfile(args: {
       id: args.memberId,
       workspaceId: args.workspaceId,
     },
-    include: getMemberInclude({
-      includeAttendance: true,
-    }),
+    include: {
+      ...getMemberInclude({
+        includeAttendance: true,
+      }),
+      user: {
+        select: {
+          id: true,
+          email: true,
+        },
+      },
+    },
   })) as MemberProfileRecord | null;
 
   if (!member) {
@@ -600,6 +710,7 @@ export async function getMemberProfile(args: {
     ...listItem,
     trialBookings: member.classBookings.map(mapTrialBooking),
     attendanceRecords: member.attendanceRecords.map(mapAttendanceRecord),
+    portalAccess: mapPortalAccess(member.user),
   };
 }
 
@@ -648,6 +759,41 @@ export async function updateMember(args: {
 
   if (input.status === "error") {
     return input;
+  }
+
+  const member = (await db.member.findFirst({
+    where: {
+      id: args.memberId,
+      workspaceId: args.workspaceId,
+    },
+    select: {
+      id: true,
+      userId: true,
+      user: {
+        select: {
+          id: true,
+          email: true,
+        },
+      },
+    },
+  })) as MemberIdentityRecord | null;
+
+  if (!member) {
+    return {
+      status: "error",
+      message: "Member not found.",
+    };
+  }
+
+  const userSyncResult = await syncLinkedMemberUser({
+    db,
+    member,
+    fullName: input.value.fullName,
+    email: input.value.email,
+  });
+
+  if (userSyncResult.status === "error") {
+    return userSyncResult;
   }
 
   const result = await db.member.updateMany({

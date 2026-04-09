@@ -67,6 +67,7 @@ enum ClassBookingStatus {
 enum ClassBookingSource {
   ADMIN
   PUBLIC_TRIAL
+  MEMBER_PORTAL
 }
 
 enum AttendanceState {
@@ -140,6 +141,7 @@ model User {
   email            String          @unique @db.Citext
   fullName         String?
   passwordHash     String?
+  member           Member?
   workspaceUsers   WorkspaceUser[]
   authSessions     AuthSession[]
   sentStaffInvites StaffInvite[]   @relation("StaffInviteSender")
@@ -284,6 +286,7 @@ model ClassTemplate {
 model Member {
   id                String                   @id @default(cuid())
   workspaceId       String
+  userId            String?                  @unique
   fullName          String
   email             String?                  @db.Citext
   phone             String?
@@ -293,6 +296,7 @@ model Member {
   tags              String[]                 @default([])
   formStatus        MemberFormStatus         @default(NOT_REQUESTED)
   workspace         Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user              User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
   familyLinks       FamilyLink[]             @relation("ChildMemberFamilyLinks")
   memberships       MemberMembership[]
   billingStates     MembershipBillingState[]
@@ -305,6 +309,7 @@ model Member {
   @@index([workspaceId, status])
   @@index([workspaceId, fullName])
   @@index([workspaceId, email])
+  @@index([workspaceId, userId])
   @@map("members")
 }
 
