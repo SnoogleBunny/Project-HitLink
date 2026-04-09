@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { SubmitButton } from "../_components/submit-button";
 import { loginAction } from "./actions";
-import { emptyFormState } from "../../lib/admin-access";
+import { emptyFormState } from "../../lib/route-decisions";
 
 export function LoginForm() {
   const [state, formAction] = useActionState(loginAction, emptyFormState);

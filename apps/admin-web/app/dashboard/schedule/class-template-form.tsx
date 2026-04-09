@@ -3,7 +3,7 @@
 import type { Weekday } from "@hitlink/db";
 import { useActionState } from "react";
 import { SubmitButton } from "../../_components/submit-button";
-import { emptyFormState } from "../../../lib/admin-access";
+import { emptyFormState } from "../../../lib/route-decisions";
 import {
   WEEKDAY_ORDER,
   type ClassTemplateFormOptions,

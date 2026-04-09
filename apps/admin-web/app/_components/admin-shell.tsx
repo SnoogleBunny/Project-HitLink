@@ -28,10 +28,10 @@ export function AdminShell({
         <div className="shell-brand">
           <span className="shell-brand-label">HitLink Admin</span>
           <h1>{workspaceName}</h1>
-          <p>Owner operations for the current scheduling setup slice.</p>
+          <p>Daily operations for the current scheduling slice.</p>
         </div>
 
-        <AdminNav />
+        <AdminNav role={session.role} />
 
         <div className="shell-sidebar-footer">
           <p className="shell-sidebar-caption">Signed in as</p>

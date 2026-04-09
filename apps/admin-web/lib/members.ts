@@ -1,4 +1,6 @@
 import {
+  type AttendanceState,
+  type ClassBookingStatus,
   prisma,
   type MemberFormStatus,
   type MemberStatus,
@@ -60,10 +62,28 @@ interface FamilyLinkRecord {
   guardian: GuardianSummaryRecord;
 }
 
-interface TrialBookingRecord {
+interface ClassBookingRecord {
   id: string;
   scheduledForDate: Date;
   createdAt: Date;
+  status: ClassBookingStatus;
+  classTemplate: {
+    id: string;
+    title: string | null;
+    weekday: Weekday;
+    startTimeMinutes: number;
+    program: {
+      name: string;
+    };
+  };
+}
+
+interface AttendanceHistoryRecord {
+  id: string;
+  scheduledForDate: Date;
+  state: AttendanceState;
+  note: string | null;
+  updatedAt: Date;
   classTemplate: {
     id: string;
     title: string | null;
@@ -88,11 +108,12 @@ interface MemberListRecord {
   createdAt: Date;
   updatedAt: Date;
   familyLinks: FamilyLinkRecord[];
-  trialBookings: TrialBookingRecord[];
+  classBookings: ClassBookingRecord[];
 }
 
 interface MemberProfileRecord extends MemberListRecord {
-  trialBookings: TrialBookingRecord[];
+  classBookings: ClassBookingRecord[];
+  attendanceRecords: AttendanceHistoryRecord[];
 }
 
 interface MemberDatabase {
@@ -118,6 +139,19 @@ export interface MemberTrialBookingSummary {
   id: string;
   scheduledForDate: Date;
   createdAt: Date;
+  status: ClassBookingStatus;
+  classTemplateId: string;
+  classTitle: string;
+  weekday: Weekday;
+  startTimeMinutes: number;
+}
+
+export interface MemberAttendanceSummary {
+  id: string;
+  scheduledForDate: Date;
+  state: AttendanceState;
+  note: string | null;
+  updatedAt: Date;
   classTemplateId: string;
   classTitle: string;
   weekday: Weekday;
@@ -153,6 +187,7 @@ export interface MemberListItem {
 
 export interface MemberProfile extends Omit<MemberListItem, "latestTrialBooking"> {
   trialBookings: MemberTrialBookingSummary[];
+  attendanceRecords: MemberAttendanceSummary[];
 }
 
 type MemberMutationResult =
@@ -358,16 +393,35 @@ function validateSanitizedMemberInput(
 }
 
 function mapTrialBooking(
-  booking: TrialBookingRecord,
+  booking: ClassBookingRecord,
 ): MemberTrialBookingSummary {
   return {
     id: booking.id,
     scheduledForDate: booking.scheduledForDate,
     createdAt: booking.createdAt,
+    status: booking.status,
     classTemplateId: booking.classTemplate.id,
     classTitle: booking.classTemplate.title ?? booking.classTemplate.program.name,
     weekday: booking.classTemplate.weekday,
     startTimeMinutes: booking.classTemplate.startTimeMinutes,
+  };
+}
+
+function mapAttendanceRecord(
+  attendanceRecord: AttendanceHistoryRecord,
+): MemberAttendanceSummary {
+  return {
+    id: attendanceRecord.id,
+    scheduledForDate: attendanceRecord.scheduledForDate,
+    state: attendanceRecord.state,
+    note: attendanceRecord.note,
+    updatedAt: attendanceRecord.updatedAt,
+    classTemplateId: attendanceRecord.classTemplate.id,
+    classTitle:
+      attendanceRecord.classTemplate.title ??
+      attendanceRecord.classTemplate.program.name,
+    weekday: attendanceRecord.classTemplate.weekday,
+    startTimeMinutes: attendanceRecord.classTemplate.startTimeMinutes,
   };
 }
 
@@ -385,7 +439,7 @@ function mapGuardian(link: FamilyLinkRecord): MemberGuardianSummary {
 }
 
 function mapMemberListItem(record: MemberListRecord): MemberListItem {
-  const latestTrialBooking = record.trialBookings[0] ?? null;
+  const latestTrialBooking = record.classBookings[0] ?? null;
 
   return {
     id: record.id,
@@ -406,7 +460,10 @@ function mapMemberListItem(record: MemberListRecord): MemberListItem {
   };
 }
 
-function getMemberInclude(trialTake?: number) {
+function getMemberInclude(args?: {
+  trialTake?: number;
+  includeAttendance?: boolean;
+}) {
   return {
     familyLinks: {
       include: {
@@ -416,7 +473,10 @@ function getMemberInclude(trialTake?: number) {
         createdAt: "asc",
       },
     },
-    trialBookings: {
+    classBookings: {
+      where: {
+        bookingType: "TRIAL",
+      },
       include: {
         classTemplate: {
           include: {
@@ -436,8 +496,34 @@ function getMemberInclude(trialTake?: number) {
           createdAt: "desc",
         },
       ],
-      ...(trialTake ? { take: trialTake } : {}),
+      ...(args?.trialTake ? { take: args.trialTake } : {}),
     },
+    ...(args?.includeAttendance
+      ? {
+          attendanceRecords: {
+            include: {
+              classTemplate: {
+                include: {
+                  program: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: [
+              {
+                scheduledForDate: "desc",
+              },
+              {
+                updatedAt: "desc",
+              },
+            ],
+            take: 20,
+          },
+        }
+      : {}),
   };
 }
 
@@ -476,7 +562,9 @@ export async function listMembers(args: {
 
   const members = await db.member.findMany({
     where,
-    include: getMemberInclude(1),
+    include: getMemberInclude({
+      trialTake: 1,
+    }),
     orderBy: {
       fullName: "asc",
     },
@@ -497,7 +585,9 @@ export async function getMemberProfile(args: {
       id: args.memberId,
       workspaceId: args.workspaceId,
     },
-    include: getMemberInclude(),
+    include: getMemberInclude({
+      includeAttendance: true,
+    }),
   })) as MemberProfileRecord | null;
 
   if (!member) {
@@ -508,7 +598,8 @@ export async function getMemberProfile(args: {
 
   return {
     ...listItem,
-    trialBookings: member.trialBookings.map(mapTrialBooking),
+    trialBookings: member.classBookings.map(mapTrialBooking),
+    attendanceRecords: member.attendanceRecords.map(mapAttendanceRecord),
   };
 }
 

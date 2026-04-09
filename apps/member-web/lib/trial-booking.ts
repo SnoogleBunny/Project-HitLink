@@ -1,28 +1,15 @@
-import { prisma, type Weekday } from "@hitlink/db";
+import {
+  buildUpcomingOccurrenceDateOptions,
+  dateOnlyStringToUtcDate,
+  prisma,
+  toDateOnlyString,
+  type ClassBookingStatus,
+  type Weekday,
+} from "@hitlink/db";
 
 const selectableCoachRoles = ["OWNER", "COACH"] as const;
 const trialDateOptionCount = 4;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const weekdayLabels: Record<Weekday, string> = {
-  MONDAY: "Monday",
-  TUESDAY: "Tuesday",
-  WEDNESDAY: "Wednesday",
-  THURSDAY: "Thursday",
-  FRIDAY: "Friday",
-  SATURDAY: "Saturday",
-  SUNDAY: "Sunday",
-};
-
-const weekdayByUtcDay: Record<number, Weekday> = {
-  0: "SUNDAY",
-  1: "MONDAY",
-  2: "TUESDAY",
-  3: "WEDNESDAY",
-  4: "THURSDAY",
-  5: "FRIDAY",
-  6: "SATURDAY",
-};
 
 export interface TrialBookingTemplateForDates {
   id: string;
@@ -104,8 +91,12 @@ interface TrialBookingTransactionDatabase {
     create(args: Record<string, unknown>): Promise<{ id: string }>;
     findFirst(args: Record<string, unknown>): Promise<{ id: string } | null>;
   };
-  trialBooking: {
+  classBooking: {
+    findFirst(
+      args: Record<string, unknown>,
+    ): Promise<{ id: string; status: ClassBookingStatus } | null>;
     create(args: Record<string, unknown>): Promise<{ id: string }>;
+    update(args: Record<string, unknown>): Promise<{ id: string }>;
   };
 }
 
@@ -132,7 +123,7 @@ type TrialBookingMutationResult =
   | {
       status: "booked";
       memberId: string;
-      trialBookingId: string;
+      classBookingId: string;
       classTitle: string;
       scheduledForDate: string;
       startsAt: Date;
@@ -164,10 +155,6 @@ function normalizeEmail(value: string | undefined): string | null | "invalid" {
   return email;
 }
 
-function toDateOnlyString(value: Date): string {
-  return value.toISOString().slice(0, 10);
-}
-
 function parseDateOnly(
   value: string | undefined,
   now: Date,
@@ -195,108 +182,6 @@ function parseDateOnly(
   return parsed;
 }
 
-function formatMinutesAsTime(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  const suffix = hours >= 12 ? "PM" : "AM";
-  const twelveHourValue = hours % 12 || 12;
-
-  return `${twelveHourValue}:${String(remainder).padStart(2, "0")} ${suffix}`;
-}
-
-function getZonedParts(value: Date, timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(value);
-  const lookup = Object.fromEntries(
-    parts
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value]),
-  );
-
-  return {
-    year: Number(lookup.year),
-    month: Number(lookup.month),
-    day: Number(lookup.day),
-    hour: Number(lookup.hour),
-    minute: Number(lookup.minute),
-    second: Number(lookup.second),
-  };
-}
-
-function getZonedDateString(value: Date, timezone: string): string {
-  const parts = getZonedParts(value, timezone);
-
-  return [
-    String(parts.year).padStart(4, "0"),
-    String(parts.month).padStart(2, "0"),
-    String(parts.day).padStart(2, "0"),
-  ].join("-");
-}
-
-function getTimezoneOffsetMs(timezone: string, value: Date): number {
-  const parts = getZonedParts(value, timezone);
-  const zonedAsUtc = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour,
-    parts.minute,
-    parts.second,
-  );
-
-  return zonedAsUtc - value.getTime();
-}
-
-function getZonedDateTimeAsUtc(args: {
-  dateString: string;
-  minutes: number;
-  timezone: string;
-}): Date {
-  const [year = 0, month = 1, day = 1] = args.dateString
-    .split("-")
-    .map(Number);
-  const hour = Math.floor(args.minutes / 60);
-  const minute = args.minutes % 60;
-  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
-  const firstOffset = getTimezoneOffsetMs(args.timezone, utcGuess);
-  const firstResult = new Date(utcGuess.getTime() - firstOffset);
-  const secondOffset = getTimezoneOffsetMs(args.timezone, firstResult);
-
-  if (secondOffset === firstOffset) {
-    return firstResult;
-  }
-
-  return new Date(utcGuess.getTime() - secondOffset);
-}
-
-function addDays(dateString: string, days: number): string {
-  const date = new Date(`${dateString}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-
-  return toDateOnlyString(date);
-}
-
-function getWeekdayForDateString(dateString: string): Weekday {
-  const date = new Date(`${dateString}T00:00:00.000Z`);
-
-  return weekdayByUtcDay[date.getUTCDay()] ?? "SUNDAY";
-}
-
-function formatDateOption(dateString: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-    timeZone: "UTC",
-  }).format(new Date(`${dateString}T00:00:00.000Z`));
-}
-
 function mapClassTemplate(
   template: TrialClassTemplateRecord,
 ): TrialBookingTemplateForDates {
@@ -320,44 +205,15 @@ export function buildTrialBookingDateOptions(args: {
   now: Date;
   occurrenceCount?: number;
 }): TrialBookingTemplateOption[] {
-  const occurrenceCount = args.occurrenceCount ?? trialDateOptionCount;
-  const today = getZonedDateString(args.now, args.timezone);
-
-  return args.templates
-    .map((template) => {
-      const dateOptions: TrialBookingDateOption[] = [];
-
-      for (let dayOffset = 0; dateOptions.length < occurrenceCount && dayOffset < 42; dayOffset += 1) {
-        const dateString = addDays(today, dayOffset);
-
-        if (getWeekdayForDateString(dateString) !== template.weekday) {
-          continue;
-        }
-
-        const startsAt = getZonedDateTimeAsUtc({
-          dateString,
-          minutes: template.startTimeMinutes,
-          timezone: args.timezone,
-        });
-
-        if (startsAt.getTime() <= args.now.getTime()) {
-          continue;
-        }
-
-        dateOptions.push({
-          classTemplateId: template.id,
-          scheduledForDate: dateString,
-          startsAt,
-          label: `${weekdayLabels[template.weekday]}, ${formatDateOption(dateString)} at ${formatMinutesAsTime(template.startTimeMinutes)}`,
-        });
-      }
-
-      return {
-        ...template,
-        dateOptions,
-      };
-    })
-    .filter((template) => template.dateOptions.length > 0);
+  return buildUpcomingOccurrenceDateOptions({
+    templates: args.templates,
+    timezone: args.timezone,
+    now: args.now,
+    occurrenceCount: args.occurrenceCount ?? trialDateOptionCount,
+  }).map(({ template, dateOptions }) => ({
+    ...template,
+    dateOptions,
+  }));
 }
 
 export function findTrialBookingDateOption(args: {
@@ -816,25 +672,61 @@ export async function createTrialBooking(args: {
       };
     }
 
-    const booking = await tx.trialBooking.create({
-      data: {
+    const scheduledForDate = dateOnlyStringToUtcDate(
+      selectedOption.dateOption.scheduledForDate,
+    );
+    const existingBooking = await tx.classBooking.findFirst({
+      where: {
         workspaceId: args.workspaceId,
         memberId: member.id,
-        guardianId: guardian?.id ?? null,
         classTemplateId: selectedOption.template.id,
-        scheduledForDate: new Date(
-          `${selectedOption.dateOption.scheduledForDate}T00:00:00.000Z`,
-        ),
+        scheduledForDate,
       },
       select: {
         id: true,
+        status: true,
       },
     });
+
+    if (existingBooking && existingBooking.status !== "CANCELLED") {
+      return {
+        status: "error",
+        message: "This member already has a booking for that class date.",
+      };
+    }
+
+    const booking = existingBooking
+      ? await tx.classBooking.update({
+          where: {
+            id: existingBooking.id,
+          },
+          data: {
+            status: "BOOKED",
+          },
+          select: {
+            id: true,
+          },
+        })
+      : await tx.classBooking.create({
+          data: {
+            workspaceId: args.workspaceId,
+            memberId: member.id,
+            guardianId: guardian?.id ?? null,
+            classTemplateId: selectedOption.template.id,
+            scheduledForDate,
+            bookingType: "TRIAL",
+            status: "BOOKED",
+            source: "PUBLIC_TRIAL",
+          },
+          select: {
+            id: true,
+          },
+        });
 
     return {
       status: "booked",
       memberId: member.id,
-      trialBookingId: booking.id,
+      classBookingId: booking.id,
       classTitle: selectedOption.template.displayTitle,
       scheduledForDate: selectedOption.dateOption.scheduledForDate,
       startsAt: selectedOption.dateOption.startsAt,

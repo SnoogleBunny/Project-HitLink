@@ -10,7 +10,14 @@ export default async function DashboardPage() {
     workspaceId: workspace.id,
   });
 
-  const [programCount, roomCount, templateCount, pendingInviteCount] =
+  const [
+    programCount,
+    roomCount,
+    templateCount,
+    pendingInviteCount,
+    membershipPlanCount,
+    failedPaymentCount,
+  ] =
     await Promise.all([
       prisma.program.count({
         where: {
@@ -35,6 +42,25 @@ export default async function DashboardPage() {
           workspaceId: workspace.id,
           role: "COACH",
           status: "PENDING",
+        },
+      }),
+      prisma.membershipPlan.count({
+        where: {
+          workspaceId: workspace.id,
+          archivedAt: null,
+        },
+      }),
+      prisma.membershipBillingState.count({
+        where: {
+          workspaceId: workspace.id,
+          status: {
+            in: [
+              "PENDING_PAYMENT_METHOD",
+              "PAST_DUE",
+              "PAYMENT_FAILED",
+              "ACTION_REQUIRED",
+            ],
+          },
         },
       }),
     ]);
@@ -93,6 +119,14 @@ export default async function DashboardPage() {
               <dt>Pending coach invites</dt>
               <dd>{pendingInviteCount}</dd>
             </div>
+            <div>
+              <dt>Membership plans</dt>
+              <dd>{membershipPlanCount}</dd>
+            </div>
+            <div>
+              <dt>Billing queue</dt>
+              <dd>{failedPaymentCount}</dd>
+            </div>
           </dl>
         </section>
 
@@ -132,6 +166,12 @@ export default async function DashboardPage() {
             >
               Manage staff invites
             </Link>
+            <Link
+              className="button button-secondary"
+              href="/dashboard/membership-plans"
+            >
+              Manage memberships
+            </Link>
           </div>
         </section>
 
@@ -139,9 +179,9 @@ export default async function DashboardPage() {
           <p className="dashboard-card-label">What remains later</p>
           <h3>Still intentionally out of scope</h3>
           <p>
-            Class instances, bookings, waitlists, attendance, billing, Stripe,
-            messaging, and coach invite acceptance all stay deferred beyond this
-            slice.
+            Full class instances, waitlists, punch cards, drop-ins, messaging,
+            member billing self-service, and coach invite acceptance all stay
+            deferred beyond this slice.
           </p>
         </section>
       </div>

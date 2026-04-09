@@ -15,6 +15,7 @@ export {
   getHomeRouteDestination,
   getOnboardingRouteDecision,
   type BasicFormState,
+  type OperationsSession,
   type OwnerSession,
 } from "./route-decisions";
 

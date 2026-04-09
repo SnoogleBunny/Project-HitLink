@@ -1,9 +1,10 @@
 "use client";
 
+import type { UserRole } from "@hitlink/db";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const navItems = [
+const ownerNavItems = [
   {
     href: "/dashboard",
     label: "Dashboard",
@@ -21,12 +22,39 @@ const navItems = [
     label: "Schedule",
   },
   {
+    href: "/dashboard/bookings",
+    label: "Bookings",
+  },
+  {
+    href: "/dashboard/coach/today",
+    label: "Today roster",
+  },
+  {
     href: "/dashboard/members",
     label: "Members",
   },
   {
+    href: "/dashboard/membership-plans",
+    label: "Membership plans",
+  },
+  {
+    href: "/dashboard/billing",
+    label: "Billing",
+  },
+  {
+    href: "/dashboard/settings/billing",
+    label: "Billing settings",
+  },
+  {
     href: "/dashboard/staff-invites",
     label: "Staff invites",
+  },
+];
+
+const coachNavItems = [
+  {
+    href: "/dashboard/coach/today",
+    label: "Today roster",
   },
 ];
 
@@ -38,8 +66,9 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AdminNav() {
+export function AdminNav({ role }: { role: UserRole | null }) {
   const pathname = usePathname();
+  const navItems = role === "COACH" ? coachNavItems : ownerNavItems;
 
   return (
     <nav className="shell-nav" aria-label="Admin navigation">

@@ -53,7 +53,7 @@ describe("trial booking action", () => {
     createTrialBookingMock.mockResolvedValue({
       status: "booked",
       memberId: "member_1",
-      trialBookingId: "trial_1",
+      classBookingId: "booking_1",
       classTitle: "Muay Thai Fundamentals",
       scheduledForDate: "2026-04-07",
       startsAt: new Date("2026-04-08T01:00:00.000Z"),

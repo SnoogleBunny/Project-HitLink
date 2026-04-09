@@ -41,7 +41,7 @@ describe("dashboard route protection", () => {
     });
   });
 
-  it("redirects coaches and customers to unauthorized", () => {
+  it("keeps the owner dashboard owner-only but routes coaches to their daily roster", () => {
     expect(
       getDashboardRouteDecision({
         userId: "coach_1",
@@ -55,6 +55,18 @@ describe("dashboard route protection", () => {
       location: "/unauthorized",
     });
 
+    expect(
+      getHomeRouteDestination({
+        userId: "coach_1",
+        email: "coach@example.com",
+        displayName: "Casey Coach",
+        workspaceId: "workspace_1",
+        role: "COACH",
+      }),
+    ).toBe("/dashboard/coach/today");
+  });
+
+  it("routes customers to unauthorized", () => {
     expect(
       getHomeRouteDestination({
         userId: "customer_1",

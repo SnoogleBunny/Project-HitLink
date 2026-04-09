@@ -80,9 +80,13 @@ function createMockDb(): TrialBookingTestDb {
       }),
       findFirst: vi.fn().mockResolvedValue(null),
     },
-    trialBooking: {
+    classBooking: {
+      findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({
-        id: "trial_1",
+        id: "booking_1",
+      }),
+      update: vi.fn().mockResolvedValue({
+        id: "booking_1",
       }),
     },
     $transaction: vi.fn(async (callback) => callback(db)),
@@ -107,14 +111,14 @@ describe("trial booking date helpers", () => {
     ]);
   });
 
-  it("excludes already-passed starts in the workspace timezone", () => {
+  it("uses the workspace-local date for today/future options", () => {
     const result = buildTrialBookingDateOptions({
       templates: [buildTemplateForDates()],
       timezone: "America/Vancouver",
       now: new Date("2026-04-08T02:00:00.000Z"),
     });
 
-    expect(result[0]?.dateOptions[0]?.scheduledForDate).toBe("2026-04-14");
+    expect(result[0]?.dateOptions[0]?.scheduledForDate).toBe("2026-04-07");
   });
 
   it("validates selected dates against generated options", () => {
@@ -223,7 +227,7 @@ describe("trial booking helpers", () => {
     ).resolves.toMatchObject({
       status: "booked",
       memberId: "member_existing",
-      trialBookingId: "trial_1",
+      classBookingId: "booking_1",
     });
 
     expect(db.member.findFirst).toHaveBeenCalledWith({
@@ -236,13 +240,28 @@ describe("trial booking helpers", () => {
       },
     });
     expect(db.member.create).not.toHaveBeenCalled();
-    expect(db.trialBooking.create).toHaveBeenCalledWith({
+    expect(db.classBooking.findFirst).toHaveBeenCalledWith({
+      where: {
+        workspaceId: "workspace_1",
+        memberId: "member_existing",
+        classTemplateId: "template_1",
+        scheduledForDate: new Date("2026-04-07T00:00:00.000Z"),
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+    expect(db.classBooking.create).toHaveBeenCalledWith({
       data: {
         workspaceId: "workspace_1",
         memberId: "member_existing",
         guardianId: null,
         classTemplateId: "template_1",
         scheduledForDate: new Date("2026-04-07T00:00:00.000Z"),
+        bookingType: "TRIAL",
+        status: "BOOKED",
+        source: "PUBLIC_TRIAL",
       },
       select: {
         id: true,
@@ -272,7 +291,7 @@ describe("trial booking helpers", () => {
     ).resolves.toMatchObject({
       status: "booked",
       memberId: "member_1",
-      trialBookingId: "trial_1",
+      classBookingId: "booking_1",
     });
 
     expect(db.member.create).toHaveBeenCalledWith({
@@ -310,6 +329,65 @@ describe("trial booking helpers", () => {
         childMemberId: "member_1",
         relationshipLabel: "Parent",
         isPrimary: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+  });
+
+  it("rejects duplicate active class bookings and restores cancelled trial rows", async () => {
+    const db = createMockDb();
+    db.classBooking.findFirst = vi.fn().mockResolvedValueOnce({
+      id: "booking_existing",
+      status: "BOOKED",
+    });
+
+    await expect(
+      createTrialBooking({
+        workspaceId: "workspace_1",
+        now: new Date("2026-04-08T00:30:00.000Z"),
+        input: {
+          classTemplateId: "template_1",
+          scheduledForDate: "2026-04-07",
+          fullName: "Jordan Lee",
+          email: "jordan@example.com",
+        },
+        db,
+      }),
+    ).resolves.toEqual({
+      status: "error",
+      message: "This member already has a booking for that class date.",
+    });
+    expect(db.classBooking.create).not.toHaveBeenCalled();
+
+    db.classBooking.findFirst = vi.fn().mockResolvedValueOnce({
+      id: "booking_cancelled",
+      status: "CANCELLED",
+    });
+
+    await expect(
+      createTrialBooking({
+        workspaceId: "workspace_1",
+        now: new Date("2026-04-08T00:30:00.000Z"),
+        input: {
+          classTemplateId: "template_1",
+          scheduledForDate: "2026-04-07",
+          fullName: "Jordan Lee",
+          email: "jordan@example.com",
+        },
+        db,
+      }),
+    ).resolves.toMatchObject({
+      status: "booked",
+      classBookingId: "booking_1",
+    });
+    expect(db.classBooking.update).toHaveBeenCalledWith({
+      where: {
+        id: "booking_cancelled",
+      },
+      data: {
+        status: "BOOKED",
       },
       select: {
         id: true,

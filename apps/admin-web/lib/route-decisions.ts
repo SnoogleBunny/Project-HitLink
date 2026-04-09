@@ -13,6 +13,11 @@ export interface OwnerSession extends AppSession {
   workspaceId: string;
 }
 
+export interface OperationsSession extends AppSession {
+  role: "OWNER" | "COACH";
+  workspaceId: string;
+}
+
 type RouteDecision =
   | {
       status: "allow";
@@ -81,11 +86,19 @@ export function getOnboardingRouteDecision(
 }
 
 export function getHomeRouteDestination(session: AppSession | null): string {
-  const dashboardDecision = getDashboardRouteDecision(session);
+  if (session?.role === "COACH" && session.workspaceId) {
+    return "/dashboard/coach/today";
+  }
 
-  if (dashboardDecision.status === "allow") {
+  if (session?.role === "OWNER" && session.workspaceId) {
     return "/dashboard";
   }
 
-  return dashboardDecision.location;
+  const dashboardDecision = getDashboardRouteDecision(session);
+
+  if (dashboardDecision.status === "redirect") {
+    return dashboardDecision.location;
+  }
+
+  return "/dashboard";
 }

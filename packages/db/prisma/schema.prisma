@@ -51,6 +51,90 @@ enum MemberFormStatus {
   COMPLETE
 }
 
+enum ClassBookingType {
+  TRIAL
+  STANDARD
+}
+
+enum ClassBookingStatus {
+  BOOKED
+  CANCELLED
+  ATTENDED
+  ABSENT
+  NO_SHOW
+}
+
+enum ClassBookingSource {
+  ADMIN
+  PUBLIC_TRIAL
+}
+
+enum AttendanceState {
+  PRESENT
+  LATE
+  ABSENT
+  NO_SHOW
+}
+
+enum MemberMembershipStatus {
+  ACTIVE
+  PENDING_PAYMENT_METHOD
+  PAST_DUE
+  FROZEN
+  CANCELLED
+  ENDED
+}
+
+enum StripeConnectionStatus {
+  NOT_CONNECTED
+  PENDING
+  ACTIVE
+  RESTRICTED
+  DISCONNECTED
+}
+
+enum BillingStateStatus {
+  NOT_READY
+  ACTIVE
+  PENDING_PAYMENT_METHOD
+  PAST_DUE
+  PAYMENT_FAILED
+  ACTION_REQUIRED
+  FROZEN
+  CANCELLED
+  ENDED
+}
+
+enum BillingRecordType {
+  MEMBERSHIP_ASSIGNED
+  MEMBERSHIP_CANCELLED
+  MEMBERSHIP_FROZEN
+  MEMBERSHIP_UNFROZEN
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_UPDATED
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  PAYMENT_ACTION_REQUIRED
+  PAYMENT_UPDATE_REQUESTED
+  RETRY_REQUESTED
+  STRIPE_ACCOUNT_UPDATED
+  STRIPE_ACCOUNT_DISCONNECTED
+}
+
+enum BillingRecordStatus {
+  INFO
+  PENDING
+  SUCCEEDED
+  FAILED
+  ACTION_REQUIRED
+}
+
+enum StripeWebhookProcessingStatus {
+  PROCESSING
+  PROCESSED
+  ERROR
+}
+
 model User {
   id               String          @id @default(cuid())
   email            String          @unique @db.Citext
@@ -66,23 +150,31 @@ model User {
 }
 
 model Workspace {
-  id             String            @id @default(cuid())
-  name           String
-  businessType   String?
-  logoUrl        String?
-  status         WorkspaceStatus   @default(SETUP_INCOMPLETE)
-  location       Location?
-  programs       Program[]
-  classTemplates ClassTemplate[]
-  members        Member[]
-  guardians      Guardian[]
-  familyLinks    FamilyLink[]
-  trialBookings  TrialBooking[]
-  workspaceUsers WorkspaceUser[]
-  staffInvites   StaffInvite[]
-  settings       WorkspaceSetting?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  id                                String                             @id @default(cuid())
+  name                              String
+  businessType                      String?
+  logoUrl                           String?
+  status                            WorkspaceStatus                    @default(SETUP_INCOMPLETE)
+  location                          Location?
+  programs                          Program[]
+  membershipPlans                   MembershipPlan[]
+  membershipPlanProgramRestrictions MembershipPlanProgramRestriction[]
+  memberMemberships                 MemberMembership[]
+  billingStates                     MembershipBillingState[]
+  billingRecords                    BillingRecord[]
+  stripeSettings                    WorkspaceStripeSettings?
+  stripeWebhookEvents               StripeWebhookEvent[]
+  classTemplates                    ClassTemplate[]
+  members                           Member[]
+  guardians                         Guardian[]
+  familyLinks                       FamilyLink[]
+  classBookings                     ClassBooking[]
+  attendanceRecords                 AttendanceRecord[]
+  workspaceUsers                    WorkspaceUser[]
+  staffInvites                      StaffInvite[]
+  settings                          WorkspaceSetting?
+  createdAt                         DateTime                           @default(now())
+  updatedAt                         DateTime                           @updatedAt
 
   @@map("workspaces")
 }
@@ -123,41 +215,43 @@ model Room {
 }
 
 model Program {
-  id                      String          @id @default(cuid())
-  workspaceId             String
-  name                    String
-  description             String?
-  ageGroupLabel           String?
-  levelLabel              String?
-  progressTrackingEnabled Boolean         @default(false)
-  archivedAt              DateTime?
-  workspace               Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  classTemplates          ClassTemplate[]
-  createdAt               DateTime        @default(now())
-  updatedAt               DateTime        @updatedAt
+  id                         String                             @id @default(cuid())
+  workspaceId                String
+  name                       String
+  description                String?
+  ageGroupLabel              String?
+  levelLabel                 String?
+  progressTrackingEnabled    Boolean                            @default(false)
+  archivedAt                 DateTime?
+  workspace                  Workspace                          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  classTemplates             ClassTemplate[]
+  membershipPlanRestrictions MembershipPlanProgramRestriction[]
+  createdAt                  DateTime                           @default(now())
+  updatedAt                  DateTime                           @updatedAt
 
   @@unique([workspaceId, name])
   @@map("programs")
 }
 
 model WorkspaceUser {
-  id                    String          @id @default(cuid())
-  workspaceId           String
-  userId                String          @unique
-  role                  UserRole
-  isActive              Boolean         @default(true)
-  workspace             Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  coachedClassTemplates ClassTemplate[]
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  id                       String             @id @default(cuid())
+  workspaceId              String
+  userId                   String             @unique
+  role                     UserRole
+  isActive                 Boolean            @default(true)
+  workspace                Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coachedClassTemplates    ClassTemplate[]
+  coachedAttendanceRecords AttendanceRecord[]
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
 
   @@unique([workspaceId, userId])
   @@map("workspace_users")
 }
 
 model ClassTemplate {
-  id                        String        @id @default(cuid())
+  id                        String             @id @default(cuid())
   workspaceId               String
   programId                 String
   roomId                    String
@@ -170,13 +264,14 @@ model ClassTemplate {
   bookingCutoffMinutes      Int
   cancellationCutoffMinutes Int
   archivedAt                DateTime?
-  workspace                 Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  program                   Program       @relation(fields: [programId], references: [id])
-  room                      Room          @relation(fields: [roomId], references: [id])
-  coachWorkspaceUser        WorkspaceUser @relation(fields: [coachWorkspaceUserId], references: [id])
-  trialBookings             TrialBooking[]
-  createdAt                 DateTime      @default(now())
-  updatedAt                 DateTime      @updatedAt
+  workspace                 Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  program                   Program            @relation(fields: [programId], references: [id])
+  room                      Room               @relation(fields: [roomId], references: [id])
+  coachWorkspaceUser        WorkspaceUser      @relation(fields: [coachWorkspaceUserId], references: [id])
+  classBookings             ClassBooking[]
+  attendanceRecords         AttendanceRecord[]
+  createdAt                 DateTime           @default(now())
+  updatedAt                 DateTime           @updatedAt
 
   @@index([workspaceId])
   @@index([workspaceId, weekday])
@@ -187,21 +282,25 @@ model ClassTemplate {
 }
 
 model Member {
-  id            String           @id @default(cuid())
-  workspaceId   String
-  fullName      String
-  email         String?          @db.Citext
-  phone         String?
-  dateOfBirth   DateTime?        @db.Date
-  status        MemberStatus     @default(TRIAL)
-  notes         String?
-  tags          String[]         @default([])
-  formStatus    MemberFormStatus @default(NOT_REQUESTED)
-  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  familyLinks   FamilyLink[]     @relation("ChildMemberFamilyLinks")
-  trialBookings TrialBooking[]
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  id                String                   @id @default(cuid())
+  workspaceId       String
+  fullName          String
+  email             String?                  @db.Citext
+  phone             String?
+  dateOfBirth       DateTime?                @db.Date
+  status            MemberStatus             @default(TRIAL)
+  notes             String?
+  tags              String[]                 @default([])
+  formStatus        MemberFormStatus         @default(NOT_REQUESTED)
+  workspace         Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  familyLinks       FamilyLink[]             @relation("ChildMemberFamilyLinks")
+  memberships       MemberMembership[]
+  billingStates     MembershipBillingState[]
+  billingRecords    BillingRecord[]
+  classBookings     ClassBooking[]
+  attendanceRecords AttendanceRecord[]
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
 
   @@index([workspaceId, status])
   @@index([workspaceId, fullName])
@@ -218,7 +317,7 @@ model Guardian {
   notes         String?
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   familyLinks   FamilyLink[]
-  trialBookings TrialBooking[]
+  classBookings ClassBooking[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -246,24 +345,223 @@ model FamilyLink {
   @@map("family_links")
 }
 
-model TrialBooking {
-  id               String        @id @default(cuid())
+model ClassBooking {
+  id               String             @id @default(cuid())
   workspaceId      String
   memberId         String
   guardianId       String?
   classTemplateId  String
-  scheduledForDate DateTime      @db.Date
-  workspace        Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  member           Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  guardian         Guardian?     @relation(fields: [guardianId], references: [id], onDelete: SetNull)
-  classTemplate    ClassTemplate @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  scheduledForDate DateTime           @db.Date
+  bookingType      ClassBookingType   @default(STANDARD)
+  status           ClassBookingStatus @default(BOOKED)
+  source           ClassBookingSource @default(ADMIN)
+  workspace        Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member           Member             @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  guardian         Guardian?          @relation(fields: [guardianId], references: [id], onDelete: SetNull)
+  classTemplate    ClassTemplate      @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
+  @@unique([workspaceId, memberId, classTemplateId, scheduledForDate], map: "class_bookings_member_template_date_key")
   @@index([workspaceId, scheduledForDate])
+  @@index([workspaceId, classTemplateId, scheduledForDate])
   @@index([workspaceId, memberId])
-  @@index([workspaceId, classTemplateId])
-  @@map("trial_bookings")
+  @@map("class_bookings")
+}
+
+model AttendanceRecord {
+  id                   String          @id @default(cuid())
+  workspaceId          String
+  memberId             String
+  classTemplateId      String
+  scheduledForDate     DateTime        @db.Date
+  state                AttendanceState
+  coachWorkspaceUserId String?
+  note                 String?
+  workspace            Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member               Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  classTemplate        ClassTemplate   @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
+  coachWorkspaceUser   WorkspaceUser?  @relation(fields: [coachWorkspaceUserId], references: [id], onDelete: SetNull)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@unique([workspaceId, memberId, classTemplateId, scheduledForDate], map: "attendance_records_member_template_date_key")
+  @@index([workspaceId, classTemplateId, scheduledForDate])
+  @@index([workspaceId, memberId])
+  @@index([coachWorkspaceUserId])
+  @@map("attendance_records")
+}
+
+model MembershipPlan {
+  id                          String                             @id @default(cuid())
+  workspaceId                 String
+  name                        String
+  description                 String?
+  monthlyPriceCents           Int
+  currency                    String                             @default("usd")
+  cancellationPolicyReference String?
+  freezePolicyReference       String?
+  stripeProductId             String?
+  stripePriceId               String?
+  archivedAt                  DateTime?
+  workspace                   Workspace                          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  programRestrictions         MembershipPlanProgramRestriction[]
+  memberMemberships           MemberMembership[]
+  createdAt                   DateTime                           @default(now())
+  updatedAt                   DateTime                           @updatedAt
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, archivedAt])
+  @@map("membership_plans")
+}
+
+model MembershipPlanProgramRestriction {
+  id               String         @id @default(cuid())
+  workspaceId      String
+  membershipPlanId String
+  programId        String
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  membershipPlan   MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
+  program          Program        @relation(fields: [programId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([membershipPlanId, programId], map: "membership_plan_program_restrictions_plan_program_key")
+  @@index([workspaceId, membershipPlanId])
+  @@index([workspaceId, programId])
+  @@map("membership_plan_program_restrictions")
+}
+
+model MemberMembership {
+  id                    String                  @id @default(cuid())
+  workspaceId           String
+  memberId              String
+  membershipPlanId      String
+  status                MemberMembershipStatus  @default(ACTIVE)
+  startedAt             DateTime                @default(now())
+  endedAt               DateTime?
+  nextBillingDate       DateTime?
+  cancelAtPeriodEnd     Boolean                 @default(false)
+  cancelRequestedAt     DateTime?
+  frozenFrom            DateTime?               @db.Date
+  frozenUntil           DateTime?               @db.Date
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?
+  currentMembershipSlot String?                 @default("CURRENT")
+  workspace             Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member                Member                  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  membershipPlan        MembershipPlan          @relation(fields: [membershipPlanId], references: [id], onDelete: Restrict)
+  billingState          MembershipBillingState?
+  billingRecords        BillingRecord[]
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  @@unique([workspaceId, memberId, currentMembershipSlot], map: "member_memberships_one_current_key")
+  @@index([workspaceId, status])
+  @@index([workspaceId, memberId])
+  @@index([workspaceId, stripeCustomerId])
+  @@index([workspaceId, stripeSubscriptionId])
+  @@map("member_memberships")
+}
+
+model WorkspaceStripeSettings {
+  id                           String                 @id @default(cuid())
+  workspaceId                  String                 @unique
+  stripeAccountId              String?
+  connectionStatus             StripeConnectionStatus @default(NOT_CONNECTED)
+  chargesEnabled               Boolean                @default(false)
+  payoutsEnabled               Boolean                @default(false)
+  detailsSubmitted             Boolean                @default(false)
+  failedPaymentGracePeriodDays Int                    @default(7)
+  workspace                    Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt                    DateTime               @default(now())
+  updatedAt                    DateTime               @updatedAt
+
+  @@index([stripeAccountId])
+  @@map("workspace_stripe_settings")
+}
+
+model MembershipBillingState {
+  id                       String               @id @default(cuid())
+  workspaceId              String
+  memberId                 String
+  memberMembershipId       String               @unique
+  status                   BillingStateStatus   @default(NOT_READY)
+  nextBillingDate          DateTime?
+  latestInvoiceId          String?
+  latestPaymentIntentId    String?
+  latestSubscriptionId     String?
+  lastPaymentStatus        BillingRecordStatus?
+  lastPaymentAt            DateTime?
+  failureCode              String?
+  failureMessage           String?
+  failedAt                 DateTime?
+  gracePeriodEndsAt        DateTime?
+  paymentUpdateRequestedAt DateTime?
+  retryRequestedAt         DateTime?
+  workspace                Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member                   Member               @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberMembership         MemberMembership     @relation(fields: [memberMembershipId], references: [id], onDelete: Cascade)
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, memberId])
+  @@index([workspaceId, latestInvoiceId])
+  @@index([workspaceId, latestSubscriptionId])
+  @@map("membership_billing_states")
+}
+
+model BillingRecord {
+  id                    String              @id @default(cuid())
+  workspaceId           String
+  memberId              String?
+  memberMembershipId    String?
+  type                  BillingRecordType
+  status                BillingRecordStatus @default(INFO)
+  amountCents           Int?
+  currency              String?
+  occurredAt            DateTime            @default(now())
+  stripeEventId         String?
+  stripeInvoiceId       String?
+  stripePaymentIntentId String?
+  stripeSubscriptionId  String?
+  failureCode           String?
+  failureMessage        String?
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member                Member?             @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  memberMembership      MemberMembership?   @relation(fields: [memberMembershipId], references: [id], onDelete: SetNull)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@index([workspaceId, occurredAt])
+  @@index([workspaceId, memberId])
+  @@index([workspaceId, memberMembershipId])
+  @@index([workspaceId, stripeInvoiceId])
+  @@index([workspaceId, stripeSubscriptionId])
+  @@map("billing_records")
+}
+
+model StripeWebhookEvent {
+  id              String                        @id @default(cuid())
+  workspaceId     String?
+  stripeAccountId String?
+  stripeEventId   String                        @unique
+  eventType       String
+  livemode        Boolean
+  status          StripeWebhookProcessingStatus @default(PROCESSING)
+  receivedAt      DateTime                      @default(now())
+  processedAt     DateTime?
+  attemptCount    Int                           @default(0)
+  lastError       String?
+  workspace       Workspace?                    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+
+  @@index([status, receivedAt])
+  @@index([stripeAccountId])
+  @@index([workspaceId])
+  @@map("stripe_webhook_events")
 }
 
 model AuthSession {

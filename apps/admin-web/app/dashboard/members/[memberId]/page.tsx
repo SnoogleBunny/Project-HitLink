@@ -54,9 +54,14 @@ export default async function MemberProfilePage({
       title={member.fullName}
       description="Profile details, internal notes, family links, and booked trial dates."
       actions={
-        <Link className="button button-secondary" href="/dashboard/members">
-          Back to members
-        </Link>
+        <>
+          <Link className="button" href={`/dashboard/members/${member.id}/billing`}>
+            Open billing
+          </Link>
+          <Link className="button button-secondary" href="/dashboard/members">
+            Back to members
+          </Link>
+        </>
       }
     >
       <div className="management-grid">
@@ -205,7 +210,52 @@ export default async function MemberProfilePage({
                     </div>
                     <div>
                       <dt>Status</dt>
-                      <dd>Booked</dd>
+                      <dd>{formatStatus(booking.status)}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="management-card">
+        <p className="dashboard-card-label">Attendance</p>
+        <h3>
+          {member.attendanceRecords.length} recent record
+          {member.attendanceRecords.length === 1 ? "" : "s"}
+        </h3>
+
+        {member.attendanceRecords.length === 0 ? (
+          <p className="empty-state">No attendance history recorded yet.</p>
+        ) : (
+          <div className="stack-list">
+            {member.attendanceRecords.map((attendanceRecord) => (
+              <article key={attendanceRecord.id} className="stack-item">
+                <div className="stack-item-copy">
+                  <div className="stack-item-heading">
+                    <h4>{attendanceRecord.classTitle}</h4>
+                    <span className="status-pill status-pill-success">
+                      {formatStatus(attendanceRecord.state)}
+                    </span>
+                  </div>
+                  <p>
+                    {formatDate(attendanceRecord.scheduledForDate)} at{" "}
+                    {formatMinutesAsTime(attendanceRecord.startTimeMinutes)}
+                  </p>
+                  <dl className="inline-meta">
+                    <div>
+                      <dt>Template</dt>
+                      <dd>{attendanceRecord.classTemplateId}</dd>
+                    </div>
+                    <div>
+                      <dt>Updated</dt>
+                      <dd>{formatDateTime(attendanceRecord.updatedAt)}</dd>
+                    </div>
+                    <div>
+                      <dt>Note</dt>
+                      <dd>{attendanceRecord.note ?? "No note"}</dd>
                     </div>
                   </dl>
                 </div>

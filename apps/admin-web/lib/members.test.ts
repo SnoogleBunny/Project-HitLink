@@ -11,9 +11,29 @@ type MemberTestDb = NonNullable<Parameters<typeof createMember>[0]["db"]>;
 
 function buildTrialBookingRecord() {
   return {
-    id: "trial_1",
+    id: "booking_1",
     scheduledForDate: new Date("2026-04-14T00:00:00.000Z"),
     createdAt: new Date("2026-04-07T10:00:00.000Z"),
+    status: "BOOKED" as const,
+    classTemplate: {
+      id: "template_1",
+      title: null,
+      weekday: "TUESDAY" as const,
+      startTimeMinutes: 18 * 60,
+      program: {
+        name: "Muay Thai Fundamentals",
+      },
+    },
+  };
+}
+
+function buildAttendanceRecord() {
+  return {
+    id: "attendance_1",
+    scheduledForDate: new Date("2026-04-14T00:00:00.000Z"),
+    state: "PRESENT" as const,
+    note: "Strong first class",
+    updatedAt: new Date("2026-04-14T20:00:00.000Z"),
     classTemplate: {
       id: "template_1",
       title: null,
@@ -53,7 +73,8 @@ function buildMemberRecord() {
         },
       },
     ],
-    trialBookings: [buildTrialBookingRecord()],
+    classBookings: [buildTrialBookingRecord()],
+    attendanceRecords: [buildAttendanceRecord()],
   };
 }
 
@@ -259,13 +280,13 @@ describe("member helpers", () => {
         },
       ],
       latestTrialBooking: {
-        id: "trial_1",
+        id: "booking_1",
         classTitle: "Muay Thai Fundamentals",
       },
     });
   });
 
-  it("gets a profile only inside the workspace and includes guardians and trials", async () => {
+  it("gets a profile only inside the workspace and includes guardians, trials, and attendance", async () => {
     const db = createMockDb();
     db.member.findFirst = vi.fn().mockResolvedValue(buildMemberRecord());
 
@@ -284,6 +305,13 @@ describe("member helpers", () => {
       }),
     );
     expect(result?.trialBookings).toHaveLength(1);
+    expect(result?.attendanceRecords).toMatchObject([
+      {
+        id: "attendance_1",
+        state: "PRESENT",
+        classTitle: "Muay Thai Fundamentals",
+      },
+    ]);
     expect(result?.guardians[0]?.fullName).toBe("Alex Lee");
   });
 

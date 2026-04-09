@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { SubmitButton } from "../_components/submit-button";
-import { emptyFormState } from "../../lib/admin-access";
+import { emptyFormState } from "../../lib/route-decisions";
 import { signupAction } from "./actions";
 
 export function SignupForm() {
