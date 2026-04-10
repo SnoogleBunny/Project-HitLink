@@ -33,7 +33,7 @@ export async function createClassBookingAction(
       guardianId: String(formData.get("guardianId") ?? ""),
       classTemplateId: bookingOption.classTemplateId,
       scheduledForDate: bookingOption.scheduledForDate,
-      bookingType: String(formData.get("bookingType") ?? "STANDARD"),
+      bookingType: String(formData.get("bookingType") ?? "MEMBERSHIP"),
     },
   });
 

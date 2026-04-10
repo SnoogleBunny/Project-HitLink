@@ -1,6 +1,8 @@
 import { MemberShell } from "../../_components/member-shell";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
+import { getMemberPunchCardPageData } from "../../../lib/member-commerce";
 import { getMemberMembershipSummary } from "../../../lib/member-portal";
+import { PunchCardPurchaseForm } from "./punch-card-purchase-form";
 
 function formatDate(value: Date | null): string {
   if (!value) {
@@ -21,10 +23,16 @@ function formatMoney(amountCents: number, currency: string): string {
 
 export default async function MembershipPage() {
   const context = await requireMemberPortalContext();
-  const membership = await getMemberMembershipSummary({
-    workspaceId: context.workspace.id,
-    memberId: context.member.id,
-  });
+  const [membership, punchCards] = await Promise.all([
+    getMemberMembershipSummary({
+      workspaceId: context.workspace.id,
+      memberId: context.member.id,
+    }),
+    getMemberPunchCardPageData({
+      workspaceId: context.workspace.id,
+      memberId: context.member.id,
+    }),
+  ]);
   const currentMembership = membership.currentMembership;
 
   return (
@@ -90,6 +98,64 @@ export default async function MembershipPage() {
           </>
         )}
       </section>
+
+      <div className="member-grid">
+        <section className="member-card">
+          <p className="member-eyebrow">Punch cards</p>
+          <h3>
+            {punchCards.cards.length} owned card
+            {punchCards.cards.length === 1 ? "" : "s"}
+          </h3>
+          {punchCards.cards.length === 0 ? (
+            <p className="member-copy">No punch cards on this account yet.</p>
+          ) : (
+            <div className="member-stack-list">
+              {punchCards.cards.map((card) => (
+                <article key={card.id} className="member-stack-item">
+                  <div className="member-stack-copy">
+                    <div className="member-stack-heading">
+                      <h4>{card.name}</h4>
+                      <span className="member-status-pill">
+                        {card.remainingPunches} / {card.originalPunches}
+                      </span>
+                    </div>
+                    <p>{card.description ?? "No description yet."}</p>
+                    <dl className="member-inline-meta">
+                      <div>
+                        <dt>Status</dt>
+                        <dd>{card.status}</dd>
+                      </div>
+                      <div>
+                        <dt>Programs</dt>
+                        <dd>{card.restrictionSummary}</dd>
+                      </div>
+                      <div>
+                        <dt>Purchased</dt>
+                        <dd>{formatDate(card.purchasedAt)}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="member-card">
+          <p className="member-eyebrow">Buy punch cards</p>
+          <h3>
+            {punchCards.availableProducts.length} available product
+            {punchCards.availableProducts.length === 1 ? "" : "s"}
+          </h3>
+          {punchCards.availableProducts.length === 0 ? (
+            <p className="member-copy">
+              No punch-card products are available for online purchase right now.
+            </p>
+          ) : (
+            <PunchCardPurchaseForm products={punchCards.availableProducts} />
+          )}
+        </section>
+      </div>
     </MemberShell>
   );
 }

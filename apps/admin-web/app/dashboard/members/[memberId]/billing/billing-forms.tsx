@@ -2,11 +2,13 @@
 
 import { useActionState } from "react";
 import { SubmitButton } from "../../../../_components/submit-button";
+import type { PunchCardProductSummary } from "../../../../../lib/access-products";
 import type { MemberBillingProfile } from "../../../../../lib/member-memberships";
 import { emptyFormState } from "../../../../../lib/route-decisions";
 import {
   assignMembershipAction,
   freezeMembershipAction,
+  grantPunchCardAction,
 } from "./actions";
 
 export function MembershipAssignmentForm({
@@ -90,6 +92,50 @@ export function MembershipFreezeForm({
 
       <SubmitButton pendingLabel="Saving freeze...">
         Save freeze
+      </SubmitButton>
+    </form>
+  );
+}
+
+function formatMoney(amountCents: number, currency: string): string {
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+  }).format(amountCents / 100);
+}
+
+export function OwnerPunchCardGrantForm({
+  memberId,
+  products,
+}: {
+  memberId: string;
+  products: PunchCardProductSummary[];
+}) {
+  const [state, formAction] = useActionState(grantPunchCardAction, emptyFormState);
+  const hasProducts = products.length > 0;
+
+  return (
+    <form action={formAction} className="form-stack">
+      <input name="memberId" type="hidden" value={memberId} />
+
+      <label className="field">
+        <span>Punch-card product</span>
+        <select disabled={!hasProducts} name="punchCardProductId">
+          <option value="">Choose a punch-card product</option>
+          {products.map((product) => (
+            <option key={product.id} value={product.id}>
+              {product.name} / {product.punchesIncluded} punches /{" "}
+              {formatMoney(product.priceCents, product.currency)}
+              {product.isEnabled ? "" : " / Disabled for purchase"}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {state.error ? <p className="form-error">{state.error}</p> : null}
+
+      <SubmitButton disabled={!hasProducts} pendingLabel="Granting punch card...">
+        Grant punch card
       </SubmitButton>
     </form>
   );

@@ -1,4 +1,20 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { createAccessBackedBookingMock } = vi.hoisted(() => ({
+  createAccessBackedBookingMock: vi.fn(),
+}));
+
+vi.mock("@hitlink/db", async () => {
+  const actual = await vi.importActual<typeof import("@hitlink/db")>(
+    "@hitlink/db",
+  );
+
+  return {
+    ...actual,
+    createAccessBackedBooking: createAccessBackedBookingMock,
+  };
+});
+
 import { createClassBooking, listBookingFormOptions } from "./bookings";
 
 type BookingTestDb = NonNullable<Parameters<typeof createClassBooking>[0]["db"]>;
@@ -28,6 +44,7 @@ function buildTemplateRecord() {
 
 function createMockDb(): BookingTestDb {
   return {
+    $transaction: vi.fn(async (callback) => callback(createMockDb())),
     member: {
       findMany: vi.fn().mockResolvedValue([
         {
@@ -41,6 +58,18 @@ function createMockDb(): BookingTestDb {
       findFirst: vi.fn().mockResolvedValue({
         id: "member_1",
       }),
+    },
+    memberMembership: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    memberPunchCard: {
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn().mockResolvedValue({
+        count: 0,
+      }),
+    },
+    dropInProduct: {
+      findMany: vi.fn().mockResolvedValue([]),
     },
     familyLink: {
       findFirst: vi.fn().mockResolvedValue(null),
@@ -57,11 +86,19 @@ function createMockDb(): BookingTestDb {
       update: vi.fn().mockResolvedValue({
         id: "booking_1",
       }),
+      updateMany: vi.fn().mockResolvedValue({
+        count: 1,
+      }),
+      count: vi.fn().mockResolvedValue(0),
     },
   };
 }
 
 describe("booking helpers", () => {
+  beforeEach(() => {
+    createAccessBackedBookingMock.mockReset();
+  });
+
   it("lists members and eligible future occurrence options", async () => {
     const db = createMockDb();
 
@@ -94,8 +131,13 @@ describe("booking helpers", () => {
     });
   });
 
-  it("creates a standard booking only after checking the unique dated key", async () => {
+  it("delegates membership-backed bookings to the shared access helper", async () => {
     const db = createMockDb();
+    createAccessBackedBookingMock.mockResolvedValue({
+      status: "created",
+      bookingId: "booking_1",
+      bookingType: "MEMBERSHIP",
+    });
 
     await expect(
       createClassBooking({
@@ -106,7 +148,7 @@ describe("booking helpers", () => {
           memberId: "member_1",
           classTemplateId: "template_1",
           scheduledForDate: "2026-04-07",
-          bookingType: "STANDARD",
+          bookingType: "MEMBERSHIP",
         },
         db,
       }),
@@ -115,36 +157,51 @@ describe("booking helpers", () => {
       bookingId: "booking_1",
     });
 
-    expect(db.classBooking.findFirst).toHaveBeenCalledWith({
-      where: {
-        workspaceId: "workspace_1",
-        memberId: "member_1",
-        classTemplateId: "template_1",
-        scheduledForDate: new Date("2026-04-07T00:00:00.000Z"),
-      },
-      select: {
-        id: true,
-        status: true,
-      },
+    expect(createAccessBackedBookingMock).toHaveBeenCalledWith({
+      workspaceId: "workspace_1",
+      memberId: "member_1",
+      guardianId: null,
+      classTemplateId: "template_1",
+      scheduledForDate: "2026-04-07",
+      timezone: "America/Vancouver",
+      source: "ADMIN",
+      allowDropIn: false,
+      db,
+      now: new Date("2026-04-08T00:30:00.000Z"),
     });
-    expect(db.classBooking.create).toHaveBeenCalledWith({
-      data: {
+    expect(db.classBooking.create).not.toHaveBeenCalled();
+  });
+
+  it("shows the explicit portal message when only a drop-in flow would work", async () => {
+    const db = createMockDb();
+    createAccessBackedBookingMock.mockResolvedValue({
+      status: "payment_required",
+      bookingId: "booking_pending",
+      dropInProductId: "drop_in_1",
+      priceCents: 3500,
+      currency: "usd",
+    });
+
+    await expect(
+      createClassBooking({
         workspaceId: "workspace_1",
-        memberId: "member_1",
-        guardianId: null,
-        classTemplateId: "template_1",
-        scheduledForDate: new Date("2026-04-07T00:00:00.000Z"),
-        bookingType: "STANDARD",
-        status: "BOOKED",
-        source: "ADMIN",
-      },
-      select: {
-        id: true,
-      },
+        timezone: "America/Vancouver",
+        input: {
+          memberId: "member_1",
+          classTemplateId: "template_1",
+          scheduledForDate: "2026-04-14",
+          bookingType: "MEMBERSHIP",
+        },
+        db,
+      }),
+    ).resolves.toEqual({
+      status: "error",
+      message:
+        "This class is only accessible through a paid drop-in flow. Ask the member to book it from the portal.",
     });
   });
 
-  it("rejects invalid occurrence dates before writing", async () => {
+  it("rejects invalid trial occurrence dates before writing", async () => {
     const db = createMockDb();
 
     await expect(
@@ -156,7 +213,7 @@ describe("booking helpers", () => {
           memberId: "member_1",
           classTemplateId: "template_1",
           scheduledForDate: "2026-04-08",
-          bookingType: "STANDARD",
+          bookingType: "TRIAL",
         },
         db,
       }),
@@ -165,9 +222,10 @@ describe("booking helpers", () => {
       message: "Choose a valid upcoming date for this class.",
     });
     expect(db.classBooking.create).not.toHaveBeenCalled();
+    expect(createAccessBackedBookingMock).not.toHaveBeenCalled();
   });
 
-  it("rejects cross-workspace member or template selections", async () => {
+  it("rejects cross-workspace member selections", async () => {
     const db = createMockDb();
     db.member.findFirst = vi.fn().mockResolvedValue(null);
 
@@ -179,7 +237,7 @@ describe("booking helpers", () => {
           memberId: "member_foreign",
           classTemplateId: "template_1",
           scheduledForDate: "2026-04-14",
-          bookingType: "STANDARD",
+          bookingType: "MEMBERSHIP",
         },
         db,
       }),
@@ -187,10 +245,9 @@ describe("booking helpers", () => {
       status: "error",
       message: "Member not found.",
     });
-    expect(db.classBooking.create).not.toHaveBeenCalled();
   });
 
-  it("rejects active duplicates and restores cancelled rows", async () => {
+  it("rejects active duplicate trials and restores cancelled rows", async () => {
     const db = createMockDb();
     db.classBooking.findFirst = vi.fn().mockResolvedValueOnce({
       id: "booking_existing",
@@ -205,7 +262,7 @@ describe("booking helpers", () => {
           memberId: "member_1",
           classTemplateId: "template_1",
           scheduledForDate: "2026-04-14",
-          bookingType: "STANDARD",
+          bookingType: "TRIAL",
         },
         db,
       }),
@@ -241,6 +298,9 @@ describe("booking helpers", () => {
         id: "booking_cancelled",
       },
       data: {
+        guardianId: null,
+        bookingType: "TRIAL",
+        source: "ADMIN",
         status: "BOOKED",
       },
       select: {

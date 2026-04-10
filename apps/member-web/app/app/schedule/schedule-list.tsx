@@ -27,11 +27,13 @@ export function ScheduleList({
           <div className="member-stack-copy">
             <div className="member-stack-heading">
               <h4>{occurrence.displayTitle}</h4>
-              {occurrence.isBooked ? (
-                <span className="member-status-pill member-status-pill-success">
-                  Booked
-                </span>
-              ) : null}
+              <span
+                className={`member-status-pill ${
+                  occurrence.bookingState === "BOOKED" ? "member-status-pill-success" : ""
+                }`}
+              >
+                {occurrence.bookingState.replace("_", " ")}
+              </span>
             </div>
             <p>{occurrence.dateLabel}</p>
             <dl className="member-inline-meta">
@@ -47,10 +49,24 @@ export function ScheduleList({
                 <dt>Time</dt>
                 <dd>{occurrence.timeLabel}</dd>
               </div>
+              <div>
+                <dt>Capacity</dt>
+                <dd>{occurrence.capacityLabel}</dd>
+              </div>
+              <div>
+                <dt>Access</dt>
+                <dd>{occurrence.accessLabel ?? "Unavailable"}</dd>
+              </div>
             </dl>
+            {occurrence.note ? <p>{occurrence.note}</p> : null}
           </div>
 
           <form action={formAction} className="member-inline-form">
+            <input
+              name="actionKind"
+              type="hidden"
+              value={occurrence.action}
+            />
             <input
               name="classTemplateId"
               type="hidden"
@@ -62,10 +78,10 @@ export function ScheduleList({
               value={occurrence.scheduledForDate}
             />
             <SubmitButton
-              disabled={occurrence.isBooked}
-              pendingLabel="Booking..."
+              disabled={occurrence.action === "none"}
+              pendingLabel="Saving..."
             >
-              {occurrence.isBooked ? "Already booked" : "Book class"}
+              {occurrence.actionLabel}
             </SubmitButton>
           </form>
         </article>

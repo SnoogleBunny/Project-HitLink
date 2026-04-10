@@ -5,6 +5,10 @@ import {
   formatMembershipStatus,
   getMemberBillingProfile,
 } from "../../../../../lib/member-memberships";
+import {
+  listMemberPunchCardBalances,
+  listPunchCardProducts,
+} from "../../../../../lib/access-products";
 import { requireOwnerWorkspaceContext } from "../../../../../lib/owner-workspace";
 import {
   cancelMembershipAction,
@@ -13,6 +17,7 @@ import {
 import {
   MembershipAssignmentForm,
   MembershipFreezeForm,
+  OwnerPunchCardGrantForm,
 } from "./billing-forms";
 
 function formatDate(value: Date | null): string {
@@ -52,16 +57,26 @@ export default async function MemberBillingPage({
 }) {
   const { memberId } = await params;
   const { session, workspace } = await requireOwnerWorkspaceContext();
-  const profile = await getMemberBillingProfile({
-    workspaceId: workspace.id,
-    memberId,
-  });
+  const [profile, punchCardBalances, punchCardProducts] = await Promise.all([
+    getMemberBillingProfile({
+      workspaceId: workspace.id,
+      memberId,
+    }),
+    listMemberPunchCardBalances({
+      workspaceId: workspace.id,
+      memberId,
+    }),
+    listPunchCardProducts({
+      workspaceId: workspace.id,
+    }),
+  ]);
 
   if (!profile) {
     notFound();
   }
 
   const membership = profile.currentMembership;
+  const grantableProducts = punchCardProducts.activeProducts;
 
   return (
     <AdminShell
@@ -69,7 +84,7 @@ export default async function MemberBillingPage({
       workspaceName={workspace.name}
       eyebrow="Member billing"
       title={`${profile.member.fullName} billing`}
-      description="Owner-managed recurring membership, Stripe linkage, freeze, cancellation, and recent billing state."
+      description="Owner-managed recurring membership, punch-card balances, Stripe linkage, freeze, cancellation, and recent billing state."
       actions={
         <Link
           className="button button-secondary"
@@ -206,6 +221,69 @@ export default async function MemberBillingPage({
         </section>
       </div>
 
+      <div className="management-grid">
+        <section className="management-card">
+          <p className="dashboard-card-label">Punch-card balances</p>
+          <h3>
+            {punchCardBalances.length} card
+            {punchCardBalances.length === 1 ? "" : "s"}
+          </h3>
+          {punchCardBalances.length === 0 ? (
+            <p className="empty-state">No punch cards have been granted or purchased yet.</p>
+          ) : (
+            <div className="stack-list">
+              {punchCardBalances.map((card) => (
+                <article key={card.id} className="stack-item">
+                  <div className="stack-item-copy">
+                    <div className="stack-item-heading">
+                      <h4>{card.name}</h4>
+                      <span
+                        className={`status-pill ${
+                          card.status === "ACTIVE" ? "status-pill-success" : ""
+                        }`}
+                      >
+                        {formatMembershipStatus(card.status)}
+                      </span>
+                    </div>
+                    <dl className="inline-meta">
+                      <div>
+                        <dt>Remaining</dt>
+                        <dd>
+                          {card.remainingPunches} / {card.originalPunches}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Purchased</dt>
+                        <dd>{formatDate(card.purchasedAt)}</dd>
+                      </div>
+                      <div>
+                        <dt>Recorded price</dt>
+                        <dd>
+                          {formatMoney(card.purchasePriceCents, card.purchaseCurrency)}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="management-card">
+          <p className="dashboard-card-label">Grant punch card</p>
+          <h3>Owner-managed access</h3>
+          <p className="management-copy">
+            Grant a non-expiring punch card directly to this member. Disabled
+            products stay grantable here as long as they are not archived.
+          </p>
+          <OwnerPunchCardGrantForm
+            memberId={profile.member.id}
+            products={grantableProducts}
+          />
+        </section>
+      </div>
+
       <section className="management-card">
         <p className="dashboard-card-label">Billing history</p>
         <h3>
@@ -250,4 +328,3 @@ export default async function MemberBillingPage({
     </AdminShell>
   );
 }
-

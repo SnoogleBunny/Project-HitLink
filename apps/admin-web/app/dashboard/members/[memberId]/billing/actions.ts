@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { emptyFormState, type BasicFormState } from "../../../../../lib/admin-access";
+import { grantMemberPunchCard } from "../../../../../lib/access-products";
 import {
   assignMembershipToMember,
   cancelMembershipAtPeriodEnd,
@@ -92,3 +93,25 @@ export async function clearMembershipFreezeAction(
   redirect(getMemberRedirect(memberId));
 }
 
+export async function grantPunchCardAction(
+  _previousState: BasicFormState,
+  formData: FormData,
+): Promise<BasicFormState> {
+  const { workspace } = await requireOwnerWorkspaceContext();
+  const memberId = String(formData.get("memberId") ?? "");
+  const result = await grantMemberPunchCard({
+    workspaceId: workspace.id,
+    memberId,
+    punchCardProductId: String(formData.get("punchCardProductId") ?? ""),
+  });
+
+  if (result.status === "error") {
+    return {
+      error: result.message,
+    };
+  }
+
+  redirect(getMemberRedirect(memberId));
+
+  return emptyFormState;
+}

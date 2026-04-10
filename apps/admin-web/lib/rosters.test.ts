@@ -1,5 +1,35 @@
-import { describe, expect, it, vi } from "vitest";
-import { getClassRoster, listTodayClasses, recordAttendance } from "./rosters";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  listOccurrenceWaitlistMock,
+  promoteNextWaitlistEntryMock,
+  removeWaitlistEntryMock,
+} = vi.hoisted(() => ({
+  listOccurrenceWaitlistMock: vi.fn(),
+  promoteNextWaitlistEntryMock: vi.fn(),
+  removeWaitlistEntryMock: vi.fn(),
+}));
+
+vi.mock("@hitlink/db", async () => {
+  const actual = await vi.importActual<typeof import("@hitlink/db")>(
+    "@hitlink/db",
+  );
+
+  return {
+    ...actual,
+    listOccurrenceWaitlist: listOccurrenceWaitlistMock,
+    promoteNextWaitlistEntry: promoteNextWaitlistEntryMock,
+    removeWaitlistEntry: removeWaitlistEntryMock,
+  };
+});
+
+import {
+  getClassRoster,
+  listTodayClasses,
+  promoteRosterWaitlist,
+  recordAttendance,
+  removeRosterWaitlist,
+} from "./rosters";
 
 type RosterTestDb = NonNullable<Parameters<typeof listTodayClasses>[0]["db"]>;
 
@@ -73,11 +103,25 @@ function buildBookingRecord() {
 }
 
 function createMockDb(): RosterTestDb {
-  return {
+  const db = {
+    $transaction: vi.fn(async (callback) => callback(db)),
     member: {
       findFirst: vi.fn().mockResolvedValue({
         id: "member_1",
       }),
+    },
+    memberMembership: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    memberPunchCard: {
+      findMany: vi.fn().mockResolvedValue([]),
+      findFirst: vi.fn().mockResolvedValue(null),
+      updateMany: vi.fn().mockResolvedValue({
+        count: 0,
+      }),
+    },
+    dropInProduct: {
+      findMany: vi.fn().mockResolvedValue([]),
     },
     classTemplate: {
       findMany: vi.fn().mockResolvedValue([buildTemplateRecord()]),
@@ -85,6 +129,27 @@ function createMockDb(): RosterTestDb {
     },
     classBooking: {
       findMany: vi.fn().mockResolvedValue([buildBookingRecord()]),
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({
+        id: "booking_1",
+      }),
+      update: vi.fn().mockResolvedValue({
+        id: "booking_1",
+      }),
+      updateMany: vi.fn().mockResolvedValue({
+        count: 1,
+      }),
+      count: vi.fn().mockResolvedValue(1),
+    },
+    waitlistEntry: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({
+        id: "waitlist_1",
+      }),
+      update: vi.fn().mockResolvedValue({
+        id: "waitlist_1",
+      }),
       updateMany: vi.fn().mockResolvedValue({
         count: 1,
       }),
@@ -105,9 +170,20 @@ function createMockDb(): RosterTestDb {
       }),
     },
   };
+
+  return db;
 }
 
 describe("roster helpers", () => {
+  beforeEach(() => {
+    listOccurrenceWaitlistMock.mockReset();
+    promoteNextWaitlistEntryMock.mockReset();
+    removeWaitlistEntryMock.mockReset();
+    listOccurrenceWaitlistMock.mockResolvedValue({
+      entries: [],
+    });
+  });
+
   it("lists today's assigned coach classes with booking and attendance counts", async () => {
     const db = createMockDb();
 
@@ -135,8 +211,24 @@ describe("roster helpers", () => {
     });
   });
 
-  it("lets owners open any roster and merges trials, guardian fallback, notes, tags, and attendance", async () => {
+  it("lets owners open any roster and shows the waitlist alongside roster rows", async () => {
     const db = createMockDb();
+    listOccurrenceWaitlistMock.mockResolvedValue({
+      entries: [
+        {
+          id: "waitlist_1",
+          memberId: "member_2",
+          memberName: "Riley Diaz",
+          memberEmail: "riley@example.com",
+          memberPhone: "555-0000",
+          memberStatus: "ACTIVE",
+          position: 1,
+          joinedAt: new Date("2026-04-06T18:00:00.000Z"),
+          promotedAt: null,
+          promotedBookingId: null,
+        },
+      ],
+    });
 
     const result = await getClassRoster({
       access: {
@@ -166,6 +258,13 @@ describe("roster helpers", () => {
       attendanceState: "PRESENT",
       attendanceNote: "Ready",
     });
+    expect(result?.waitlist).toEqual([
+      expect.objectContaining({
+        id: "waitlist_1",
+        memberName: "Riley Diaz",
+        position: 1,
+      }),
+    ]);
   });
 
   it("records attendance and syncs the matching active booking status", async () => {
@@ -227,6 +326,58 @@ describe("roster helpers", () => {
       data: {
         status: "ATTENDED",
       },
+    });
+  });
+
+  it("delegates waitlist promotion and removal through the shared helpers", async () => {
+    const db = createMockDb();
+    promoteNextWaitlistEntryMock.mockResolvedValue({
+      status: "promoted",
+      bookingId: "booking_2",
+      waitlistEntryId: "waitlist_1",
+    });
+    removeWaitlistEntryMock.mockResolvedValue({
+      status: "removed",
+      waitlistEntryId: "waitlist_1",
+    });
+
+    await expect(
+      promoteRosterWaitlist({
+        access,
+        classTemplateId: "template_1",
+        scheduledForDate: "2026-04-07",
+        db,
+        now: new Date("2026-04-06T12:00:00.000Z"),
+      }),
+    ).resolves.toEqual({
+      status: "promoted",
+      bookingId: "booking_2",
+      waitlistEntryId: "waitlist_1",
+    });
+    expect(promoteNextWaitlistEntryMock).toHaveBeenCalledWith({
+      workspaceId: "workspace_1",
+      classTemplateId: "template_1",
+      scheduledForDate: "2026-04-07",
+      timezone: "America/Vancouver",
+      source: "ADMIN",
+      db,
+      now: new Date("2026-04-06T12:00:00.000Z"),
+    });
+
+    await expect(
+      removeRosterWaitlist({
+        access,
+        waitlistEntryId: "waitlist_1",
+        db,
+      }),
+    ).resolves.toEqual({
+      status: "removed",
+      waitlistEntryId: "waitlist_1",
+    });
+    expect(removeWaitlistEntryMock).toHaveBeenCalledWith({
+      workspaceId: "workspace_1",
+      waitlistEntryId: "waitlist_1",
+      db,
     });
   });
 

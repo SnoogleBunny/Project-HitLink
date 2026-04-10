@@ -17,7 +17,7 @@ export default async function BookingsPage() {
       workspaceName={workspace.name}
       eyebrow="Bookings"
       title="Class bookings"
-      description="Create a dated booking from the recurring template schedule without creating class instance rows."
+      description="Create a dated booking from the recurring template schedule using the member's current access rules."
       actions={
         <Link className="button button-secondary" href="/dashboard/coach/today">
           Today&apos;s roster
@@ -29,19 +29,25 @@ export default async function BookingsPage() {
           <p className="dashboard-card-label">Create booking</p>
           <h3>Member into class date</h3>
           <p className="management-copy">
-            Book a member into one real dated occurrence. Duplicate bookings
-            are blocked; cancelled bookings are restored.
+            Book a member into one real dated occurrence. Duplicate bookings are
+            blocked, cancelled bookings are restored, and access is chosen
+            automatically in this order: membership, then punch card, then
+            drop-in.
+          </p>
+          <p className="management-copy">
+            If a class is only available through a paid drop-in flow, ask the
+            member to book it from the portal.
           </p>
           <BookingCreateForm options={options} />
         </section>
 
         <section className="management-card">
           <p className="dashboard-card-label">Current slice</p>
-          <h3>Date-based only</h3>
+          <h3>Date-based class access</h3>
           <p className="management-copy">
             This page uses the template and selected date as the occurrence. It
-            does not create class instances, waitlists, billing records, or
-            capacity reservations.
+            respects capacity, waitlist, punch-card, and membership rules
+            without creating separate class instance rows.
           </p>
           <dl className="detail-list">
             <div>

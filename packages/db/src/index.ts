@@ -1,16 +1,4 @@
-import { PrismaClient } from "@prisma/client";
-
-const globalForPrisma = globalThis as typeof globalThis & {
-  prisma?: PrismaClient;
-};
-
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: ["error"],
-  });
-
-globalForPrisma.prisma = prisma;
+export { prisma } from "./client.js";
 
 export {
   addDays,
@@ -33,8 +21,39 @@ export {
   type TemplateWithOccurrenceDates,
 } from "./occurrences.js";
 
+export {
+  activeSeatHoldingBookingStatuses,
+  canCancelClassBooking,
+  cleanupExpiredPendingBookings,
+  countActiveOccurrenceBookings,
+  createAccessBackedBooking,
+  findEligibleDropInProduct,
+  getEffectiveCapacity,
+  getOccurrenceStartsAt,
+  joinWaitlist,
+  leaveWaitlist,
+  listOccurrenceWaitlist,
+  pickOldestEligiblePunchCard,
+  promoteNextWaitlistEntry,
+  removeWaitlistEntry,
+  resolveBookingAccessForProgram,
+  cancelAccessBackedBooking,
+  finalizeDropInBookingPayment,
+  expireDropInBookingPayment,
+  finalizePunchCardCheckoutPurchase,
+  type AccessResolution,
+  type AccessResolutionDatabase,
+  type AccessTemplateSummary,
+  type CancelAccessBackedBookingResult,
+  type CountActiveOccurrenceBookingsDatabase,
+  type CreateAccessBackedBookingResult,
+  type ListOccurrenceWaitlistResult,
+  type WaitlistEntrySummary,
+} from "./class-access.js";
+
 export { Prisma, PrismaClient } from "@prisma/client";
 export type {
+  AccessRestrictionMode,
   AuthSession,
   AttendanceRecord,
   AttendanceState,
@@ -47,17 +66,23 @@ export type {
   ClassBookingStatus,
   ClassBookingType,
   ClassTemplate,
+  DropInProduct,
+  DropInProductProgramRestriction,
   FamilyLink,
   Guardian,
   Location,
   Member,
   MemberFormStatus,
+  MemberPunchCard,
+  MemberPunchCardStatus,
   MemberMembership,
   MemberMembershipStatus,
   MemberStatus,
   MembershipBillingState,
   MembershipPlan,
   MembershipPlanProgramRestriction,
+  PunchCardProduct,
+  PunchCardProductProgramRestriction,
   Program,
   Room,
   StaffInvite,
@@ -67,6 +92,8 @@ export type {
   StripeWebhookProcessingStatus,
   User,
   UserRole,
+  WaitlistEntry,
+  WaitlistEntryStatus,
   Weekday,
   Workspace,
   WorkspaceSetting,

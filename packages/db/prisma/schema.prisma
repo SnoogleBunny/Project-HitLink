@@ -53,10 +53,13 @@ enum MemberFormStatus {
 
 enum ClassBookingType {
   TRIAL
-  STANDARD
+  MEMBERSHIP
+  PUNCH_CARD
+  DROP_IN
 }
 
 enum ClassBookingStatus {
+  PENDING_PAYMENT
   BOOKED
   CANCELLED
   ATTENDED
@@ -111,6 +114,9 @@ enum BillingRecordType {
   MEMBERSHIP_CANCELLED
   MEMBERSHIP_FROZEN
   MEMBERSHIP_UNFROZEN
+  PUNCH_CARD_PURCHASED
+  PUNCH_CARD_GRANTED
+  DROP_IN_PURCHASED
   SUBSCRIPTION_CREATED
   SUBSCRIPTION_UPDATED
   PAYMENT_SUCCEEDED
@@ -134,6 +140,23 @@ enum StripeWebhookProcessingStatus {
   PROCESSING
   PROCESSED
   ERROR
+}
+
+enum AccessRestrictionMode {
+  GENERAL
+  PROGRAM_RESTRICTED
+}
+
+enum MemberPunchCardStatus {
+  ACTIVE
+  DEPLETED
+  ARCHIVED
+}
+
+enum WaitlistEntryStatus {
+  ACTIVE
+  PROMOTED
+  CANCELLED
 }
 
 model User {
@@ -161,6 +184,11 @@ model Workspace {
   programs                          Program[]
   membershipPlans                   MembershipPlan[]
   membershipPlanProgramRestrictions MembershipPlanProgramRestriction[]
+  punchCardProducts                 PunchCardProduct[]
+  punchCardProductRestrictions      PunchCardProductProgramRestriction[]
+  memberPunchCards                  MemberPunchCard[]
+  dropInProducts                    DropInProduct[]
+  dropInProductRestrictions         DropInProductProgramRestriction[]
   memberMemberships                 MemberMembership[]
   billingStates                     MembershipBillingState[]
   billingRecords                    BillingRecord[]
@@ -171,6 +199,7 @@ model Workspace {
   guardians                         Guardian[]
   familyLinks                       FamilyLink[]
   classBookings                     ClassBooking[]
+  waitlistEntries                   WaitlistEntry[]
   attendanceRecords                 AttendanceRecord[]
   workspaceUsers                    WorkspaceUser[]
   staffInvites                      StaffInvite[]
@@ -228,6 +257,8 @@ model Program {
   workspace                  Workspace                          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   classTemplates             ClassTemplate[]
   membershipPlanRestrictions MembershipPlanProgramRestriction[]
+  punchCardProductRestrictions PunchCardProductProgramRestriction[]
+  dropInProductRestrictions  DropInProductProgramRestriction[]
   createdAt                  DateTime                           @default(now())
   updatedAt                  DateTime                           @updatedAt
 
@@ -271,6 +302,7 @@ model ClassTemplate {
   room                      Room               @relation(fields: [roomId], references: [id])
   coachWorkspaceUser        WorkspaceUser      @relation(fields: [coachWorkspaceUserId], references: [id])
   classBookings             ClassBooking[]
+  waitlistEntries           WaitlistEntry[]
   attendanceRecords         AttendanceRecord[]
   createdAt                 DateTime           @default(now())
   updatedAt                 DateTime           @updatedAt
@@ -298,10 +330,12 @@ model Member {
   workspace         Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user              User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
   familyLinks       FamilyLink[]             @relation("ChildMemberFamilyLinks")
+  punchCards        MemberPunchCard[]
   memberships       MemberMembership[]
   billingStates     MembershipBillingState[]
   billingRecords    BillingRecord[]
   classBookings     ClassBooking[]
+  waitlistEntries   WaitlistEntry[]
   attendanceRecords AttendanceRecord[]
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
@@ -351,26 +385,41 @@ model FamilyLink {
 }
 
 model ClassBooking {
-  id               String             @id @default(cuid())
-  workspaceId      String
-  memberId         String
-  guardianId       String?
-  classTemplateId  String
-  scheduledForDate DateTime           @db.Date
-  bookingType      ClassBookingType   @default(STANDARD)
-  status           ClassBookingStatus @default(BOOKED)
-  source           ClassBookingSource @default(ADMIN)
-  workspace        Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  member           Member             @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  guardian         Guardian?          @relation(fields: [guardianId], references: [id], onDelete: SetNull)
-  classTemplate    ClassTemplate      @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id                     String             @id @default(cuid())
+  workspaceId            String
+  memberId               String
+  guardianId             String?
+  classTemplateId        String
+  memberPunchCardId      String?
+  dropInProductId        String?
+  scheduledForDate       DateTime           @db.Date
+  bookingType            ClassBookingType   @default(MEMBERSHIP)
+  status                 ClassBookingStatus @default(BOOKED)
+  source                 ClassBookingSource @default(ADMIN)
+  consumedPunchCount     Int                @default(0)
+  dropInPriceCents       Int?
+  dropInCurrency         String?
+  dropInCheckoutSessionId String?
+  dropInPaymentIntentId  String?
+  dropInPaidAt           DateTime?
+  pendingPaymentExpiresAt DateTime?
+  workspace              Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member                 Member             @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  guardian               Guardian?          @relation(fields: [guardianId], references: [id], onDelete: SetNull)
+  classTemplate          ClassTemplate      @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
+  memberPunchCard        MemberPunchCard?   @relation(fields: [memberPunchCardId], references: [id], onDelete: SetNull)
+  dropInProduct          DropInProduct?     @relation(fields: [dropInProductId], references: [id], onDelete: SetNull)
+  promotedWaitlistEntries WaitlistEntry[]
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 
   @@unique([workspaceId, memberId, classTemplateId, scheduledForDate], map: "class_bookings_member_template_date_key")
   @@index([workspaceId, scheduledForDate])
   @@index([workspaceId, classTemplateId, scheduledForDate])
   @@index([workspaceId, memberId])
+  @@index([workspaceId, status, pendingPaymentExpiresAt])
+  @@index([workspaceId, memberPunchCardId])
+  @@index([workspaceId, dropInProductId])
   @@map("class_bookings")
 }
 
@@ -435,6 +484,138 @@ model MembershipPlanProgramRestriction {
   @@index([workspaceId, membershipPlanId])
   @@index([workspaceId, programId])
   @@map("membership_plan_program_restrictions")
+}
+
+model PunchCardProduct {
+  id                  String                   @id @default(cuid())
+  workspaceId         String
+  name                String
+  description         String?
+  punchesIncluded     Int
+  priceCents          Int
+  currency            String                   @default("usd")
+  isEnabled           Boolean                  @default(true)
+  archivedAt          DateTime?
+  restrictionMode     AccessRestrictionMode    @default(GENERAL)
+  stripeProductId     String?
+  stripePriceId       String?
+  workspace           Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  programRestrictions PunchCardProductProgramRestriction[]
+  memberPunchCards    MemberPunchCard[]
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, archivedAt])
+  @@index([workspaceId, isEnabled, archivedAt])
+  @@map("punch_card_products")
+}
+
+model PunchCardProductProgramRestriction {
+  id                 String           @id @default(cuid())
+  workspaceId        String
+  punchCardProductId String
+  programId          String
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  punchCardProduct   PunchCardProduct @relation(fields: [punchCardProductId], references: [id], onDelete: Cascade)
+  program            Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([punchCardProductId, programId], map: "punch_card_product_program_restrictions_product_program_key")
+  @@index([workspaceId, punchCardProductId])
+  @@index([workspaceId, programId])
+  @@map("punch_card_product_program_restrictions")
+}
+
+model MemberPunchCard {
+  id                  String                @id @default(cuid())
+  workspaceId         String
+  memberId            String
+  punchCardProductId  String
+  originalPunches     Int
+  remainingPunches    Int
+  status              MemberPunchCardStatus @default(ACTIVE)
+  purchasePriceCents  Int
+  purchaseCurrency    String                @default("usd")
+  purchasedAt         DateTime              @default(now())
+  stripeCheckoutSessionId String?
+  workspace           Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member              Member                @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  punchCardProduct    PunchCardProduct      @relation(fields: [punchCardProductId], references: [id], onDelete: Restrict)
+  classBookings       ClassBooking[]
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@index([workspaceId, memberId, status, purchasedAt])
+  @@index([workspaceId, punchCardProductId])
+  @@index([workspaceId, stripeCheckoutSessionId])
+  @@map("member_punch_cards")
+}
+
+model DropInProduct {
+  id                  String                    @id @default(cuid())
+  workspaceId         String
+  name                String
+  description         String?
+  priceCents          Int
+  currency            String                    @default("usd")
+  isEnabled           Boolean                   @default(true)
+  archivedAt          DateTime?
+  restrictionMode     AccessRestrictionMode     @default(GENERAL)
+  stripeProductId     String?
+  stripePriceId       String?
+  workspace           Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  programRestrictions DropInProductProgramRestriction[]
+  classBookings       ClassBooking[]
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, archivedAt])
+  @@index([workspaceId, isEnabled, archivedAt])
+  @@map("drop_in_products")
+}
+
+model DropInProductProgramRestriction {
+  id            String        @id @default(cuid())
+  workspaceId   String
+  dropInProductId String
+  programId     String
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dropInProduct DropInProduct @relation(fields: [dropInProductId], references: [id], onDelete: Cascade)
+  program       Program       @relation(fields: [programId], references: [id], onDelete: Cascade)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([dropInProductId, programId], map: "drop_in_product_program_restrictions_product_program_key")
+  @@index([workspaceId, dropInProductId])
+  @@index([workspaceId, programId])
+  @@map("drop_in_product_program_restrictions")
+}
+
+model WaitlistEntry {
+  id               String              @id @default(cuid())
+  workspaceId      String
+  memberId         String
+  classTemplateId  String
+  scheduledForDate DateTime            @db.Date
+  status           WaitlistEntryStatus @default(ACTIVE)
+  joinedAt         DateTime            @default(now())
+  promotedAt       DateTime?
+  promotedBookingId String?
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member           Member              @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  classTemplate    ClassTemplate       @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
+  promotedBooking  ClassBooking?       @relation(fields: [promotedBookingId], references: [id], onDelete: SetNull)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@unique([workspaceId, memberId, classTemplateId, scheduledForDate], map: "waitlist_entries_member_template_date_key")
+  @@index([workspaceId, classTemplateId, scheduledForDate, status, joinedAt])
+  @@index([workspaceId, memberId, status])
+  @@index([workspaceId, promotedBookingId])
+  @@map("waitlist_entries")
 }
 
 model MemberMembership {
