@@ -45,12 +45,6 @@ enum MemberStatus {
   WAITLISTED
 }
 
-enum MemberFormStatus {
-  NOT_REQUESTED
-  PENDING
-  COMPLETE
-}
-
 enum ClassBookingType {
   TRIAL
   MEMBERSHIP
@@ -159,6 +153,37 @@ enum WaitlistEntryStatus {
   CANCELLED
 }
 
+enum FormType {
+  WAIVER
+  MEMBERSHIP_AGREEMENT
+  CHILD_GUARDIAN_WAIVER
+  CUSTOM
+}
+
+enum RequirementTarget {
+  TRIAL
+  MEMBER
+  GUARDIAN
+  MEMBERSHIP_ACTIVATION
+}
+
+enum FormSignerKind {
+  MEMBER
+  GUARDIAN
+}
+
+enum SignatureRequestStatus {
+  OPEN
+  COMPLETED
+  EXPIRED
+  CANCELLED
+}
+
+enum SignatureAccessMethod {
+  PORTAL
+  MAGIC_LINK
+}
+
 model User {
   id               String          @id @default(cuid())
   email            String          @unique @db.Citext
@@ -201,6 +226,11 @@ model Workspace {
   classBookings                     ClassBooking[]
   waitlistEntries                   WaitlistEntry[]
   attendanceRecords                 AttendanceRecord[]
+  formDocuments                     FormDocument[]
+  formVersions                      FormVersion[]
+  requiredFormAssignments           RequiredFormAssignment[]
+  signatureRequests                 SignatureRequest[]
+  signedDocuments                   SignedDocument[]
   workspaceUsers                    WorkspaceUser[]
   staffInvites                      StaffInvite[]
   settings                          WorkspaceSetting?
@@ -276,6 +306,8 @@ model WorkspaceUser {
   user                     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   coachedClassTemplates    ClassTemplate[]
   coachedAttendanceRecords AttendanceRecord[]
+  uploadedFormVersions     FormVersion[]      @relation("UploadedFormVersions")
+  createdSignatureRequests SignatureRequest[] @relation("SignatureRequestCreator")
   createdAt                DateTime           @default(now())
   updatedAt                DateTime           @updatedAt
 
@@ -326,7 +358,6 @@ model Member {
   status            MemberStatus             @default(TRIAL)
   notes             String?
   tags              String[]                 @default([])
-  formStatus        MemberFormStatus         @default(NOT_REQUESTED)
   workspace         Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user              User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
   familyLinks       FamilyLink[]             @relation("ChildMemberFamilyLinks")
@@ -337,6 +368,8 @@ model Member {
   classBookings     ClassBooking[]
   waitlistEntries   WaitlistEntry[]
   attendanceRecords AttendanceRecord[]
+  signatureRequests SignatureRequest[]
+  signedDocuments   SignedDocument[]
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
 
@@ -357,6 +390,8 @@ model Guardian {
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   familyLinks   FamilyLink[]
   classBookings ClassBooking[]
+  signatureRequests SignatureRequest[]
+  signedDocuments   SignedDocument[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -616,6 +651,125 @@ model WaitlistEntry {
   @@index([workspaceId, memberId, status])
   @@index([workspaceId, promotedBookingId])
   @@map("waitlist_entries")
+}
+
+model FormDocument {
+  id               String                   @id @default(cuid())
+  workspaceId      String
+  name             String
+  formType         FormType
+  description      String?
+  currentVersionId String?                  @unique
+  archivedAt       DateTime?
+  workspace        Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  currentVersion   FormVersion?             @relation("CurrentFormVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  versions         FormVersion[]            @relation("DocumentVersions")
+  assignments      RequiredFormAssignment[]
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, archivedAt])
+  @@map("form_documents")
+}
+
+model FormVersion {
+  id                        String             @id @default(cuid())
+  workspaceId               String
+  formDocumentId            String
+  versionNumber             Int
+  fileName                  String
+  mimeType                  String
+  fileSizeBytes             Int
+  fileSha256                String
+  fileData                  Bytes
+  uploadedByWorkspaceUserId String
+  workspace                 Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  formDocument              FormDocument       @relation("DocumentVersions", fields: [formDocumentId], references: [id], onDelete: Cascade)
+  currentForDocuments       FormDocument[]     @relation("CurrentFormVersion")
+  uploadedByWorkspaceUser   WorkspaceUser      @relation("UploadedFormVersions", fields: [uploadedByWorkspaceUserId], references: [id], onDelete: Restrict)
+  signatureRequests         SignatureRequest[]
+  signedDocuments           SignedDocument[]
+  createdAt                 DateTime           @default(now())
+  updatedAt                 DateTime           @updatedAt
+
+  @@unique([formDocumentId, versionNumber])
+  @@index([workspaceId, formDocumentId, createdAt])
+  @@map("form_versions")
+}
+
+model RequiredFormAssignment {
+  id               String            @id @default(cuid())
+  workspaceId      String
+  formDocumentId   String
+  requirementTarget RequirementTarget
+  isActive         Boolean           @default(true)
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  formDocument     FormDocument      @relation(fields: [formDocumentId], references: [id], onDelete: Cascade)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([workspaceId, formDocumentId, requirementTarget], map: "required_form_assignments_workspace_document_target_key")
+  @@index([workspaceId, requirementTarget, isActive])
+  @@map("required_form_assignments")
+}
+
+model SignatureRequest {
+  id                       String                 @id @default(cuid())
+  workspaceId              String
+  formVersionId            String
+  memberId                 String
+  guardianId               String?
+  signerKind               FormSignerKind
+  accessMethod             SignatureAccessMethod
+  status                   SignatureRequestStatus @default(OPEN)
+  tokenHash                String?                @unique
+  expiresAt                DateTime?
+  viewedAt                 DateTime?
+  completedAt              DateTime?
+  createdByWorkspaceUserId String?
+  workspace                Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  formVersion              FormVersion            @relation(fields: [formVersionId], references: [id], onDelete: Cascade)
+  member                   Member                 @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  guardian                 Guardian?              @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  createdByWorkspaceUser   WorkspaceUser?         @relation("SignatureRequestCreator", fields: [createdByWorkspaceUserId], references: [id], onDelete: SetNull)
+  signedDocument           SignedDocument?        @relation("SignatureRequestSignedDocument")
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+
+  @@index([workspaceId, memberId, signerKind, status])
+  @@index([workspaceId, guardianId, signerKind, status])
+  @@index([workspaceId, formVersionId, status])
+  @@map("signature_requests")
+}
+
+model SignedDocument {
+  id                  String         @id @default(cuid())
+  workspaceId         String
+  formVersionId       String
+  memberId            String
+  guardianId          String?
+  signerKind          FormSignerKind
+  signedFromRequestId String?        @unique
+  signerNameSnapshot  String
+  signerEmailSnapshot String?
+  signatureMethod     String
+  providerReference   String?
+  ipAddress           String?
+  userAgent           String?
+  signedAt            DateTime
+  workspace           Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  formVersion         FormVersion    @relation(fields: [formVersionId], references: [id], onDelete: Cascade)
+  member              Member         @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  guardian            Guardian?      @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  signedFromRequest   SignatureRequest? @relation("SignatureRequestSignedDocument", fields: [signedFromRequestId], references: [id], onDelete: SetNull)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@unique([workspaceId, formVersionId, memberId, signerKind], map: "signed_documents_workspace_version_member_signer_key")
+  @@index([workspaceId, memberId, signedAt])
+  @@index([workspaceId, guardianId, signedAt])
+  @@map("signed_documents")
 }
 
 model MemberMembership {

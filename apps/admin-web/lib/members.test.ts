@@ -56,7 +56,6 @@ function buildMemberRecord() {
     status: "TRIAL" as const,
     notes: "First trial",
     tags: ["Youth", "Trial"],
-    formStatus: "PENDING" as const,
     createdAt: new Date("2026-04-07T09:00:00.000Z"),
     updatedAt: new Date("2026-04-07T09:30:00.000Z"),
     familyLinks: [
@@ -116,7 +115,7 @@ function createMockDb(): MemberTestDb {
 }
 
 describe("member helpers", () => {
-  it("creates a member with sanitized fields, tags, status, and form status", async () => {
+  it("creates a member with sanitized fields, tags, and status", async () => {
     const db = createMockDb();
     const created = {
       data: null as Record<string, unknown> | null,
@@ -140,7 +139,6 @@ describe("member helpers", () => {
           phone: "  555-1234  ",
           dateOfBirth: "2010-02-03",
           status: "TRIAL",
-          formStatus: "PENDING",
           tags: " Youth, Trial, youth, Beginner ",
           notes: "  First trial  ",
         },
@@ -160,7 +158,6 @@ describe("member helpers", () => {
       status: "TRIAL",
       notes: "First trial",
       tags: ["Youth", "Trial", "Beginner"],
-      formStatus: "PENDING",
     });
   });
 
@@ -174,7 +171,6 @@ describe("member helpers", () => {
       status: "TRIAL",
       notes: "",
       tags: "",
-      formStatus: "NOT_REQUESTED",
     };
 
     await expect(
@@ -234,7 +230,6 @@ describe("member helpers", () => {
         input: {
           fullName: "Jordan Lee",
           status: "ACTIVE",
-          formStatus: "COMPLETE",
         },
         db,
       }),
@@ -251,7 +246,6 @@ describe("member helpers", () => {
       data: expect.objectContaining({
         fullName: "Jordan Lee",
         status: "ACTIVE",
-        formStatus: "COMPLETE",
       }),
     });
   });
@@ -275,7 +269,6 @@ describe("member helpers", () => {
           fullName: "Jordan Lee",
           email: "jordan@example.com",
           status: "ACTIVE",
-          formStatus: "COMPLETE",
         },
         db,
       }),
@@ -305,7 +298,6 @@ describe("member helpers", () => {
           fullName: "Jordan Lee",
           email: "taken@example.com",
           status: "ACTIVE",
-          formStatus: "COMPLETE",
         },
         db,
       }),

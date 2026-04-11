@@ -25,7 +25,6 @@ function getMemberInput(formData: FormData) {
     status: String(formData.get("status") ?? ""),
     notes: String(formData.get("notes") ?? ""),
     tags: String(formData.get("tags") ?? ""),
-    formStatus: String(formData.get("formStatus") ?? ""),
   };
 }
 

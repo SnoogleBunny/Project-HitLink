@@ -18,6 +18,10 @@ const navItems = [
     label: "Membership",
   },
   {
+    href: "/app/forms",
+    label: "Forms",
+  },
+  {
     href: "/app/billing",
     label: "Billing",
   },

@@ -1,6 +1,7 @@
 import {
   dateOnlyStringToUtcDate,
   prisma,
+  resolveRequiredFormStatusesForMember,
   toDateOnlyString,
   type BillingRecordStatus,
   type BillingStateStatus,
@@ -414,10 +415,13 @@ export async function assignMembershipToMember(args: {
   input: MembershipAssignmentInput;
   db?: MemberMembershipDatabase;
   stripe?: StripeBillingGateway;
+  resolveActivationForms?: typeof resolveRequiredFormStatusesForMember;
   now?: Date;
 }): Promise<MembershipMutationResult> {
   const db = args.db ?? memberMembershipDatabase;
   const stripe = args.stripe ?? stripeBillingGateway;
+  const resolveActivationForms =
+    args.resolveActivationForms ?? resolveRequiredFormStatusesForMember;
   const memberId = args.input.memberId.trim();
   const membershipPlanId = args.input.membershipPlanId.trim();
   const nextBillingDate = parseDateOnly(args.input.nextBillingDate);
@@ -510,6 +514,24 @@ export async function assignMembershipToMember(args: {
     return {
       status: "error",
       message: "This member already has a current membership.",
+    };
+  }
+
+  const activationForms = await resolveActivationForms({
+    workspaceId: args.workspaceId,
+    memberId,
+    targets: ["MEMBERSHIP_ACTIVATION"],
+  });
+  const unresolvedActivationForms = activationForms.items.filter(
+    (item) => item.status !== "SIGNED",
+  );
+
+  if (unresolvedActivationForms.length > 0) {
+    return {
+      status: "error",
+      message: `Membership activation is blocked until the current form versions are signed: ${unresolvedActivationForms
+        .map((item) => item.formName)
+        .join(", ")}.`,
     };
   }
 
@@ -921,4 +943,3 @@ export function formatMembershipStatus(status: string): string {
     .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
     .join(" ");
 }
-

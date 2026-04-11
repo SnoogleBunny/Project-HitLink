@@ -1,14 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { resolveRequiredFormStatusesForMember } from "@hitlink/db";
 import { AdminShell } from "../../../../_components/admin-shell";
 import {
   formatMembershipStatus,
   getMemberBillingProfile,
 } from "../../../../../lib/member-memberships";
 import {
+  buildActionableFormRequestHref,
+  formatRequiredFormState,
+} from "../../../../../lib/forms-status";
+import {
   listMemberPunchCardBalances,
   listPunchCardProducts,
 } from "../../../../../lib/access-products";
+import { formatRequirementTarget } from "../../../../../lib/forms";
 import { requireOwnerWorkspaceContext } from "../../../../../lib/owner-workspace";
 import {
   cancelMembershipAction,
@@ -57,7 +63,7 @@ export default async function MemberBillingPage({
 }) {
   const { memberId } = await params;
   const { session, workspace } = await requireOwnerWorkspaceContext();
-  const [profile, punchCardBalances, punchCardProducts] = await Promise.all([
+  const [profile, punchCardBalances, punchCardProducts, activationForms] = await Promise.all([
     getMemberBillingProfile({
       workspaceId: workspace.id,
       memberId,
@@ -69,6 +75,11 @@ export default async function MemberBillingPage({
     listPunchCardProducts({
       workspaceId: workspace.id,
     }),
+    resolveRequiredFormStatusesForMember({
+      workspaceId: workspace.id,
+      memberId,
+      targets: ["MEMBERSHIP_ACTIVATION"],
+    }),
   ]);
 
   if (!profile) {
@@ -77,6 +88,9 @@ export default async function MemberBillingPage({
 
   const membership = profile.currentMembership;
   const grantableProducts = punchCardProducts.activeProducts;
+  const unresolvedActivationForms = activationForms.items.filter(
+    (item) => item.status !== "SIGNED",
+  );
 
   return (
     <AdminShell
@@ -95,6 +109,57 @@ export default async function MemberBillingPage({
       }
     >
       <div className="management-grid">
+        <section className="management-card">
+          <p className="dashboard-card-label">Activation forms</p>
+          <h3>
+            {activationForms.items.length} activation requirement
+            {activationForms.items.length === 1 ? "" : "s"}
+          </h3>
+          {activationForms.items.length === 0 ? (
+            <p className="empty-state">
+              No membership-activation forms are configured right now.
+            </p>
+          ) : (
+            <div className="stack-list">
+              {activationForms.items.map((item) => (
+                <article key={item.assignmentId} className="stack-item">
+                  <div className="stack-item-copy">
+                    <div className="stack-item-heading">
+                      <h4>{item.formName}</h4>
+                      <span
+                        className={`status-pill ${
+                          item.status === "SIGNED" ? "status-pill-success" : ""
+                        }`}
+                      >
+                        {formatRequiredFormState(item.status)}
+                      </span>
+                    </div>
+                    <p>
+                      {formatRequirementTarget(item.requirementTarget)} · Current
+                      version {item.currentVersionNumber}
+                    </p>
+                    {item.openRequests.length > 0 ? (
+                      <div className="dashboard-actions">
+                        {item.openRequests.map((request) => (
+                          <a
+                            key={request.requestId}
+                            className="button button-secondary"
+                            href={buildActionableFormRequestHref(request)}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Open signing path
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
         <section className="management-card">
           <p className="dashboard-card-label">Current membership</p>
           {membership ? (
@@ -212,7 +277,17 @@ export default async function MemberBillingPage({
           ) : (
             <>
               <h3>Owner assignment</h3>
+              {unresolvedActivationForms.length > 0 ? (
+                <div className="info-callout">
+                  <strong>Activation blocked</strong>
+                  <p>
+                    The current membership cannot be assigned until all required
+                    activation forms are signed for the current version.
+                  </p>
+                </div>
+              ) : null}
               <MembershipAssignmentForm
+                disabled={unresolvedActivationForms.length > 0}
                 memberId={profile.member.id}
                 plans={profile.availablePlans}
               />

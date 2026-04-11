@@ -14,15 +14,18 @@ import {
 export function MembershipAssignmentForm({
   memberId,
   plans,
+  disabled = false,
 }: {
   memberId: string;
   plans: MemberBillingProfile["availablePlans"];
+  disabled?: boolean;
 }) {
   const [state, formAction] = useActionState(
     assignMembershipAction,
     emptyFormState,
   );
   const hasPlans = plans.length > 0;
+  const isDisabled = disabled || !hasPlans;
 
   return (
     <form action={formAction} className="form-stack">
@@ -30,7 +33,7 @@ export function MembershipAssignmentForm({
 
       <label className="field">
         <span>Membership plan</span>
-        <select disabled={!hasPlans} name="membershipPlanId">
+        <select disabled={isDisabled} name="membershipPlanId">
           <option value="">Choose a plan</option>
           {plans.map((plan) => (
             <option key={plan.id} value={plan.id}>
@@ -43,12 +46,12 @@ export function MembershipAssignmentForm({
 
       <label className="field">
         <span>Next billing date</span>
-        <input name="nextBillingDate" type="date" />
+        <input disabled={isDisabled} name="nextBillingDate" type="date" />
       </label>
 
       {state.error ? <p className="form-error">{state.error}</p> : null}
 
-      <SubmitButton disabled={!hasPlans} pendingLabel="Assigning membership...">
+      <SubmitButton disabled={isDisabled} pendingLabel="Assigning membership...">
         Assign membership
       </SubmitButton>
     </form>

@@ -14,12 +14,6 @@ const memberStatusOptions = [
   ["WAITLISTED", "Waitlisted"],
 ] as const;
 
-const formStatusOptions = [
-  ["NOT_REQUESTED", "Not requested"],
-  ["PENDING", "Pending"],
-  ["COMPLETE", "Complete"],
-] as const;
-
 interface MemberFormValue {
   id: string;
   fullName: string;
@@ -29,7 +23,6 @@ interface MemberFormValue {
   status: string;
   notes: string | null;
   tags: string[];
-  formStatus: string;
 }
 
 function formatDateForInput(value: Date | null): string {
@@ -105,21 +98,6 @@ function MemberFields({ member }: { member?: MemberFormValue }) {
         />
         <p className="field-help">Comma-separated, up to 10 tags.</p>
       </label>
-
-      <label className="field">
-        <span>Waiver/form status</span>
-        <select
-          defaultValue={member?.formStatus ?? "NOT_REQUESTED"}
-          name="formStatus"
-        >
-          {formStatusOptions.map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </label>
-
       <label className="field">
         <span>Notes</span>
         <textarea

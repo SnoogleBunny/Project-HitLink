@@ -142,6 +142,13 @@ function createStripeMock(): StripeBillingGateway {
   } as unknown as StripeBillingGateway;
 }
 
+function resolveNoActivationForms() {
+  return Promise.resolve({
+    items: [],
+    history: [],
+  });
+}
+
 describe("member membership helpers", () => {
   it("assigns a membership and stores Stripe linkage when billing is ready", async () => {
     const db = createMockDb();
@@ -157,6 +164,7 @@ describe("member membership helpers", () => {
         },
         db,
         stripe,
+        resolveActivationForms: resolveNoActivationForms,
       }),
     ).resolves.toEqual({
       status: "assigned",
@@ -206,6 +214,7 @@ describe("member membership helpers", () => {
         },
         db,
         stripe: createStripeMock(),
+        resolveActivationForms: resolveNoActivationForms,
       }),
     ).resolves.toEqual({
       status: "error",
@@ -228,11 +237,44 @@ describe("member membership helpers", () => {
         },
         db,
         stripe: createStripeMock(),
+        resolveActivationForms: resolveNoActivationForms,
       }),
     ).resolves.toEqual({
       status: "error",
       message: "Choose an active membership plan in this workspace.",
     });
+  });
+
+  it("blocks membership assignment when activation forms are still unresolved", async () => {
+    const db = createMockDb();
+
+    await expect(
+      assignMembershipToMember({
+        workspaceId: "workspace_1",
+        input: {
+          memberId: "member_1",
+          membershipPlanId: "plan_1",
+        },
+        db,
+        stripe: createStripeMock(),
+        resolveActivationForms: () =>
+          Promise.resolve({
+            items: [
+              {
+                formName: "Membership Agreement",
+                status: "PENDING",
+              },
+            ],
+            history: [],
+          } as never),
+      }),
+    ).resolves.toEqual({
+      status: "error",
+      message:
+        "Membership activation is blocked until the current form versions are signed: Membership Agreement.",
+    });
+
+    expect(db.memberMembership.create).not.toHaveBeenCalled();
   });
 
   it("cancels at period end and calls Stripe when a subscription exists", async () => {
@@ -313,4 +355,3 @@ describe("member membership helpers", () => {
     );
   });
 });
-

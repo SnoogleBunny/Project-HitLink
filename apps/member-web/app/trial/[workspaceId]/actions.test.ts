@@ -1,11 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createTrialBookingMock } = vi.hoisted(() => ({
+const { createTrialBookingMock, issueTrialMagicLinkRequestsMock } = vi.hoisted(() => ({
   createTrialBookingMock: vi.fn(),
+  issueTrialMagicLinkRequestsMock: vi.fn(),
 }));
 
 vi.mock("../../../lib/trial-booking", () => ({
   createTrialBooking: createTrialBookingMock,
+}));
+
+vi.mock("@hitlink/db", () => ({
+  buildMagicLinkPath: (token: string) => `/sign/forms/${token}`,
+  issueTrialMagicLinkRequests: issueTrialMagicLinkRequestsMock,
 }));
 
 import {
@@ -33,6 +39,7 @@ function buildFormData() {
 describe("trial booking action", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    issueTrialMagicLinkRequestsMock.mockResolvedValue([]);
   });
 
   it("returns a friendly helper error", async () => {
@@ -58,6 +65,14 @@ describe("trial booking action", () => {
       scheduledForDate: "2026-04-07",
       startsAt: new Date("2026-04-08T01:00:00.000Z"),
     });
+    issueTrialMagicLinkRequestsMock.mockResolvedValue([
+      {
+        requestId: "request_1",
+        token: "request_1.token",
+        formName: "Adult Waiver",
+        guardianName: null,
+      },
+    ]);
 
     await expect(
       createTrialBookingAction(emptyTrialBookingFormState, buildFormData()),
@@ -66,6 +81,13 @@ describe("trial booking action", () => {
       confirmation: {
         classTitle: "Muay Thai Fundamentals",
         scheduledForDate: "2026-04-07",
+        forms: [
+          {
+            requestId: "request_1",
+            label: "Adult Waiver",
+            href: "/sign/forms/request_1.token",
+          },
+        ],
       },
     });
     expect(createTrialBookingMock).toHaveBeenCalledWith({
@@ -82,6 +104,10 @@ describe("trial booking action", () => {
         guardianPhone: "",
         relationshipLabel: "",
       },
+    });
+    expect(issueTrialMagicLinkRequestsMock).toHaveBeenCalledWith({
+      workspaceId: "workspace_1",
+      memberId: "member_1",
     });
   });
 });
