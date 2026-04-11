@@ -7,6 +7,8 @@ Use it for:
 - pre-demo validation
 - end-to-end sanity checks before major refactors
 
+This checklist now covers both the original core admin flows and the newer member portal, access-product, waitlist, and forms/compliance flows.
+
 ---
 
 ## 1. Auth and onboarding
@@ -126,6 +128,7 @@ Use it for:
 - [ ] Submit participant with phone
 - [ ] Submit with optional guardian
 - [ ] Verify inline confirmation appears
+- [ ] If required trial or guardian forms are configured, verify signing handoff appears on confirmation
 - [ ] Verify member is created with `TRIAL` status
 - [ ] Verify guardian/family link created when applicable
 - [ ] Verify canonical booking is created with `bookingType = TRIAL` and `source = PUBLIC_TRIAL`
@@ -145,10 +148,10 @@ Use it for:
 
 ---
 
-## 8. Standard bookings
+## 8. Admin-created member bookings
 
 ### Admin booking creation
-- [ ] Create standard booking for member/template/date
+- [ ] Create admin-created member booking for member/template/date
 - [ ] Verify booking appears on roster
 - [ ] Verify booking appears on member history
 
@@ -174,7 +177,7 @@ Use it for:
 
 ### Dated roster
 - [ ] Open assigned roster for today
-- [ ] Confirm roster shows standard bookings
+- [ ] Confirm roster shows admin-created member bookings
 - [ ] Confirm roster shows trial bookings
 - [ ] Confirm guardian context appears where applicable
 - [ ] Confirm notes/tags appear where expected
@@ -235,6 +238,7 @@ Use it for:
 - [ ] Assign membership plan to member
 - [ ] Verify only one current membership is allowed
 - [ ] Attempt second current membership and confirm it is blocked
+- [ ] If membership-activation forms are configured and unresolved, confirm assignment is blocked until resolved
 
 ### Lifecycle
 - [ ] Cancel at period end
@@ -310,7 +314,120 @@ Use it for:
 
 ---
 
-## 16. End-to-end smoke scenarios
+## 16. Member portal
+
+### Login and isolation
+- [ ] Log in as a member/customer
+- [ ] Confirm member lands in the member portal successfully
+- [ ] Confirm unauthenticated member routes redirect correctly
+- [ ] Confirm member-only access is isolated to the linked member account
+- [ ] Confirm member cannot access admin routes or admin data
+- [ ] Confirm one member cannot access another member's portal data
+
+### Dashboard and summaries
+- [ ] Confirm member dashboard loads own membership summary only
+- [ ] Confirm member dashboard loads own booking summary only
+- [ ] Confirm member dashboard loads own billing summary only
+- [ ] Confirm member dashboard loads own attendance summary only
+
+### Portal detail pages
+- [ ] Confirm member can view own bookings only
+- [ ] Confirm member can view own billing only
+
+---
+
+## 17. Member self-service booking
+
+### Browsing and booking
+- [ ] Member browses eligible upcoming occurrences
+- [ ] Member self-books own occurrence
+- [ ] Duplicate active booking is blocked
+- [ ] Confirm cancelled booking restore behavior works if that is the current canonical flow
+
+### Access and cutoff rules
+- [ ] Booking cutoff is enforced
+- [ ] Cancellation cutoff is enforced
+- [ ] Member cannot create a booking for another member
+- [ ] Member cannot cancel another member's booking
+
+---
+
+## 18. Punch cards
+
+### Product and balances
+- [ ] Owner creates punch-card product
+- [ ] Owner grants punch card
+- [ ] Member purchases punch card if enabled
+- [ ] Member sees own punch-card balances only
+- [ ] Punch cards do not expire
+- [ ] Punch cards are non-shareable
+
+### Booking and usage
+- [ ] Oldest eligible punch card is selected deterministically
+- [ ] Punch is consumed on booking
+- [ ] Early cancel refunds punch
+- [ ] Late cancel does not refund punch
+- [ ] No-show does not refund punch
+
+---
+
+## 19. Drop-ins
+
+### Product and checkout
+- [ ] Owner creates drop-in product
+- [ ] Member portal supports pay-and-book flow when only drop-in access is available
+- [ ] Drop-in booking creates `PENDING_PAYMENT` booking
+- [ ] Completed checkout finalizes booking
+- [ ] Expired checkout releases capacity and expires the pending booking
+
+### Visibility
+- [ ] Member sees own drop-in-backed booking and payment state only
+
+---
+
+## 20. Waitlist
+
+### Member waitlist actions
+- [ ] Member can join waitlist for a full dated occurrence
+- [ ] Waitlist join is blocked if already booked
+- [ ] Waitlist join is blocked if already actively waitlisted
+- [ ] Leave waitlist sets cancelled state
+- [ ] Rejoin restores the same waitlist row if that is the current canonical behavior
+
+### Roster and promotion
+- [ ] Roster shows waitlist entries
+- [ ] Manual "promote next" works FIFO-only
+- [ ] Promotion revalidates access and capacity
+- [ ] Promoted waitlist entry creates real booking correctly
+
+---
+
+## 21. Forms / waivers / versioned signing
+
+### Owner form management
+- [ ] Owner uploads initial PDF form
+- [ ] Owner uploads new version of existing form
+- [ ] Current version is clear
+- [ ] Required assignment works for `TRIAL`
+- [ ] Required assignment works for `MEMBER`
+- [ ] Required assignment works for `GUARDIAN`
+- [ ] Required assignment works for `MEMBERSHIP_ACTIVATION`
+
+### Signing flows
+- [ ] Public trial flow creates signing handoff when required
+- [ ] Member portal shows own required forms only
+- [ ] Authenticated member signing works
+- [ ] Guardian/public magic-link signing works
+- [ ] Signed history remains visible
+- [ ] Superseded status appears after a new version is uploaded
+
+### Enforcement and access
+- [ ] Membership activation blocker reacts only to unresolved `MEMBERSHIP_ACTIVATION` requirements
+- [ ] Cross-workspace form/signature access is blocked
+
+---
+
+## 22. End-to-end smoke scenarios
 
 ### Scenario 1 — Owner setup
 - [ ] Sign up owner
@@ -328,9 +445,9 @@ Use it for:
 - [ ] Coach marks attendance
 - [ ] Member profile shows trial booking and attendance
 
-### Scenario 3 — Standard member booking
+### Scenario 3 — Admin-created member booking
 - [ ] Owner creates member
-- [ ] Owner creates standard booking for valid date
+- [ ] Owner creates admin-created member booking for valid date
 - [ ] Roster shows member
 - [ ] Coach marks no-show
 - [ ] Member history reflects it
@@ -349,17 +466,31 @@ Use it for:
 - [ ] Owner accesses expected admin pages successfully
 - [ ] Cross-workspace lookups are blocked where applicable
 
+### Scenario 6 — Member portal self-service flow
+- [ ] Member logs in
+- [ ] Member books class
+- [ ] Member cancels if allowed
+- [ ] Member sees updated booking and billing state
+
+### Scenario 7 — Forms compliance flow
+- [ ] Owner uploads required form
+- [ ] Trial or member receives signing path
+- [ ] Signing completes
+- [ ] Admin and member views reflect signed or superseded state correctly
+
 ---
 
 ## Minimum must-pass list before demos
 - [ ] Owner onboarding
 - [ ] Program, room, and template creation
+- [ ] Member portal login and isolation
 - [ ] Trial booking
+- [ ] Member self-service booking
 - [ ] Roster visibility
 - [ ] Attendance recording
 - [ ] Member profile history
 - [ ] Membership assignment
+- [ ] Required forms / signing
 - [ ] Stripe connect path
 - [ ] Failed payment queue
 - [ ] Role protection
-
