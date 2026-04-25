@@ -688,11 +688,10 @@ export async function resolveBookingAccessForProgram(args: {
   });
 }
 
-export interface AccessResolutionDatabase
-  extends Pick<
-    AccessTransactionDatabase,
-    "memberMembership" | "memberPunchCard" | "dropInProduct"
-  > {}
+export type AccessResolutionDatabase = Pick<
+  AccessTransactionDatabase,
+  "memberMembership" | "memberPunchCard" | "dropInProduct"
+>;
 
 async function debitPunchCard(args: {
   workspaceId: string;

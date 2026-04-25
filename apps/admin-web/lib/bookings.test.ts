@@ -258,6 +258,7 @@ describe("booking helpers", () => {
       createClassBooking({
         workspaceId: "workspace_1",
         timezone: "America/Vancouver",
+        now: new Date("2026-04-08T00:30:00.000Z"),
         input: {
           memberId: "member_1",
           classTemplateId: "template_1",
@@ -281,6 +282,7 @@ describe("booking helpers", () => {
       createClassBooking({
         workspaceId: "workspace_1",
         timezone: "America/Vancouver",
+        now: new Date("2026-04-08T00:30:00.000Z"),
         input: {
           memberId: "member_1",
           classTemplateId: "template_1",
