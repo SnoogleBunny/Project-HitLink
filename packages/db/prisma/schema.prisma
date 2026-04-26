@@ -61,6 +61,11 @@ enum ClassBookingStatus {
   NO_SHOW
 }
 
+enum ClassInstanceStatus {
+  ACTIVE
+  CANCELLED
+}
+
 enum ClassBookingSource {
   ADMIN
   PUBLIC_TRIAL
@@ -130,6 +135,58 @@ enum BillingRecordStatus {
   ACTION_REQUIRED
 }
 
+enum BillingSource {
+  CURRENT
+  IMPORTED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+  IMPORTED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  IMPORTED
+}
+
+enum RefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  IMPORTED
+}
+
+enum AccountCreditStatus {
+  ACTIVE
+  APPLIED
+  EXPIRED
+  VOID
+}
+
+enum CreditRuleScope {
+  ANY
+  MEMBERSHIP
+  DROP_IN
+  PUNCH_CARD
+  EVENT
+  PRIVATE_LESSON
+}
+
+enum FailedPaymentCaseStatus {
+  OPEN
+  RESOLVED
+  CANCELLED
+}
+
 enum StripeWebhookProcessingStatus {
   PROCESSING
   PROCESSED
@@ -184,6 +241,124 @@ enum SignatureAccessMethod {
   MAGIC_LINK
 }
 
+enum ImportSourceType {
+  CSV
+  ZEN_PLANNER
+}
+
+enum ImportJobStatus {
+  DRAFT
+  MAPPED
+  VALIDATED
+  DRY_RUN_COMPLETE
+  IMPORTING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ImportRecordKind {
+  MEMBER
+  GUARDIAN
+  FAMILY_LINK
+  MEMBERSHIP_PLAN
+  MEMBER_MEMBERSHIP
+  BILLING_HISTORY
+  PUNCH_CARD_BALANCE
+  NOTE
+  STAFF
+  PROGRESS
+  ATTENDANCE
+  SCHEDULE_TEMPLATE
+}
+
+enum ValidationSeverity {
+  INFO
+  WARNING
+  ERROR
+}
+
+enum ProgressModuleStatus {
+  DISABLED
+  ENABLED
+}
+
+enum ConversationThreadStatus {
+  OPEN
+  CLOSED
+}
+
+enum ConversationParticipantKind {
+  STAFF
+  MEMBER
+  GUARDIAN
+}
+
+enum MessageSenderKind {
+  STAFF
+  MEMBER
+  GUARDIAN
+  SYSTEM
+}
+
+enum MessageStatus {
+  SENT
+  DELETED
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  QUEUED
+  SENT
+  CANCELLED
+}
+
+enum NotificationJobStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum EmailTemplateKind {
+  TRIAL_CONFIRMATION
+  BOOKING_CONFIRMATION
+  CLASS_REMINDER
+  FAILED_PAYMENT
+  ANNOUNCEMENT
+  PAYMENT_METHOD_UPDATE_REQUEST
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum EventBookingStatus {
+  PENDING_PAYMENT
+  BOOKED
+  CANCELLED
+  ATTENDED
+  NO_SHOW
+}
+
+enum PrivateLessonSlotStatus {
+  OPEN
+  BOOKED
+  CANCELLED
+}
+
+enum PrivateLessonBookingStatus {
+  PENDING_PAYMENT
+  BOOKED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
 model User {
   id               String          @id @default(cuid())
   email            String          @unique @db.Citext
@@ -200,11 +375,11 @@ model User {
 }
 
 model Workspace {
-  id                                String                             @id @default(cuid())
+  id                                String                               @id @default(cuid())
   name                              String
   businessType                      String?
   logoUrl                           String?
-  status                            WorkspaceStatus                    @default(SETUP_INCOMPLETE)
+  status                            WorkspaceStatus                      @default(SETUP_INCOMPLETE)
   location                          Location?
   programs                          Program[]
   membershipPlans                   MembershipPlan[]
@@ -220,12 +395,42 @@ model Workspace {
   stripeSettings                    WorkspaceStripeSettings?
   stripeWebhookEvents               StripeWebhookEvent[]
   classTemplates                    ClassTemplate[]
+  classInstances                    ClassInstance[]
   members                           Member[]
   guardians                         Guardian[]
   familyLinks                       FamilyLink[]
   classBookings                     ClassBooking[]
   waitlistEntries                   WaitlistEntry[]
   attendanceRecords                 AttendanceRecord[]
+  invoices                          Invoice[]
+  invoiceLineItems                  InvoiceLineItem[]
+  payments                          Payment[]
+  refunds                           Refund[]
+  accountCredits                    AccountCredit[]
+  creditRules                       CreditRule[]
+  billingPolicies                   BillingPolicy[]
+  paymentMethodReferences           PaymentMethodReference[]
+  failedPaymentCases                FailedPaymentCase[]
+  importJobs                        ImportJob[]
+  importSourceFiles                 ImportSourceFile[]
+  importFieldMappings               ImportFieldMapping[]
+  stagingRecords                    StagingRecord[]
+  validationIssues                  ValidationIssue[]
+  reconciliationReports             ReconciliationReport[]
+  progressModuleSetting             ProgressModuleSetting?
+  beltDefinitions                   BeltDefinition[]
+  memberProgressStates              MemberProgressState[]
+  promotionRecords                  PromotionRecord[]
+  conversationThreads               ConversationThread[]
+  conversationParticipants          ConversationParticipant[]
+  messages                          Message[]
+  announcements                     Announcement[]
+  notificationJobs                  NotificationJob[]
+  emailTemplates                    EmailTemplate[]
+  events                            Event[]
+  eventBookings                     EventBooking[]
+  privateLessonSlots                PrivateLessonSlot[]
+  privateLessonBookings             PrivateLessonBooking[]
   formDocuments                     FormDocument[]
   formVersions                      FormVersion[]
   requiredFormAssignments           RequiredFormAssignment[]
@@ -234,8 +439,8 @@ model Workspace {
   workspaceUsers                    WorkspaceUser[]
   staffInvites                      StaffInvite[]
   settings                          WorkspaceSetting?
-  createdAt                         DateTime                           @default(now())
-  updatedAt                         DateTime                           @updatedAt
+  createdAt                         DateTime                             @default(now())
+  updatedAt                         DateTime                             @updatedAt
 
   @@map("workspaces")
 }
@@ -268,6 +473,7 @@ model Room {
   archivedAt     DateTime?
   location       Location        @relation(fields: [locationId], references: [id], onDelete: Cascade)
   classTemplates ClassTemplate[]
+  classInstances ClassInstance[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -276,40 +482,44 @@ model Room {
 }
 
 model Program {
-  id                         String                             @id @default(cuid())
-  workspaceId                String
-  name                       String
-  description                String?
-  ageGroupLabel              String?
-  levelLabel                 String?
-  progressTrackingEnabled    Boolean                            @default(false)
-  archivedAt                 DateTime?
-  workspace                  Workspace                          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  classTemplates             ClassTemplate[]
-  membershipPlanRestrictions MembershipPlanProgramRestriction[]
+  id                           String                               @id @default(cuid())
+  workspaceId                  String
+  name                         String
+  description                  String?
+  ageGroupLabel                String?
+  levelLabel                   String?
+  progressTrackingEnabled      Boolean                              @default(false)
+  archivedAt                   DateTime?
+  workspace                    Workspace                            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  classTemplates               ClassTemplate[]
+  classInstances               ClassInstance[]
+  membershipPlanRestrictions   MembershipPlanProgramRestriction[]
   punchCardProductRestrictions PunchCardProductProgramRestriction[]
-  dropInProductRestrictions  DropInProductProgramRestriction[]
-  createdAt                  DateTime                           @default(now())
-  updatedAt                  DateTime                           @updatedAt
+  dropInProductRestrictions    DropInProductProgramRestriction[]
+  createdAt                    DateTime                             @default(now())
+  updatedAt                    DateTime                             @updatedAt
 
   @@unique([workspaceId, name])
   @@map("programs")
 }
 
 model WorkspaceUser {
-  id                       String             @id @default(cuid())
+  id                       String              @id @default(cuid())
   workspaceId              String
-  userId                   String             @unique
+  userId                   String              @unique
   role                     UserRole
-  isActive                 Boolean            @default(true)
-  workspace                Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user                     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isActive                 Boolean             @default(true)
+  workspace                Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   coachedClassTemplates    ClassTemplate[]
+  coachedClassInstances    ClassInstance[]
+  eventCoachAssignments    Event[]
+  privateLessonSlots       PrivateLessonSlot[]
   coachedAttendanceRecords AttendanceRecord[]
-  uploadedFormVersions     FormVersion[]      @relation("UploadedFormVersions")
-  createdSignatureRequests SignatureRequest[] @relation("SignatureRequestCreator")
-  createdAt                DateTime           @default(now())
-  updatedAt                DateTime           @updatedAt
+  uploadedFormVersions     FormVersion[]       @relation("UploadedFormVersions")
+  createdSignatureRequests SignatureRequest[]  @relation("SignatureRequestCreator")
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
 
   @@unique([workspaceId, userId])
   @@map("workspace_users")
@@ -333,6 +543,7 @@ model ClassTemplate {
   program                   Program            @relation(fields: [programId], references: [id])
   room                      Room               @relation(fields: [roomId], references: [id])
   coachWorkspaceUser        WorkspaceUser      @relation(fields: [coachWorkspaceUserId], references: [id])
+  classInstances            ClassInstance[]
   classBookings             ClassBooking[]
   waitlistEntries           WaitlistEntry[]
   attendanceRecords         AttendanceRecord[]
@@ -348,30 +559,41 @@ model ClassTemplate {
 }
 
 model Member {
-  id                String                   @id @default(cuid())
-  workspaceId       String
-  userId            String?                  @unique
-  fullName          String
-  email             String?                  @db.Citext
-  phone             String?
-  dateOfBirth       DateTime?                @db.Date
-  status            MemberStatus             @default(TRIAL)
-  notes             String?
-  tags              String[]                 @default([])
-  workspace         Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user              User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  familyLinks       FamilyLink[]             @relation("ChildMemberFamilyLinks")
-  punchCards        MemberPunchCard[]
-  memberships       MemberMembership[]
-  billingStates     MembershipBillingState[]
-  billingRecords    BillingRecord[]
-  classBookings     ClassBooking[]
-  waitlistEntries   WaitlistEntry[]
-  attendanceRecords AttendanceRecord[]
-  signatureRequests SignatureRequest[]
-  signedDocuments   SignedDocument[]
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
+  id                       String                    @id @default(cuid())
+  workspaceId              String
+  userId                   String?                   @unique
+  fullName                 String
+  email                    String?                   @db.Citext
+  phone                    String?
+  dateOfBirth              DateTime?                 @db.Date
+  status                   MemberStatus              @default(TRIAL)
+  notes                    String?
+  tags                     String[]                  @default([])
+  workspace                Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                     User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  familyLinks              FamilyLink[]              @relation("ChildMemberFamilyLinks")
+  punchCards               MemberPunchCard[]
+  memberships              MemberMembership[]
+  billingStates            MembershipBillingState[]
+  billingRecords           BillingRecord[]
+  invoices                 Invoice[]
+  payments                 Payment[]
+  refunds                  Refund[]
+  accountCredits           AccountCredit[]
+  failedPaymentCases       FailedPaymentCase[]
+  progressState            MemberProgressState?
+  promotionRecords         PromotionRecord[]
+  conversationParticipants ConversationParticipant[]
+  messages                 Message[]
+  eventBookings            EventBooking[]
+  privateLessonBookings    PrivateLessonBooking[]
+  classBookings            ClassBooking[]
+  waitlistEntries          WaitlistEntry[]
+  attendanceRecords        AttendanceRecord[]
+  signatureRequests        SignatureRequest[]
+  signedDocuments          SignedDocument[]
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
 
   @@index([workspaceId, status])
   @@index([workspaceId, fullName])
@@ -381,19 +603,21 @@ model Member {
 }
 
 model Guardian {
-  id            String         @id @default(cuid())
-  workspaceId   String
-  fullName      String
-  email         String?        @db.Citext
-  phone         String?
-  notes         String?
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  familyLinks   FamilyLink[]
-  classBookings ClassBooking[]
-  signatureRequests SignatureRequest[]
-  signedDocuments   SignedDocument[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id                       String                    @id @default(cuid())
+  workspaceId              String
+  fullName                 String
+  email                    String?                   @db.Citext
+  phone                    String?
+  notes                    String?
+  workspace                Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  familyLinks              FamilyLink[]
+  classBookings            ClassBooking[]
+  conversationParticipants ConversationParticipant[]
+  messages                 Message[]
+  signatureRequests        SignatureRequest[]
+  signedDocuments          SignedDocument[]
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
 
   @@index([workspaceId, fullName])
   @@index([workspaceId, email])
@@ -420,37 +644,40 @@ model FamilyLink {
 }
 
 model ClassBooking {
-  id                     String             @id @default(cuid())
-  workspaceId            String
-  memberId               String
-  guardianId             String?
-  classTemplateId        String
-  memberPunchCardId      String?
-  dropInProductId        String?
-  scheduledForDate       DateTime           @db.Date
-  bookingType            ClassBookingType   @default(MEMBERSHIP)
-  status                 ClassBookingStatus @default(BOOKED)
-  source                 ClassBookingSource @default(ADMIN)
-  consumedPunchCount     Int                @default(0)
-  dropInPriceCents       Int?
-  dropInCurrency         String?
+  id                      String             @id @default(cuid())
+  workspaceId             String
+  memberId                String
+  guardianId              String?
+  classTemplateId         String
+  classInstanceId         String?
+  memberPunchCardId       String?
+  dropInProductId         String?
+  scheduledForDate        DateTime           @db.Date
+  bookingType             ClassBookingType   @default(MEMBERSHIP)
+  status                  ClassBookingStatus @default(BOOKED)
+  source                  ClassBookingSource @default(ADMIN)
+  consumedPunchCount      Int                @default(0)
+  dropInPriceCents        Int?
+  dropInCurrency          String?
   dropInCheckoutSessionId String?
-  dropInPaymentIntentId  String?
-  dropInPaidAt           DateTime?
+  dropInPaymentIntentId   String?
+  dropInPaidAt            DateTime?
   pendingPaymentExpiresAt DateTime?
-  workspace              Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  member                 Member             @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  guardian               Guardian?          @relation(fields: [guardianId], references: [id], onDelete: SetNull)
-  classTemplate          ClassTemplate      @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
-  memberPunchCard        MemberPunchCard?   @relation(fields: [memberPunchCardId], references: [id], onDelete: SetNull)
-  dropInProduct          DropInProduct?     @relation(fields: [dropInProductId], references: [id], onDelete: SetNull)
+  workspace               Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member                  Member             @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  guardian                Guardian?          @relation(fields: [guardianId], references: [id], onDelete: SetNull)
+  classTemplate           ClassTemplate      @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
+  classInstance           ClassInstance?     @relation(fields: [classInstanceId], references: [id], onDelete: SetNull)
+  memberPunchCard         MemberPunchCard?   @relation(fields: [memberPunchCardId], references: [id], onDelete: SetNull)
+  dropInProduct           DropInProduct?     @relation(fields: [dropInProductId], references: [id], onDelete: SetNull)
   promotedWaitlistEntries WaitlistEntry[]
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
   @@unique([workspaceId, memberId, classTemplateId, scheduledForDate], map: "class_bookings_member_template_date_key")
   @@index([workspaceId, scheduledForDate])
   @@index([workspaceId, classTemplateId, scheduledForDate])
+  @@index([workspaceId, classInstanceId])
   @@index([workspaceId, memberId])
   @@index([workspaceId, status, pendingPaymentExpiresAt])
   @@index([workspaceId, memberPunchCardId])
@@ -463,6 +690,7 @@ model AttendanceRecord {
   workspaceId          String
   memberId             String
   classTemplateId      String
+  classInstanceId      String?
   scheduledForDate     DateTime        @db.Date
   state                AttendanceState
   coachWorkspaceUserId String?
@@ -470,15 +698,54 @@ model AttendanceRecord {
   workspace            Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   member               Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
   classTemplate        ClassTemplate   @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
+  classInstance        ClassInstance?  @relation(fields: [classInstanceId], references: [id], onDelete: SetNull)
   coachWorkspaceUser   WorkspaceUser?  @relation(fields: [coachWorkspaceUserId], references: [id], onDelete: SetNull)
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
   @@unique([workspaceId, memberId, classTemplateId, scheduledForDate], map: "attendance_records_member_template_date_key")
   @@index([workspaceId, classTemplateId, scheduledForDate])
+  @@index([workspaceId, classInstanceId])
   @@index([workspaceId, memberId])
   @@index([coachWorkspaceUserId])
   @@map("attendance_records")
+}
+
+model ClassInstance {
+  id                        String              @id @default(cuid())
+  workspaceId               String
+  classTemplateId           String
+  programId                 String
+  roomId                    String
+  coachWorkspaceUserId      String
+  scheduledForDate          DateTime            @db.Date
+  title                     String?
+  startTimeMinutes          Int
+  endTimeMinutes            Int
+  capacityOverride          Int?
+  bookingCutoffMinutes      Int
+  cancellationCutoffMinutes Int
+  status                    ClassInstanceStatus @default(ACTIVE)
+  cancellationReason        String?
+  rescheduledFromDate       DateTime?           @db.Date
+  source                    BillingSource       @default(CURRENT)
+  workspace                 Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  classTemplate             ClassTemplate       @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
+  program                   Program             @relation(fields: [programId], references: [id])
+  room                      Room                @relation(fields: [roomId], references: [id])
+  coachWorkspaceUser        WorkspaceUser       @relation(fields: [coachWorkspaceUserId], references: [id])
+  classBookings             ClassBooking[]
+  waitlistEntries           WaitlistEntry[]
+  attendanceRecords         AttendanceRecord[]
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  @@unique([workspaceId, classTemplateId, scheduledForDate], map: "class_instances_template_date_key")
+  @@index([workspaceId, scheduledForDate, status])
+  @@index([workspaceId, coachWorkspaceUserId, scheduledForDate])
+  @@index([workspaceId, programId])
+  @@index([workspaceId, roomId])
+  @@map("class_instances")
 }
 
 model MembershipPlan {
@@ -522,23 +789,23 @@ model MembershipPlanProgramRestriction {
 }
 
 model PunchCardProduct {
-  id                  String                   @id @default(cuid())
+  id                  String                               @id @default(cuid())
   workspaceId         String
   name                String
   description         String?
   punchesIncluded     Int
   priceCents          Int
-  currency            String                   @default("usd")
-  isEnabled           Boolean                  @default(true)
+  currency            String                               @default("usd")
+  isEnabled           Boolean                              @default(true)
   archivedAt          DateTime?
-  restrictionMode     AccessRestrictionMode    @default(GENERAL)
+  restrictionMode     AccessRestrictionMode                @default(GENERAL)
   stripeProductId     String?
   stripePriceId       String?
-  workspace           Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace           Workspace                            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   programRestrictions PunchCardProductProgramRestriction[]
   memberPunchCards    MemberPunchCard[]
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
+  createdAt           DateTime                             @default(now())
+  updatedAt           DateTime                             @updatedAt
 
   @@unique([workspaceId, name])
   @@index([workspaceId, archivedAt])
@@ -564,23 +831,23 @@ model PunchCardProductProgramRestriction {
 }
 
 model MemberPunchCard {
-  id                  String                @id @default(cuid())
-  workspaceId         String
-  memberId            String
-  punchCardProductId  String
-  originalPunches     Int
-  remainingPunches    Int
-  status              MemberPunchCardStatus @default(ACTIVE)
-  purchasePriceCents  Int
-  purchaseCurrency    String                @default("usd")
-  purchasedAt         DateTime              @default(now())
+  id                      String                @id @default(cuid())
+  workspaceId             String
+  memberId                String
+  punchCardProductId      String
+  originalPunches         Int
+  remainingPunches        Int
+  status                  MemberPunchCardStatus @default(ACTIVE)
+  purchasePriceCents      Int
+  purchaseCurrency        String                @default("usd")
+  purchasedAt             DateTime              @default(now())
   stripeCheckoutSessionId String?
-  workspace           Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  member              Member                @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  punchCardProduct    PunchCardProduct      @relation(fields: [punchCardProductId], references: [id], onDelete: Restrict)
-  classBookings       ClassBooking[]
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
+  workspace               Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member                  Member                @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  punchCardProduct        PunchCardProduct      @relation(fields: [punchCardProductId], references: [id], onDelete: Restrict)
+  classBookings           ClassBooking[]
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
 
   @@index([workspaceId, memberId, status, purchasedAt])
   @@index([workspaceId, punchCardProductId])
@@ -589,22 +856,22 @@ model MemberPunchCard {
 }
 
 model DropInProduct {
-  id                  String                    @id @default(cuid())
+  id                  String                            @id @default(cuid())
   workspaceId         String
   name                String
   description         String?
   priceCents          Int
-  currency            String                    @default("usd")
-  isEnabled           Boolean                   @default(true)
+  currency            String                            @default("usd")
+  isEnabled           Boolean                           @default(true)
   archivedAt          DateTime?
-  restrictionMode     AccessRestrictionMode     @default(GENERAL)
+  restrictionMode     AccessRestrictionMode             @default(GENERAL)
   stripeProductId     String?
   stripePriceId       String?
-  workspace           Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace           Workspace                         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   programRestrictions DropInProductProgramRestriction[]
   classBookings       ClassBooking[]
-  createdAt           DateTime                  @default(now())
-  updatedAt           DateTime                  @updatedAt
+  createdAt           DateTime                          @default(now())
+  updatedAt           DateTime                          @updatedAt
 
   @@unique([workspaceId, name])
   @@index([workspaceId, archivedAt])
@@ -613,15 +880,15 @@ model DropInProduct {
 }
 
 model DropInProductProgramRestriction {
-  id            String        @id @default(cuid())
-  workspaceId   String
+  id              String        @id @default(cuid())
+  workspaceId     String
   dropInProductId String
-  programId     String
-  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  dropInProduct DropInProduct @relation(fields: [dropInProductId], references: [id], onDelete: Cascade)
-  program       Program       @relation(fields: [programId], references: [id], onDelete: Cascade)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  programId       String
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dropInProduct   DropInProduct @relation(fields: [dropInProductId], references: [id], onDelete: Cascade)
+  program         Program       @relation(fields: [programId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@unique([dropInProductId, programId], map: "drop_in_product_program_restrictions_product_program_key")
   @@index([workspaceId, dropInProductId])
@@ -630,24 +897,27 @@ model DropInProductProgramRestriction {
 }
 
 model WaitlistEntry {
-  id               String              @id @default(cuid())
-  workspaceId      String
-  memberId         String
-  classTemplateId  String
-  scheduledForDate DateTime            @db.Date
-  status           WaitlistEntryStatus @default(ACTIVE)
-  joinedAt         DateTime            @default(now())
-  promotedAt       DateTime?
+  id                String              @id @default(cuid())
+  workspaceId       String
+  memberId          String
+  classTemplateId   String
+  classInstanceId   String?
+  scheduledForDate  DateTime            @db.Date
+  status            WaitlistEntryStatus @default(ACTIVE)
+  joinedAt          DateTime            @default(now())
+  promotedAt        DateTime?
   promotedBookingId String?
-  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  member           Member              @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  classTemplate    ClassTemplate       @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
-  promotedBooking  ClassBooking?       @relation(fields: [promotedBookingId], references: [id], onDelete: SetNull)
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  workspace         Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member            Member              @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  classTemplate     ClassTemplate       @relation(fields: [classTemplateId], references: [id], onDelete: Restrict)
+  classInstance     ClassInstance?      @relation(fields: [classInstanceId], references: [id], onDelete: SetNull)
+  promotedBooking   ClassBooking?       @relation(fields: [promotedBookingId], references: [id], onDelete: SetNull)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 
   @@unique([workspaceId, memberId, classTemplateId, scheduledForDate], map: "waitlist_entries_member_template_date_key")
   @@index([workspaceId, classTemplateId, scheduledForDate, status, joinedAt])
+  @@index([workspaceId, classInstanceId, status, joinedAt])
   @@index([workspaceId, memberId, status])
   @@index([workspaceId, promotedBookingId])
   @@map("waitlist_entries")
@@ -699,15 +969,15 @@ model FormVersion {
 }
 
 model RequiredFormAssignment {
-  id               String            @id @default(cuid())
-  workspaceId      String
-  formDocumentId   String
+  id                String            @id @default(cuid())
+  workspaceId       String
+  formDocumentId    String
   requirementTarget RequirementTarget
-  isActive         Boolean           @default(true)
-  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  formDocument     FormDocument      @relation(fields: [formDocumentId], references: [id], onDelete: Cascade)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  isActive          Boolean           @default(true)
+  workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  formDocument      FormDocument      @relation(fields: [formDocumentId], references: [id], onDelete: Cascade)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   @@unique([workspaceId, formDocumentId, requirementTarget], map: "required_form_assignments_workspace_document_target_key")
   @@index([workspaceId, requirementTarget, isActive])
@@ -744,13 +1014,13 @@ model SignatureRequest {
 }
 
 model SignedDocument {
-  id                  String         @id @default(cuid())
+  id                  String            @id @default(cuid())
   workspaceId         String
   formVersionId       String
   memberId            String
   guardianId          String?
   signerKind          FormSignerKind
-  signedFromRequestId String?        @unique
+  signedFromRequestId String?           @unique
   signerNameSnapshot  String
   signerEmailSnapshot String?
   signatureMethod     String
@@ -758,13 +1028,13 @@ model SignedDocument {
   ipAddress           String?
   userAgent           String?
   signedAt            DateTime
-  workspace           Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  formVersion         FormVersion    @relation(fields: [formVersionId], references: [id], onDelete: Cascade)
-  member              Member         @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  guardian            Guardian?      @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  workspace           Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  formVersion         FormVersion       @relation(fields: [formVersionId], references: [id], onDelete: Cascade)
+  member              Member            @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  guardian            Guardian?         @relation(fields: [guardianId], references: [id], onDelete: Cascade)
   signedFromRequest   SignatureRequest? @relation("SignatureRequestSignedDocument", fields: [signedFromRequestId], references: [id], onDelete: SetNull)
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
   @@unique([workspaceId, formVersionId, memberId, signerKind], map: "signed_documents_workspace_version_member_signer_key")
   @@index([workspaceId, memberId, signedAt])
@@ -793,6 +1063,9 @@ model MemberMembership {
   membershipPlan        MembershipPlan          @relation(fields: [membershipPlanId], references: [id], onDelete: Restrict)
   billingState          MembershipBillingState?
   billingRecords        BillingRecord[]
+  invoices              Invoice[]
+  payments              Payment[]
+  failedPaymentCases    FailedPaymentCase[]
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
 
@@ -882,6 +1155,217 @@ model BillingRecord {
   @@map("billing_records")
 }
 
+model Invoice {
+  id                 String            @id @default(cuid())
+  workspaceId        String
+  memberId           String?
+  memberMembershipId String?
+  source             BillingSource     @default(CURRENT)
+  status             InvoiceStatus     @default(OPEN)
+  invoiceNumber      String?
+  subtotalCents      Int
+  taxCents           Int               @default(0)
+  totalCents         Int
+  amountPaidCents    Int               @default(0)
+  amountDueCents     Int               @default(0)
+  currency           String            @default("usd")
+  issuedAt           DateTime?
+  dueAt              DateTime?
+  paidAt             DateTime?
+  voidedAt           DateTime?
+  importedExternalId String?
+  stripeInvoiceId    String?
+  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member             Member?           @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  memberMembership   MemberMembership? @relation(fields: [memberMembershipId], references: [id], onDelete: SetNull)
+  lineItems          InvoiceLineItem[]
+  payments           Payment[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@unique([workspaceId, importedExternalId], map: "invoices_workspace_imported_external_key")
+  @@index([workspaceId, memberId, issuedAt])
+  @@index([workspaceId, status, issuedAt])
+  @@index([workspaceId, stripeInvoiceId])
+  @@map("invoices")
+}
+
+model InvoiceLineItem {
+  id                 String    @id @default(cuid())
+  workspaceId        String
+  invoiceId          String
+  description        String
+  quantity           Int       @default(1)
+  unitAmountCents    Int
+  amountCents        Int
+  currency           String    @default("usd")
+  periodStart        DateTime?
+  periodEnd          DateTime?
+  importedExternalId String?
+  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invoice            Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([workspaceId, invoiceId])
+  @@map("invoice_line_items")
+}
+
+model Payment {
+  id                       String                  @id @default(cuid())
+  workspaceId              String
+  memberId                 String?
+  memberMembershipId       String?
+  invoiceId                String?
+  paymentMethodReferenceId String?
+  source                   BillingSource           @default(CURRENT)
+  status                   PaymentStatus           @default(PENDING)
+  amountCents              Int
+  refundedAmountCents      Int                     @default(0)
+  currency                 String                  @default("usd")
+  paidAt                   DateTime?
+  failedAt                 DateTime?
+  failureCode              String?
+  failureMessage           String?
+  importedExternalId       String?
+  stripePaymentIntentId    String?
+  workspace                Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member                   Member?                 @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  memberMembership         MemberMembership?       @relation(fields: [memberMembershipId], references: [id], onDelete: SetNull)
+  invoice                  Invoice?                @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  paymentMethodReference   PaymentMethodReference? @relation(fields: [paymentMethodReferenceId], references: [id], onDelete: SetNull)
+  refunds                  Refund[]
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+
+  @@unique([workspaceId, importedExternalId], map: "payments_workspace_imported_external_key")
+  @@index([workspaceId, memberId, paidAt])
+  @@index([workspaceId, status, paidAt])
+  @@index([workspaceId, stripePaymentIntentId])
+  @@map("payments")
+}
+
+model Refund {
+  id                 String        @id @default(cuid())
+  workspaceId        String
+  memberId           String?
+  paymentId          String?
+  source             BillingSource @default(CURRENT)
+  status             RefundStatus  @default(PENDING)
+  amountCents        Int
+  currency           String        @default("usd")
+  reason             String?
+  refundedAt         DateTime?
+  importedExternalId String?
+  stripeRefundId     String?
+  workspace          Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member             Member?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  payment            Payment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@unique([workspaceId, importedExternalId], map: "refunds_workspace_imported_external_key")
+  @@index([workspaceId, memberId, refundedAt])
+  @@index([workspaceId, status, refundedAt])
+  @@map("refunds")
+}
+
+model AccountCredit {
+  id                   String              @id @default(cuid())
+  workspaceId          String
+  memberId             String
+  status               AccountCreditStatus @default(ACTIVE)
+  originalAmountCents  Int
+  remainingAmountCents Int
+  currency             String              @default("usd")
+  reason               String?
+  expiresAt            DateTime?
+  importedExternalId   String?
+  workspace            Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member               Member              @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@unique([workspaceId, importedExternalId], map: "account_credits_workspace_imported_external_key")
+  @@index([workspaceId, memberId, status])
+  @@map("account_credits")
+}
+
+model CreditRule {
+  id          String          @id @default(cuid())
+  workspaceId String
+  name        String
+  scope       CreditRuleScope @default(ANY)
+  isActive    Boolean         @default(true)
+  notes       String?
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, isActive])
+  @@map("credit_rules")
+}
+
+model BillingPolicy {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  policyType  String
+  body        String
+  isActive    Boolean   @default(true)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, policyType, name])
+  @@index([workspaceId, policyType, isActive])
+  @@map("billing_policies")
+}
+
+model PaymentMethodReference {
+  id                      String    @id @default(cuid())
+  workspaceId             String
+  memberId                String?
+  provider                String
+  providerPaymentMethodId String
+  brand                   String?
+  last4                   String?
+  expMonth                Int?
+  expYear                 Int?
+  isDefault               Boolean   @default(false)
+  workspace               Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  payments                Payment[]
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@unique([workspaceId, providerPaymentMethodId])
+  @@index([workspaceId, memberId, isDefault])
+  @@map("payment_method_references")
+}
+
+model FailedPaymentCase {
+  id                 String                  @id @default(cuid())
+  workspaceId        String
+  memberId           String?
+  memberMembershipId String?
+  latestPaymentId    String?
+  status             FailedPaymentCaseStatus @default(OPEN)
+  openedAt           DateTime                @default(now())
+  resolvedAt         DateTime?
+  failureCode        String?
+  failureMessage     String?
+  workspace          Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member             Member?                 @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  memberMembership   MemberMembership?       @relation(fields: [memberMembershipId], references: [id], onDelete: SetNull)
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  @@index([workspaceId, status, openedAt])
+  @@index([workspaceId, memberId, status])
+  @@map("failed_payment_cases")
+}
+
 model StripeWebhookEvent {
   id              String                        @id @default(cuid())
   workspaceId     String?
@@ -902,6 +1386,399 @@ model StripeWebhookEvent {
   @@index([stripeAccountId])
   @@index([workspaceId])
   @@map("stripe_webhook_events")
+}
+
+model ImportJob {
+  id                    String                 @id @default(cuid())
+  workspaceId           String
+  sourceType            ImportSourceType       @default(CSV)
+  status                ImportJobStatus        @default(DRAFT)
+  name                  String
+  startedAt             DateTime?
+  completedAt           DateTime?
+  failedAt              DateTime?
+  failureMessage        String?
+  workspace             Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourceFiles           ImportSourceFile[]
+  fieldMappings         ImportFieldMapping[]
+  stagingRecords        StagingRecord[]
+  validationIssues      ValidationIssue[]
+  reconciliationReports ReconciliationReport[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@index([workspaceId, status, createdAt])
+  @@map("import_jobs")
+}
+
+model ImportSourceFile {
+  id             String          @id @default(cuid())
+  workspaceId    String
+  importJobId    String
+  fileName       String
+  mimeType       String?
+  fileSizeBytes  Int
+  fileSha256     String
+  storageKey     String?
+  rawContent     String?
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  importJob      ImportJob       @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  stagingRecords StagingRecord[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([workspaceId, importJobId])
+  @@map("import_source_files")
+}
+
+model ImportFieldMapping {
+  id            String           @id @default(cuid())
+  workspaceId   String
+  importJobId   String
+  recordKind    ImportRecordKind
+  sourceField   String
+  targetField   String
+  transformRule String?
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  importJob     ImportJob        @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@unique([importJobId, recordKind, sourceField], map: "import_field_mappings_job_kind_source_key")
+  @@index([workspaceId, importJobId])
+  @@map("import_field_mappings")
+}
+
+model StagingRecord {
+  id                 String            @id @default(cuid())
+  workspaceId        String
+  importJobId        String
+  importSourceFileId String?
+  recordKind         ImportRecordKind
+  sourceRowNumber    Int?
+  externalId         String?
+  rawData            Json
+  mappedData         Json?
+  isReadyForImport   Boolean           @default(false)
+  importedAt         DateTime?
+  importedModel      String?
+  importedRecordId   String?
+  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  importJob          ImportJob         @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  importSourceFile   ImportSourceFile? @relation(fields: [importSourceFileId], references: [id], onDelete: SetNull)
+  validationIssues   ValidationIssue[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([workspaceId, importJobId, recordKind])
+  @@index([workspaceId, importedModel, importedRecordId])
+  @@map("staging_records")
+}
+
+model ValidationIssue {
+  id              String             @id @default(cuid())
+  workspaceId     String
+  importJobId     String
+  stagingRecordId String?
+  severity        ValidationSeverity
+  code            String
+  message         String
+  fieldName       String?
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  importJob       ImportJob          @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  stagingRecord   StagingRecord?     @relation(fields: [stagingRecordId], references: [id], onDelete: Cascade)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([workspaceId, importJobId, severity])
+  @@index([workspaceId, stagingRecordId])
+  @@map("validation_issues")
+}
+
+model ReconciliationReport {
+  id          String    @id @default(cuid())
+  workspaceId String
+  importJobId String
+  summary     Json
+  generatedAt DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  importJob   ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId, importJobId, generatedAt])
+  @@map("reconciliation_reports")
+}
+
+model ProgressModuleSetting {
+  id          String               @id @default(cuid())
+  workspaceId String               @unique
+  status      ProgressModuleStatus @default(DISABLED)
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@map("progress_module_settings")
+}
+
+model BeltDefinition {
+  id               String                @id @default(cuid())
+  workspaceId      String
+  name             String
+  rankOrder        Int
+  isActive         Boolean               @default(true)
+  workspace        Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  progressStates   MemberProgressState[]
+  promotionRecords PromotionRecord[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@unique([workspaceId, name])
+  @@unique([workspaceId, rankOrder])
+  @@index([workspaceId, isActive, rankOrder])
+  @@map("belt_definitions")
+}
+
+model MemberProgressState {
+  id                      String          @id @default(cuid())
+  workspaceId             String
+  memberId                String          @unique
+  currentBeltDefinitionId String?
+  currentStripeCount      Int             @default(0)
+  lastPromotedAt          DateTime?
+  workspace               Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member                  Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  currentBeltDefinition   BeltDefinition? @relation(fields: [currentBeltDefinitionId], references: [id], onDelete: SetNull)
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  @@index([workspaceId, currentBeltDefinitionId])
+  @@map("member_progress_states")
+}
+
+model PromotionRecord {
+  id               String          @id @default(cuid())
+  workspaceId      String
+  memberId         String
+  beltDefinitionId String?
+  stripeCount      Int             @default(0)
+  promotedAt       DateTime
+  notes            String?
+  source           BillingSource   @default(CURRENT)
+  workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member           Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  beltDefinition   BeltDefinition? @relation(fields: [beltDefinitionId], references: [id], onDelete: SetNull)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([workspaceId, memberId, promotedAt])
+  @@map("promotion_records")
+}
+
+model ConversationThread {
+  id           String                    @id @default(cuid())
+  workspaceId  String
+  subject      String?
+  status       ConversationThreadStatus  @default(OPEN)
+  workspace    Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  participants ConversationParticipant[]
+  messages     Message[]
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  @@index([workspaceId, status, updatedAt])
+  @@map("conversation_threads")
+}
+
+model ConversationParticipant {
+  id                   String                      @id @default(cuid())
+  workspaceId          String
+  conversationThreadId String
+  kind                 ConversationParticipantKind
+  workspaceUserId      String?
+  memberId             String?
+  guardianId           String?
+  lastReadAt           DateTime?
+  workspace            Workspace                   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversationThread   ConversationThread          @relation(fields: [conversationThreadId], references: [id], onDelete: Cascade)
+  member               Member?                     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  guardian             Guardian?                   @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+
+  @@index([workspaceId, conversationThreadId])
+  @@index([workspaceId, memberId])
+  @@index([workspaceId, guardianId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id                    String             @id @default(cuid())
+  workspaceId           String
+  conversationThreadId  String
+  senderKind            MessageSenderKind
+  senderWorkspaceUserId String?
+  senderMemberId        String?
+  senderGuardianId      String?
+  body                  String
+  status                MessageStatus      @default(SENT)
+  sentAt                DateTime           @default(now())
+  workspace             Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversationThread    ConversationThread @relation(fields: [conversationThreadId], references: [id], onDelete: Cascade)
+  senderMember          Member?            @relation(fields: [senderMemberId], references: [id], onDelete: SetNull)
+  senderGuardian        Guardian?          @relation(fields: [senderGuardianId], references: [id], onDelete: SetNull)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@index([workspaceId, conversationThreadId, sentAt])
+  @@index([workspaceId, senderMemberId])
+  @@map("messages")
+}
+
+model Announcement {
+  id                       String             @id @default(cuid())
+  workspaceId              String
+  createdByWorkspaceUserId String?
+  title                    String
+  body                     String
+  status                   AnnouncementStatus @default(DRAFT)
+  sendEmail                Boolean            @default(false)
+  queuedAt                 DateTime?
+  sentAt                   DateTime?
+  workspace                Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  notificationJobs         NotificationJob[]
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+
+  @@index([workspaceId, status, createdAt])
+  @@map("announcements")
+}
+
+model NotificationJob {
+  id                String                @id @default(cuid())
+  workspaceId       String
+  announcementId    String?
+  templateKind      EmailTemplateKind
+  recipientEmail    String                @db.Citext
+  recipientName     String?
+  subject           String
+  body              String
+  status            NotificationJobStatus @default(PENDING)
+  attempts          Int                   @default(0)
+  nextAttemptAt     DateTime?
+  sentAt            DateTime?
+  lastError         String?
+  providerMessageId String?
+  workspace         Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  announcement      Announcement?         @relation(fields: [announcementId], references: [id], onDelete: SetNull)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([workspaceId, status, nextAttemptAt])
+  @@index([workspaceId, recipientEmail, createdAt])
+  @@map("notification_jobs")
+}
+
+model EmailTemplate {
+  id          String            @id @default(cuid())
+  workspaceId String
+  kind        EmailTemplateKind
+  subject     String
+  body        String
+  isActive    Boolean           @default(true)
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([workspaceId, kind])
+  @@index([workspaceId, isActive])
+  @@map("email_templates")
+}
+
+model Event {
+  id                   String         @id @default(cuid())
+  workspaceId          String
+  coachWorkspaceUserId String?
+  title                String
+  description          String?
+  startsAt             DateTime
+  endsAt               DateTime
+  capacity             Int?
+  priceCents           Int?
+  currency             String         @default("usd")
+  status               EventStatus    @default(DRAFT)
+  workspace            Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  coachWorkspaceUser   WorkspaceUser? @relation(fields: [coachWorkspaceUserId], references: [id], onDelete: SetNull)
+  bookings             EventBooking[]
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@index([workspaceId, status, startsAt])
+  @@index([workspaceId, coachWorkspaceUserId, startsAt])
+  @@map("events")
+}
+
+model EventBooking {
+  id                      String             @id @default(cuid())
+  workspaceId             String
+  eventId                 String
+  memberId                String
+  status                  EventBookingStatus @default(BOOKED)
+  priceCents              Int?
+  currency                String?
+  stripeCheckoutSessionId String?
+  stripePaymentIntentId   String?
+  paidAt                  DateTime?
+  workspace               Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  event                   Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  member                  Member             @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  @@unique([workspaceId, eventId, memberId], map: "event_bookings_event_member_key")
+  @@index([workspaceId, memberId, status])
+  @@map("event_bookings")
+}
+
+model PrivateLessonSlot {
+  id                   String                  @id @default(cuid())
+  workspaceId          String
+  coachWorkspaceUserId String
+  startsAt             DateTime
+  endsAt               DateTime
+  priceCents           Int?
+  currency             String                  @default("usd")
+  status               PrivateLessonSlotStatus @default(OPEN)
+  workspace            Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  coachWorkspaceUser   WorkspaceUser           @relation(fields: [coachWorkspaceUserId], references: [id], onDelete: Restrict)
+  booking              PrivateLessonBooking?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  @@index([workspaceId, status, startsAt])
+  @@index([workspaceId, coachWorkspaceUserId, startsAt])
+  @@map("private_lesson_slots")
+}
+
+model PrivateLessonBooking {
+  id                      String                     @id @default(cuid())
+  workspaceId             String
+  privateLessonSlotId     String                     @unique
+  memberId                String
+  status                  PrivateLessonBookingStatus @default(BOOKED)
+  priceCents              Int?
+  currency                String?
+  stripeCheckoutSessionId String?
+  stripePaymentIntentId   String?
+  paidAt                  DateTime?
+  workspace               Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  privateLessonSlot       PrivateLessonSlot          @relation(fields: [privateLessonSlotId], references: [id], onDelete: Cascade)
+  member                  Member                     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
+
+  @@index([workspaceId, memberId, status])
+  @@map("private_lesson_bookings")
 }
 
 model AuthSession {
