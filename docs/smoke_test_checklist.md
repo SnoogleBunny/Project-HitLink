@@ -7,7 +7,9 @@ Use it for:
 - pre-demo validation
 - end-to-end sanity checks before major refactors
 
-This checklist now covers both the original core admin flows and the newer member portal, access-product, waitlist, and forms/compliance flows.
+This checklist tracks only observable, testable behavior. Product and design questions live in `docs/open-product-questions.md`.
+
+This checklist covers both the original core admin flows and the newer member portal, access-product, waitlist, and forms/compliance flows.
 
 ---
 
@@ -82,7 +84,7 @@ This checklist now covers both the original core admin flows and the newer membe
 - [ ] Confirm template appears on weekly schedule board on correct weekday
 - [ ] Edit class template
 - [ ] Archive class template
-- [ ] Confirm archived template disappears from active board and appears in archived section if implemented
+- [ ] Confirm archived template disappears from active board and appears in the archived templates section
 
 ### Validation
 - [ ] Reject end time earlier than or equal to start time
@@ -157,8 +159,7 @@ This checklist now covers both the original core admin flows and the newer membe
 
 ### Duplicate handling
 - [ ] Attempt duplicate booking for same member/template/date and confirm it is blocked
-- [ ] Cancel booking if supported in current flow
-- [ ] Recreate same occurrence and confirm cancelled row is restored instead of creating a new row
+- [ ] Recreate a previously cancelled booking for the same member/template/date and confirm the cancelled row is restored instead of creating a new row
 
 ### Date validation
 - [ ] Reject invalid weekday/date mismatch
@@ -221,7 +222,7 @@ This checklist now covers both the original core admin flows and the newer membe
 ### Plan creation
 - [ ] Create recurring monthly plan
 - [ ] Create plan with optional description
-- [ ] Create plan with restrictions if implemented
+- [ ] Create plan with program restrictions
 - [ ] Verify archived plans disappear from active selection lists
 
 ### Validation
@@ -281,8 +282,8 @@ This checklist now covers both the original core admin flows and the newer membe
 ### Failed payment queue
 - [ ] Create or simulate failed payment webhook/event
 - [ ] Verify row appears in failed payment queue
+- [ ] Verify failed payment queue row shows member, plan, invoice, and failure details
 - [ ] Verify member billing page shows failure
-- [ ] Verify optional member profile badge appears if implemented
 
 ### Retry now
 - [ ] Trigger retry when open invoice exists
@@ -306,7 +307,7 @@ This checklist now covers both the original core admin flows and the newer membe
 - [ ] `invoice.payment_failed` updates billing state correctly
 - [ ] `customer.subscription.deleted` updates membership/billing state correctly
 - [ ] Failed webhook processing marks error state
-- [ ] Retry processing works for stale/error cases if implemented
+- [ ] Re-deliver a stale or previously errored webhook event and verify processing resumes
 
 ### Persistence
 - [ ] Verify `StripeWebhookEvent` row is created
@@ -317,7 +318,7 @@ This checklist now covers both the original core admin flows and the newer membe
 ## 16. Member portal
 
 ### Login and isolation
-- [ ] Log in as a member/customer
+- [ ] Log in as a member portal user
 - [ ] Confirm member lands in the member portal successfully
 - [ ] Confirm unauthenticated member routes redirect correctly
 - [ ] Confirm member-only access is isolated to the linked member account
@@ -341,8 +342,9 @@ This checklist now covers both the original core admin flows and the newer membe
 ### Browsing and booking
 - [ ] Member browses eligible upcoming occurrences
 - [ ] Member self-books own occurrence
+- [ ] Member self-cancels own upcoming booking when cancellation is still allowed
 - [ ] Duplicate active booking is blocked
-- [ ] Confirm cancelled booking restore behavior works if that is the current canonical flow
+- [ ] Rebook the same occurrence and confirm the cancelled row is restored instead of creating a new row
 
 ### Access and cutoff rules
 - [ ] Booking cutoff is enforced
@@ -357,7 +359,7 @@ This checklist now covers both the original core admin flows and the newer membe
 ### Product and balances
 - [ ] Owner creates punch-card product
 - [ ] Owner grants punch card
-- [ ] Member purchases punch card if enabled
+- [ ] Member purchases punch card from the member portal
 - [ ] Member sees own punch-card balances only
 - [ ] Punch cards do not expire
 - [ ] Punch cards are non-shareable
@@ -392,7 +394,7 @@ This checklist now covers both the original core admin flows and the newer membe
 - [ ] Waitlist join is blocked if already booked
 - [ ] Waitlist join is blocked if already actively waitlisted
 - [ ] Leave waitlist sets cancelled state
-- [ ] Rejoin restores the same waitlist row if that is the current canonical behavior
+- [ ] Rejoin the same occurrence and confirm the cancelled waitlist row is restored instead of creating a new row
 
 ### Roster and promotion
 - [ ] Roster shows waitlist entries
