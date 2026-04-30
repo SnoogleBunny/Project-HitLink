@@ -3,7 +3,10 @@ import {
   formatMinutesAsTime,
   getWeekdayForDateString,
   getWorkspaceDateString,
+  listOccurrenceWaitlist,
+  promoteNextWaitlistEntry,
   prisma,
+  removeWaitlistEntry,
   validateOccurrenceDate,
   WEEKDAY_LABELS,
   type AttendanceState,
@@ -98,8 +101,22 @@ interface RosterAttendanceRecord {
 }
 
 interface RosterDatabase {
+  $transaction<T>(
+    callback: (tx: RosterDatabase) => Promise<T>,
+  ): Promise<T>;
   member: {
     findFirst(args: Record<string, unknown>): Promise<{ id: string } | null>;
+  };
+  memberMembership: {
+    findFirst(args: Record<string, unknown>): Promise<unknown>;
+  };
+  memberPunchCard: {
+    findMany(args: Record<string, unknown>): Promise<unknown[]>;
+    findFirst(args: Record<string, unknown>): Promise<unknown>;
+    updateMany(args: Record<string, unknown>): Promise<{ count: number }>;
+  };
+  dropInProduct: {
+    findMany(args: Record<string, unknown>): Promise<unknown[]>;
   };
   classTemplate: {
     findMany(args: Record<string, unknown>): Promise<RosterTemplateRecord[]>;
@@ -107,6 +124,17 @@ interface RosterDatabase {
   };
   classBooking: {
     findMany(args: Record<string, unknown>): Promise<RosterBookingRecord[]>;
+    findFirst(args: Record<string, unknown>): Promise<unknown>;
+    create(args: Record<string, unknown>): Promise<{ id: string }>;
+    update(args: Record<string, unknown>): Promise<{ id: string }>;
+    updateMany(args: Record<string, unknown>): Promise<{ count: number }>;
+    count(args: Record<string, unknown>): Promise<number>;
+  };
+  waitlistEntry: {
+    findFirst(args: Record<string, unknown>): Promise<unknown>;
+    findMany(args: Record<string, unknown>): Promise<unknown[]>;
+    create(args: Record<string, unknown>): Promise<{ id: string }>;
+    update(args: Record<string, unknown>): Promise<{ id: string }>;
     updateMany(args: Record<string, unknown>): Promise<{ count: number }>;
   };
   attendanceRecord: {
@@ -164,6 +192,16 @@ export interface ClassRoster {
   coachDisplayName: string;
   effectiveCapacity: number | null;
   rows: RosterMemberRow[];
+  waitlist: Array<{
+    id: string;
+    memberId: string;
+    memberName: string;
+    memberStatus: string;
+    email: string | null;
+    phone: string | null;
+    position: number;
+    joinedAt: Date;
+  }>;
 }
 
 type AttendanceMutationResult =
@@ -561,6 +599,12 @@ export async function getClassRoster(args: {
   const attendanceByMemberId = new Map(
     attendanceRecords.map((record) => [record.memberId, record]),
   );
+  const waitlist = await listOccurrenceWaitlist({
+    workspaceId: args.access.workspaceId,
+    classTemplateId: template.id,
+    scheduledForDate: occurrence.dateString,
+    db: db as never,
+  });
   const display = mapTemplateDisplay(template);
 
   return {
@@ -594,6 +638,16 @@ export async function getClassRoster(args: {
         attendanceNote: attendance?.note ?? null,
       };
     }),
+    waitlist: waitlist.entries.map((entry) => ({
+      id: entry.id,
+      memberId: entry.memberId,
+      memberName: entry.memberName,
+      memberStatus: entry.memberStatus,
+      email: entry.memberEmail,
+      phone: entry.memberPhone,
+      position: entry.position,
+      joinedAt: entry.joinedAt,
+    })),
   };
 }
 
@@ -720,5 +774,75 @@ export async function recordAttendance(args: {
   return {
     status: "recorded",
     attendanceRecordId: attendanceRecord.id,
+  };
+}
+
+export async function promoteRosterWaitlist(args: {
+  access: RosterAccessContext;
+  classTemplateId: string;
+  scheduledForDate: string;
+  db?: RosterDatabase;
+  now?: Date;
+}): Promise<
+  | {
+      status: "promoted";
+      bookingId: string;
+      waitlistEntryId: string;
+    }
+  | {
+      status: "error";
+      message: string;
+    }
+> {
+  const db = args.db ?? rosterDatabase;
+  const result = await promoteNextWaitlistEntry({
+    workspaceId: args.access.workspaceId,
+    classTemplateId: args.classTemplateId,
+    scheduledForDate: args.scheduledForDate,
+    timezone: args.access.timezone,
+    source: "ADMIN",
+    db: db as never,
+    now: args.now,
+  });
+
+  if (result.status === "error") {
+    return result;
+  }
+
+  return {
+    status: "promoted",
+    bookingId: result.bookingId,
+    waitlistEntryId: result.waitlistEntryId,
+  };
+}
+
+export async function removeRosterWaitlist(args: {
+  access: RosterAccessContext;
+  waitlistEntryId: string;
+  db?: RosterDatabase;
+}): Promise<
+  | {
+      status: "removed";
+      waitlistEntryId: string;
+    }
+  | {
+      status: "error";
+      message: string;
+    }
+> {
+  const db = args.db ?? rosterDatabase;
+  const result = await removeWaitlistEntry({
+    workspaceId: args.access.workspaceId,
+    waitlistEntryId: args.waitlistEntryId,
+    db: db as never,
+  });
+
+  if (result.status === "error") {
+    return result;
+  }
+
+  return {
+    status: "removed",
+    waitlistEntryId: result.waitlistEntryId,
   };
 }

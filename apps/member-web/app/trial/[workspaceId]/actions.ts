@@ -1,5 +1,6 @@
 "use server";
 
+import { buildMagicLinkPath, issueTrialMagicLinkRequests } from "@hitlink/db";
 import { createTrialBooking } from "../../../lib/trial-booking";
 
 export interface TrialBookingFormState {
@@ -7,6 +8,11 @@ export interface TrialBookingFormState {
   confirmation: {
     classTitle: string;
     scheduledForDate: string;
+    forms: Array<{
+      requestId: string;
+      label: string;
+      href: string;
+    }>;
   } | null;
 }
 
@@ -58,11 +64,23 @@ export async function createTrialBookingAction(
     };
   }
 
+  const issuedLinks = await issueTrialMagicLinkRequests({
+    workspaceId,
+    memberId: result.memberId,
+  });
+
   return {
     error: null,
     confirmation: {
       classTitle: result.classTitle,
       scheduledForDate: result.scheduledForDate,
+      forms: issuedLinks.map((link) => ({
+        requestId: link.requestId,
+        label: link.guardianName
+          ? `${link.formName} for ${link.guardianName}`
+          : link.formName,
+        href: buildMagicLinkPath(link.token),
+      })),
     },
   };
 }

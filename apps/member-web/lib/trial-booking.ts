@@ -503,7 +503,6 @@ async function findOrCreateTrialMember(args: {
       phone: input.phone,
       dateOfBirth: input.dateOfBirth,
       status: "TRIAL",
-      formStatus: "NOT_REQUESTED",
       tags: [],
       notes: null,
     },

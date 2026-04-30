@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { resolveRequiredFormStatusesForMember } from "@hitlink/db";
 import { AdminShell } from "../../../_components/admin-shell";
 import { formatMinutesAsTime } from "../../../../lib/class-templates";
+import {
+  buildActionableFormRequestHref,
+  formatRequiredFormState,
+} from "../../../../lib/forms-status";
+import { formatRequirementTarget } from "../../../../lib/forms";
 import { getMemberProfile } from "../../../../lib/members";
 import { requireOwnerWorkspaceContext } from "../../../../lib/owner-workspace";
 import { GuardianLinkForm } from "../guardian-link-form";
@@ -38,10 +44,16 @@ export default async function MemberProfilePage({
 }) {
   const { memberId } = await params;
   const { session, workspace } = await requireOwnerWorkspaceContext();
-  const member = await getMemberProfile({
-    workspaceId: workspace.id,
-    memberId,
-  });
+  const [member, forms] = await Promise.all([
+    getMemberProfile({
+      workspaceId: workspace.id,
+      memberId,
+    }),
+    resolveRequiredFormStatusesForMember({
+      workspaceId: workspace.id,
+      memberId,
+    }),
+  ]);
 
   if (!member) {
     notFound();
@@ -87,10 +99,6 @@ export default async function MemberProfilePage({
               <dd>{formatDate(member.dateOfBirth)}</dd>
             </div>
             <div>
-              <dt>Waiver/form status</dt>
-              <dd>{formatStatus(member.formStatus)}</dd>
-            </div>
-            <div>
               <dt>Tags</dt>
               <dd>{member.tags.length > 0 ? member.tags.join(", ") : "No tags"}</dd>
             </div>
@@ -114,6 +122,117 @@ export default async function MemberProfilePage({
           <p className="dashboard-card-label">Edit profile</p>
           <h3>Update basics</h3>
           <MemberEditForm member={member} />
+        </section>
+      </div>
+
+      <div className="management-grid">
+        <section className="management-card">
+          <p className="dashboard-card-label">Required forms</p>
+          <h3>
+            {forms.items.length} current requirement
+            {forms.items.length === 1 ? "" : "s"}
+          </h3>
+          {forms.items.length === 0 ? (
+            <p className="empty-state">
+              No active forms apply to this member right now.
+            </p>
+          ) : (
+            <div className="stack-list">
+              {forms.items.map((item) => (
+                <article key={item.assignmentId} className="stack-item">
+                  <div className="stack-item-copy">
+                    <div className="stack-item-heading">
+                      <h4>{item.formName}</h4>
+                      <span
+                        className={`status-pill ${
+                          item.status === "SIGNED" ? "status-pill-success" : ""
+                        }`}
+                      >
+                        {formatRequiredFormState(item.status)}
+                      </span>
+                    </div>
+                    <p>
+                      {formatRequirementTarget(item.requirementTarget)} · Current
+                      version {item.currentVersionNumber}
+                    </p>
+                    <dl className="inline-meta">
+                      <div>
+                        <dt>Signer</dt>
+                        <dd>{formatStatus(item.signerKind)}</dd>
+                      </div>
+                      <div>
+                        <dt>Signed by</dt>
+                        <dd>{item.signedByName ?? "Not signed yet"}</dd>
+                      </div>
+                      <div>
+                        <dt>Signed at</dt>
+                        <dd>{item.signedAt ? formatDateTime(item.signedAt) : "Not signed yet"}</dd>
+                      </div>
+                    </dl>
+
+                    {item.openRequests.length > 0 ? (
+                      <div className="dashboard-actions">
+                        {item.openRequests.map((request) => (
+                          <a
+                            key={request.requestId}
+                            className="button button-secondary"
+                            href={buildActionableFormRequestHref(request)}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            {request.guardianName
+                              ? `Open link for ${request.guardianName}`
+                              : "Open signing link"}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="management-card">
+          <p className="dashboard-card-label">Signed history</p>
+          <h3>
+            {forms.history.length} signed version
+            {forms.history.length === 1 ? "" : "s"}
+          </h3>
+          {forms.history.length === 0 ? (
+            <p className="empty-state">No signed documents recorded yet.</p>
+          ) : (
+            <div className="stack-list">
+              {forms.history.map((item) => (
+                <article key={item.signedDocumentId} className="stack-item">
+                  <div className="stack-item-copy">
+                    <div className="stack-item-heading">
+                      <h4>{item.formName}</h4>
+                      <span className="status-pill status-pill-success">
+                        v{item.versionNumber}
+                      </span>
+                    </div>
+                    <p>
+                      {formatStatus(item.signerKind)}
+                      {item.guardianName ? ` · ${item.guardianName}` : ""} signed on{" "}
+                      {formatDateTime(item.signedAt)}
+                    </p>
+                    <dl className="inline-meta">
+                      <div>
+                        <dt>Signer name</dt>
+                        <dd>{item.signerNameSnapshot}</dd>
+                      </div>
+                      <div>
+                        <dt>Email</dt>
+                        <dd>{item.signerEmailSnapshot ?? "Not captured"}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       </div>
 

@@ -15,9 +15,13 @@ export default async function BookingsPage() {
     <MemberShell
       context={context}
       title="Your bookings"
-      description="See upcoming classes, recent booking changes, and cancel eligible upcoming bookings."
+      description="See upcoming classes, payment-pending drop-ins, waitlist entries, and recent booking changes."
     >
-      <BookingsList history={bookings.history} upcoming={bookings.upcoming} />
+      <BookingsList
+        history={bookings.history}
+        upcoming={bookings.upcoming}
+        waitlist={bookings.waitlist}
+      />
     </MemberShell>
   );
 }

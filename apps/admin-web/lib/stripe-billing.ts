@@ -1,4 +1,7 @@
 import {
+  expireDropInBookingPayment,
+  finalizeDropInBookingPayment,
+  finalizePunchCardCheckoutPurchase,
   prisma,
   type BillingRecordStatus,
   type BillingRecordType,
@@ -1056,6 +1059,117 @@ async function handleInvoiceEvent(args: {
   });
 }
 
+function parsePositiveMetadataInteger(value: string | undefined): number | null {
+  if (!value || !/^\d+$/.test(value)) {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function handleCheckoutSessionEvent(args: {
+  event: StripeWebhookEventWithAccount;
+  db: StripeWebhookDatabase;
+  settings: WorkspaceStripeSettingsRecord | null;
+}): Promise<void> {
+  if (!args.settings) {
+    return;
+  }
+
+  const session = args.event.data.object as Stripe.Checkout.Session;
+  const metadata = session.metadata ?? {};
+
+  if (metadata.workspaceId !== args.settings.workspaceId) {
+    return;
+  }
+
+  if (
+    metadata.checkoutType === "drop_in_booking" &&
+    metadata.bookingId &&
+    metadata.memberId
+  ) {
+    if (args.event.type === "checkout.session.expired") {
+      await expireDropInBookingPayment({
+        workspaceId: args.settings.workspaceId,
+        bookingId: metadata.bookingId,
+        checkoutSessionId: session.id,
+      });
+
+      return;
+    }
+
+    const result = await finalizeDropInBookingPayment({
+      workspaceId: args.settings.workspaceId,
+      bookingId: metadata.bookingId,
+      checkoutSessionId: session.id,
+      paymentIntentId: getStringId(session.payment_intent),
+      expiresAt: timestampToDate(session.expires_at),
+    });
+
+    if (result !== "booked" && result !== "already_booked") {
+      return;
+    }
+
+    await createBillingRecord({
+      db: args.db,
+      workspaceId: args.settings.workspaceId,
+      memberId: metadata.memberId,
+      type: "DROP_IN_PURCHASED",
+      status: "SUCCEEDED",
+      amountCents: session.amount_total ?? null,
+      currency: session.currency ?? null,
+      stripeEventId: args.event.id,
+      stripePaymentIntentId: getStringId(session.payment_intent),
+    });
+
+    return;
+  }
+
+  if (
+    metadata.checkoutType === "punch_card_purchase" &&
+    metadata.memberId &&
+    metadata.punchCardProductId &&
+    args.event.type === "checkout.session.completed"
+  ) {
+    const originalPunches = parsePositiveMetadataInteger(metadata.punchesIncluded);
+    const priceCents = parsePositiveMetadataInteger(metadata.priceCents);
+    const currency = metadata.currency?.trim().toLowerCase();
+
+    if (!originalPunches || !priceCents || !currency) {
+      return;
+    }
+
+    const result = await finalizePunchCardCheckoutPurchase({
+      workspaceId: args.settings.workspaceId,
+      memberId: metadata.memberId,
+      punchCardProductId: metadata.punchCardProductId,
+      originalPunches,
+      priceCents,
+      currency,
+      checkoutSessionId: session.id,
+      now: timestampToDate(session.created) ?? new Date(),
+    });
+
+    if (result.status !== "created") {
+      return;
+    }
+
+    await createBillingRecord({
+      db: args.db,
+      workspaceId: args.settings.workspaceId,
+      memberId: metadata.memberId,
+      type: "PUNCH_CARD_PURCHASED",
+      status: "SUCCEEDED",
+      amountCents: priceCents,
+      currency,
+      stripeEventId: args.event.id,
+      stripePaymentIntentId: getStringId(session.payment_intent),
+    });
+  }
+}
+
 async function processClaimedStripeWebhookEvent(args: {
   event: StripeWebhookEventWithAccount;
   db: StripeWebhookDatabase;
@@ -1076,6 +1190,10 @@ async function processClaimedStripeWebhookEvent(args: {
     case "invoice.payment_action_required":
     case "invoice.finalization_failed":
       await handleInvoiceEvent(args);
+      return;
+    case "checkout.session.completed":
+    case "checkout.session.expired":
+      await handleCheckoutSessionEvent(args);
       return;
     case "invoice.updated":
       return;

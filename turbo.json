@@ -4,7 +4,8 @@
     "NODE_ENV",
     "NEXT_PUBLIC_APP_URL",
     "STRIPE_SECRET_KEY",
-    "STRIPE_WEBHOOK_SECRET"
+    "STRIPE_WEBHOOK_SECRET",
+    "FORMS_MAGIC_LINK_SECRET"
   ],
   "ui": "tui",
   "tasks": {

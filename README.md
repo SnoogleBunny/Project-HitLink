@@ -4,21 +4,26 @@ HitLink is a gym management platform for Muay Thai gyms and Hyrox/HIIT-style cla
 
 ## Current status
 
-This monorepo already includes the foundation for the first working admin slices:
+This monorepo includes working admin, member, and billing slices for the MVP:
 
 - owner signup, login, and session handling
 - workspace onboarding for a single-location gym
-- protected admin dashboard
-- coach invite scaffolding
-- program management
-- room management
-- Prisma/Postgres schema and migrations for the current auth + workspace domain
+- protected admin dashboard and coach roster surface
+- staff invite, program, room, schedule template, booking, roster, and attendance workflows
+- member and guardian records
+- public trial booking
+- form upload, required-form assignment, signing, and signed-document tracking
+- membership plans, member memberships, access products, punch cards, drop-ins, billing records, Stripe settings, Stripe webhooks, and failed-payment workflows
+- member portal login, schedule browsing, bookings, membership/billing views, checkout support, and forms/signing
 
-Still intentionally early:
+Still upcoming or intentionally thin:
 
-- `apps/member-web` is mostly a placeholder
 - `apps/api` currently exposes a health endpoint only
-- schedule building, member records, billing, messaging, and the broader MVP remain upcoming slices
+- messaging, broadcasts, and automated email reminders
+- events and private lessons
+- progress tracking
+- migration tooling
+- deeper reporting
 
 ## Product guardrails
 
@@ -27,7 +32,7 @@ Still intentionally early:
 - web only for MVP
 - modular monolith architecture
 - Postgres as the application database
-- Stripe planned for payments
+- Stripe Connect and billing integration are present for the current billing slices
 - email only at launch
 - no multi-location assumptions in code
 
@@ -44,8 +49,8 @@ Still intentionally early:
 
 ## Repo structure
 
-- `apps/admin-web` - owner/admin app with auth, onboarding, dashboard, rooms, programs, and staff invites
-- `apps/member-web` - future member-facing app
+- `apps/admin-web` - owner/coach app with auth, onboarding, dashboard, staff invites, programs, rooms, schedule templates, bookings, rosters, attendance, members, forms, memberships, access products, billing, and Stripe settings
+- `apps/member-web` - member-facing app with login, schedule, bookings, membership, billing, checkout, public trial booking, and forms/signing
 - `apps/api` - API app; currently includes `GET /api/v1/health`
 - `packages/auth` - shared auth and session helpers
 - `packages/db` - Prisma schema, migrations, and Prisma client export
@@ -131,16 +136,21 @@ Root scripts:
 
 ## Current implemented slices
 
-The current codebase is strongest in the admin foundation:
+The current codebase is strongest in the admin and member self-service foundations:
 
 - auth and session support for owner login/signup
 - onboarding that creates the workspace, primary location, owner role assignment, and workspace settings in one transaction
-- owner-only dashboard shell and protected routing
+- owner/coach dashboard shells and protected routing
 - staff invite records with resend/revoke flows
 - room CRUD with active/inactive and archive handling
 - program CRUD with archive handling and progress-tracking flags
+- recurring class templates, admin booking creation, rosters, attendance, and waitlists
+- member/guardian management and member portal access setup
+- public trial booking and member self-service booking
+- forms, versioned PDFs, required-form assignment, signature requests, and signed documents
+- membership plans, member memberships, punch-card/drop-in products, Stripe Connect settings, billing state, billing records, and failed-payment handling
 
-Upcoming slices in the docs focus on class templates, weekly schedules, member records, trial booking, forms, bookings, billing, messaging, family support, and migration tooling.
+Upcoming slices in the docs focus on messaging, events/private lessons, progress tracking, migration tooling, deeper reporting, and additional billing polish.
 
 ## Important docs
 
@@ -156,4 +166,4 @@ These docs are the best source of truth for product and architecture decisions:
 
 - The repo package name is `hitlink-monorepo`.
 - `packages/db/prisma/schema.prisma` is the source of truth for the current database structure.
-- The admin app currently depends on a working database; the member app and API app are still intentionally thin.
+- The admin and member apps currently depend on a working database; the API app is still intentionally thin.

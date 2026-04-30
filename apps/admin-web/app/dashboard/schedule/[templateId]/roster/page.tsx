@@ -4,6 +4,7 @@ import { AdminShell } from "../../../../_components/admin-shell";
 import { requireOperationsWorkspaceContext } from "../../../../../lib/operations-workspace";
 import { getClassRoster } from "../../../../../lib/rosters";
 import { AttendanceForm } from "./attendance-form";
+import { WaitlistPanel } from "./waitlist-panel";
 
 function formatCapacity(value: number | null, rosterCount: number): string {
   if (value === null) {
@@ -144,6 +145,24 @@ export default async function RosterPage({
               </article>
             ))}
           </div>
+        )}
+      </section>
+
+      <section className="management-card">
+        <p className="dashboard-card-label">Waitlist</p>
+        <h3>
+          {roster.waitlist.length} active entr
+          {roster.waitlist.length === 1 ? "y" : "ies"}
+        </h3>
+
+        {roster.waitlist.length === 0 ? (
+          <p className="empty-state">No active waitlist entries for this class date.</p>
+        ) : (
+          <WaitlistPanel
+            classTemplateId={roster.templateId}
+            rows={roster.waitlist}
+            scheduledForDate={roster.scheduledForDate}
+          />
         )}
       </section>
     </AdminShell>

@@ -302,7 +302,6 @@ describe("trial booking helpers", () => {
         phone: null,
         dateOfBirth: new Date("2012-01-02T00:00:00.000Z"),
         status: "TRIAL",
-        formStatus: "NOT_REQUESTED",
         tags: [],
         notes: null,
       },

@@ -4,6 +4,7 @@
 node_modules
 .pnp
 .pnp.js
+.yarn/install-state.gz
 
 # Local env files
 .env
@@ -14,6 +15,8 @@ node_modules
 
 # Testing
 coverage
+playwright-report/
+test-results/
 
 # Turbo
 .turbo
@@ -26,13 +29,19 @@ coverage
 out/
 build
 dist
+.vite/
 
 
 # Debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
 # Misc
 .DS_Store
 *.pem
+.cache/
+.eslintcache
+*.tsbuildinfo
+next-env.d.ts

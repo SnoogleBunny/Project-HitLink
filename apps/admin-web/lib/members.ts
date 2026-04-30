@@ -2,7 +2,6 @@ import {
   type AttendanceState,
   type ClassBookingStatus,
   prisma,
-  type MemberFormStatus,
   type MemberStatus,
   type Weekday,
 } from "@hitlink/db";
@@ -14,12 +13,6 @@ export const MEMBER_STATUSES: MemberStatus[] = [
   "FROZEN",
   "CANCELLED",
   "WAITLISTED",
-];
-
-export const MEMBER_FORM_STATUSES: MemberFormStatus[] = [
-  "NOT_REQUESTED",
-  "PENDING",
-  "COMPLETE",
 ];
 
 const maxTagCount = 10;
@@ -34,7 +27,6 @@ export interface MemberFormInput {
   status?: string;
   notes?: string;
   tags?: string;
-  formStatus?: string;
 }
 
 export interface GuardianLinkFormInput {
@@ -109,7 +101,6 @@ interface MemberListRecord {
   status: MemberStatus;
   notes: string | null;
   tags: string[];
-  formStatus: MemberFormStatus;
   createdAt: Date;
   updatedAt: Date;
   familyLinks: FamilyLinkRecord[];
@@ -195,7 +186,6 @@ export interface MemberListItem {
   status: MemberStatus;
   notes: string | null;
   tags: string[];
-  formStatus: MemberFormStatus;
   createdAt: Date;
   updatedAt: Date;
   guardians: MemberGuardianSummary[];
@@ -313,17 +303,12 @@ function isMemberStatus(value: string): value is MemberStatus {
   return MEMBER_STATUSES.includes(value as MemberStatus);
 }
 
-function isMemberFormStatus(value: string): value is MemberFormStatus {
-  return MEMBER_FORM_STATUSES.includes(value as MemberFormStatus);
-}
-
 function sanitizeMemberInput(input: MemberFormInput, now: Date) {
   const fullName = input.fullName.trim();
   const email = normalizeEmail(input.email);
   const phone = cleanNullable(input.phone);
   const dateOfBirth = parseDateOnly(input.dateOfBirth, now);
   const status = cleanNullable(input.status) ?? "TRIAL";
-  const formStatus = cleanNullable(input.formStatus) ?? "NOT_REQUESTED";
   const notes = cleanNullable(input.notes);
 
   return {
@@ -334,7 +319,6 @@ function sanitizeMemberInput(input: MemberFormInput, now: Date) {
     status,
     notes,
     tags: parseTags(input.tags),
-    formStatus,
   };
 }
 
@@ -351,7 +335,6 @@ function validateSanitizedMemberInput(
         status: MemberStatus;
         notes: string | null;
         tags: string[];
-        formStatus: MemberFormStatus;
       };
     }
   | {
@@ -386,13 +369,6 @@ function validateSanitizedMemberInput(
     };
   }
 
-  if (!isMemberFormStatus(input.formStatus)) {
-    return {
-      status: "error",
-      message: "Select a valid form status.",
-    };
-  }
-
   if (input.notes && input.notes.length > maxNotesLength) {
     return {
       status: "error",
@@ -410,7 +386,6 @@ function validateSanitizedMemberInput(
       status: input.status,
       notes: input.notes,
       tags: input.tags,
-      formStatus: input.formStatus,
     },
   };
 }
@@ -552,7 +527,6 @@ function mapMemberListItem(record: MemberListRecord): MemberListItem {
     status: record.status,
     notes: record.notes,
     tags: record.tags,
-    formStatus: record.formStatus,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     guardians: record.familyLinks.map(mapGuardian),

@@ -34,6 +34,9 @@ export async function startPaymentMethodUpdateAction(
   _previousState: BillingActionState,
   _formData: FormData,
 ): Promise<BillingActionState> {
+  void _previousState;
+  void _formData;
+
   const context = await requireMemberPortalContext();
   const result = await createMemberPaymentMethodUpdateSession({
     workspaceId: context.workspace.id,
@@ -56,6 +59,9 @@ export async function retryOwnFailedPaymentAction(
   _previousState: BillingActionState,
   _formData: FormData,
 ): Promise<BillingActionState> {
+  void _previousState;
+  void _formData;
+
   const context = await requireMemberPortalContext();
   const result = await retryOwnFailedPayment({
     workspaceId: context.workspace.id,

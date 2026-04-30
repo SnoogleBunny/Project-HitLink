@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import {
   createTrialBookingAction,
@@ -43,6 +44,22 @@ export function TrialBookingForm({
           {state.confirmation.scheduledForDate}. The gym team can see it in
           their member admin view.
         </p>
+        {state.confirmation.forms.length > 0 ? (
+          <>
+            <p>Complete the current required forms now:</p>
+            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+              {state.confirmation.forms.map((form) => (
+                <Link
+                  key={form.requestId}
+                  className="button button-secondary"
+                  href={form.href}
+                >
+                  {form.label}
+                </Link>
+              ))}
+            </div>
+          </>
+        ) : null}
       </section>
     );
   }

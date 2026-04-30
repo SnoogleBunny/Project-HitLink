@@ -1,5 +1,6 @@
 import {
   buildUpcomingOccurrenceDateOptions,
+  createAccessBackedBooking,
   dateOnlyStringToUtcDate,
   prisma,
   validateOccurrenceDate,
@@ -8,7 +9,7 @@ import {
   type Weekday,
 } from "@hitlink/db";
 
-const bookingTypes: ClassBookingType[] = ["STANDARD", "TRIAL"];
+const bookingTypes: ClassBookingType[] = ["MEMBERSHIP", "TRIAL"];
 
 interface BookingMemberRecord {
   id: string;
@@ -55,9 +56,22 @@ interface ExistingBookingRecord {
 }
 
 interface BookingDatabase {
+  $transaction<T>(
+    callback: (tx: BookingDatabase) => Promise<T>,
+  ): Promise<T>;
   member: {
     findMany(args: Record<string, unknown>): Promise<BookingMemberRecord[]>;
     findFirst(args: Record<string, unknown>): Promise<{ id: string } | null>;
+  };
+  memberMembership: {
+    findFirst(args: Record<string, unknown>): Promise<unknown>;
+  };
+  memberPunchCard: {
+    findMany(args: Record<string, unknown>): Promise<unknown[]>;
+    updateMany(args: Record<string, unknown>): Promise<{ count: number }>;
+  };
+  dropInProduct: {
+    findMany(args: Record<string, unknown>): Promise<unknown[]>;
   };
   familyLink: {
     findFirst(args: Record<string, unknown>): Promise<BookingGuardianLinkRecord | null>;
@@ -70,6 +84,8 @@ interface BookingDatabase {
     findFirst(args: Record<string, unknown>): Promise<ExistingBookingRecord | null>;
     create(args: Record<string, unknown>): Promise<{ id: string }>;
     update(args: Record<string, unknown>): Promise<{ id: string }>;
+    updateMany(args: Record<string, unknown>): Promise<{ count: number }>;
+    count(args: Record<string, unknown>): Promise<number>;
   };
 }
 
@@ -286,7 +302,7 @@ export async function createClassBooking(args: {
   const guardianId = cleanNullable(args.input.guardianId);
   const classTemplateId = args.input.classTemplateId.trim();
   const scheduledForDate = args.input.scheduledForDate.trim();
-  const bookingType = args.input.bookingType.trim() || "STANDARD";
+  const bookingType = args.input.bookingType.trim() || "MEMBERSHIP";
 
   if (!memberId) {
     return {
@@ -399,6 +415,41 @@ export async function createClassBooking(args: {
     }
   }
 
+  if (bookingType !== "TRIAL") {
+    const result = await createAccessBackedBooking({
+      workspaceId: args.workspaceId,
+      memberId,
+      guardianId,
+      classTemplateId,
+      scheduledForDate,
+      timezone: args.timezone,
+      source: "ADMIN",
+      allowDropIn: false,
+      db: db as never,
+      now,
+    });
+
+    if (result.status === "error") {
+      return {
+        status: "error",
+        message: result.message,
+      };
+    }
+
+    if (result.status === "payment_required") {
+      return {
+        status: "error",
+        message:
+          "This class is only accessible through a paid drop-in flow. Ask the member to book it from the portal.",
+      };
+    }
+
+    return {
+      status: result.status,
+      bookingId: result.bookingId,
+    };
+  }
+
   const occurrence = validateOccurrenceDate({
     scheduledForDate,
     templateWeekday: template.weekday,
@@ -434,7 +485,10 @@ export async function createClassBooking(args: {
           id: existingBooking.id,
         },
         data: {
+          guardianId,
+          bookingType: "TRIAL",
           status: "BOOKED",
+          source: "ADMIN",
         },
         select: {
           id: true,
@@ -460,7 +514,7 @@ export async function createClassBooking(args: {
       guardianId,
       classTemplateId,
       scheduledForDate: dateOnlyStringToUtcDate(occurrence.dateString),
-      bookingType,
+      bookingType: "TRIAL",
       status: "BOOKED",
       source: "ADMIN",
     },

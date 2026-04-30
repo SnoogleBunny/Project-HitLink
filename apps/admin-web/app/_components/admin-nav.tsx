@@ -34,8 +34,16 @@ const ownerNavItems = [
     label: "Members",
   },
   {
+    href: "/dashboard/forms",
+    label: "Forms",
+  },
+  {
     href: "/dashboard/membership-plans",
     label: "Membership plans",
+  },
+  {
+    href: "/dashboard/access-products",
+    label: "Access products",
   },
   {
     href: "/dashboard/billing",

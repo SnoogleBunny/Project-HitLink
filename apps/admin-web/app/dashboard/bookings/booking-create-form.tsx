@@ -56,8 +56,12 @@ export function BookingCreateForm({
 
       <label className="field">
         <span>Booking type</span>
-        <select defaultValue="STANDARD" disabled={!hasRequiredOptions} name="bookingType">
-          <option value="STANDARD">Standard</option>
+        <select
+          defaultValue="MEMBERSHIP"
+          disabled={!hasRequiredOptions}
+          name="bookingType"
+        >
+          <option value="MEMBERSHIP">Use member access</option>
           <option value="TRIAL">Trial</option>
         </select>
       </label>

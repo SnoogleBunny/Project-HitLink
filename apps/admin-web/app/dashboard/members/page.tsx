@@ -1,9 +1,14 @@
 import Link from "next/link";
+import { resolveRequiredFormStatusesForMember } from "@hitlink/db";
 import { AdminShell } from "../../_components/admin-shell";
 import {
   listMembers,
   type MemberListItem,
 } from "../../../lib/members";
+import {
+  formatRequiredFormState,
+  getAggregateRequiredFormState,
+} from "../../../lib/forms-status";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
 import { MemberCreateForm } from "./member-form";
 
@@ -47,6 +52,22 @@ export default async function MembersPage({
     workspaceId: workspace.id,
     query,
   });
+  const memberStatuses = await Promise.all(
+    members.map(async (member) => ({
+      memberId: member.id,
+      aggregateState: getAggregateRequiredFormState(
+        (
+          await resolveRequiredFormStatusesForMember({
+            workspaceId: workspace.id,
+            memberId: member.id,
+          })
+        ).items,
+      ),
+    })),
+  );
+  const memberStatusMap = new Map(
+    memberStatuses.map((status) => [status.memberId, status.aggregateState]),
+  );
 
   return (
     <AdminShell
@@ -120,7 +141,10 @@ export default async function MembersPage({
                       {formatStatus(member.status)}
                     </span>
                     <span className="status-pill">
-                      Forms {formatStatus(member.formStatus)}
+                      Forms{" "}
+                      {formatRequiredFormState(
+                        memberStatusMap.get(member.id) ?? "NONE",
+                      )}
                     </span>
                   </div>
                   <p>{formatContact(member)}</p>
