@@ -2,19 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  emptyBookingsActionState,
+  type BookingsActionState,
+} from "../../form-states";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
 import {
   cancelSelfBooking,
   leaveSelfWaitlist,
 } from "../../../lib/self-service-bookings";
-
-export interface BookingsActionState {
-  error: string | null;
-}
-
-export const emptyBookingsActionState: BookingsActionState = {
-  error: null,
-};
 
 export async function cancelSelfBookingAction(
   _previousState: BookingsActionState,

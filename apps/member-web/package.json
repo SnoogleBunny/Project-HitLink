@@ -4,9 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3001",
-    "build": "next build",
-    "start": "next start",
+    "dev": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; next dev --port 3001'",
+    "build": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; next build'",
+    "start": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; next start'",
     "lint": "eslint --max-warnings 0",
     "check-types": "next typegen && tsc --noEmit",
     "test": "vitest run"

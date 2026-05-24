@@ -8,14 +8,10 @@ import {
 import { prisma } from "@hitlink/db";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-
-export interface MemberLoginFormState {
-  error: string | null;
-}
-
-export const emptyMemberLoginFormState: MemberLoginFormState = {
-  error: null,
-};
+import {
+  emptyMemberLoginFormState,
+  type MemberLoginFormState,
+} from "../form-states";
 
 export async function loginAction(
   _previousState: MemberLoginFormState,

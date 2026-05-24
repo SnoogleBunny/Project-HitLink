@@ -2,8 +2,8 @@
 
 import { useActionState } from "react";
 import { SubmitButton } from "../../_components/submit-button";
+import { emptyBillingActionState } from "../../form-states";
 import {
-  emptyBillingActionState,
   retryOwnFailedPaymentAction,
   startPaymentMethodUpdateAction,
 } from "./actions";

@@ -13,6 +13,8 @@
     "db:generate": "sh -c 'if [ -f ../../.env ]; then dotenv -e ../../.env -- prisma generate --schema prisma/schema.prisma; else DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/hitlink_dev?schema=public\" prisma generate --schema prisma/schema.prisma; fi'",
     "db:migrate": "dotenv -e ../../.env -- prisma migrate dev --schema prisma/schema.prisma",
     "db:migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy --schema prisma/schema.prisma",
+    "db:reset:demo": "dotenv -e ../../.env -- prisma migrate reset --schema prisma/schema.prisma --force --skip-seed && pnpm run db:seed",
+    "db:seed": "dotenv -e ../../.env -- node prisma/seed-demo.mjs",
     "db:studio": "dotenv -e ../../.env -- prisma studio --schema prisma/schema.prisma",
     "db:validate": "sh -c 'if [ -f ../../.env ]; then dotenv -e ../../.env -- prisma validate --schema prisma/schema.prisma; else DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/hitlink_dev?schema=public\" prisma validate --schema prisma/schema.prisma; fi'"
   },
@@ -23,6 +25,7 @@
     "@hitlink/eslint-config": "workspace:*",
     "@hitlink/typescript-config": "workspace:*",
     "@types/node": "^22.15.3",
+    "bcryptjs": "^3.0.3",
     "dotenv-cli": "^10.0.0",
     "eslint": "^9.39.1",
     "prisma": "^6.18.0",

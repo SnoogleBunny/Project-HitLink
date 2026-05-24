@@ -1,0 +1,18 @@
+{
+  "main": {
+    "id": "hitlink-main",
+    "type": "split",
+    "children": []
+  },
+  "left": {
+    "id": "hitlink-left",
+    "type": "split",
+    "children": []
+  },
+  "right": {
+    "id": "hitlink-right",
+    "type": "split",
+    "children": []
+  },
+  "active": ""
+}

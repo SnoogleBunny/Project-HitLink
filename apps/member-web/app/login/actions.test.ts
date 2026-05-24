@@ -38,7 +38,8 @@ vi.mock("next/navigation", () => ({
   redirect: redirectMock,
 }));
 
-import { emptyMemberLoginFormState, loginAction } from "./actions";
+import { emptyMemberLoginFormState } from "../form-states";
+import { loginAction } from "./actions";
 
 function buildFormData() {
   const formData = new FormData();

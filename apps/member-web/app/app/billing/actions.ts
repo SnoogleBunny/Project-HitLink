@@ -3,19 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import {
+  emptyBillingActionState,
+  type BillingActionState,
+} from "../../form-states";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
 import {
   createMemberPaymentMethodUpdateSession,
   retryOwnFailedPayment,
 } from "../../../lib/member-billing";
-
-export interface BillingActionState {
-  error: string | null;
-}
-
-export const emptyBillingActionState: BillingActionState = {
-  error: null,
-};
 
 async function getBillingReturnUrl(): Promise<string> {
   const headerStore = await headers();

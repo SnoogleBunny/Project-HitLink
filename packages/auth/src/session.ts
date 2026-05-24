@@ -240,12 +240,6 @@ export async function getSession(args: {
     repository: args.repository,
   });
 
-  if (!session && token) {
-    clearSessionCookie(args.cookieStore, {
-      cookieName: args.cookieName,
-    });
-  }
-
   return session;
 }
 

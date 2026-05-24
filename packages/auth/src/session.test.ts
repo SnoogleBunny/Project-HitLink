@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   deleteSession,
+  getSession,
   getSessionFromToken,
   hashPassword,
   hashSessionToken,
@@ -136,5 +137,28 @@ describe("session lookup", () => {
     expect(repository.deleteByTokenHash).toHaveBeenCalledWith(
       hashSessionToken("member-session-token"),
     );
+  });
+
+  it("does not mutate cookies while reading an invalid session", async () => {
+    const cookieStore = {
+      get: vi.fn(() => ({
+        value: "stale-token",
+      })),
+      set: vi.fn(),
+    };
+    const repository = {
+      create: vi.fn(),
+      findByTokenHash: vi.fn().mockResolvedValue(null),
+      deleteByTokenHash: vi.fn(),
+    };
+
+    await expect(
+      getSession({
+        cookieStore,
+        repository,
+      }),
+    ).resolves.toBeNull();
+
+    expect(cookieStore.set).not.toHaveBeenCalled();
   });
 });

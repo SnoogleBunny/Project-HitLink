@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import type { FormType } from "@hitlink/db";
 import { SubmitButton } from "../../_components/submit-button";
-import { emptyFormState } from "../../../lib/admin-access";
+import { emptyFormState } from "../../../lib/route-decisions";
 import { createFormDocumentAction } from "./actions";
 
 const formTypeOptions: Array<{ value: FormType; label: string }> = [
@@ -76,4 +76,3 @@ export function FormDocumentCreateForm({
     </form>
   );
 }
-

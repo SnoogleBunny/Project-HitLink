@@ -2,10 +2,8 @@
 
 import { useActionState } from "react";
 import { SubmitButton } from "../../_components/submit-button";
-import {
-  createSelfBookingAction,
-  emptyScheduleActionState,
-} from "./actions";
+import { emptyScheduleActionState } from "../../form-states";
+import { createSelfBookingAction } from "./actions";
 import type { ScheduleOccurrence } from "../../../lib/self-service-bookings";
 
 export function ScheduleList({

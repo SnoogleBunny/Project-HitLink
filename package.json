@@ -8,18 +8,24 @@
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
+    "test:e2e": "pnpm db:reset:demo && playwright test",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:generate": "pnpm --filter @hitlink/db db:generate",
     "db:migrate": "pnpm --filter @hitlink/db db:migrate",
     "db:migrate:deploy": "pnpm --filter @hitlink/db db:migrate:deploy",
+    "db:reset:demo": "pnpm --filter @hitlink/db db:reset:demo",
+    "db:seed": "pnpm --filter @hitlink/db db:seed",
     "db:validate": "pnpm --filter @hitlink/db db:validate",
     "db:studio": "pnpm --filter @hitlink/db db:studio"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["sharp"]
+    "onlyBuiltDependencies": [
+      "sharp"
+    ]
   },
   "devDependencies": {
+    "@playwright/test": "1.57.0",
     "prettier": "^3.7.4",
     "turbo": "^2.9.3",
     "typescript": "5.9.2",

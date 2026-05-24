@@ -1,25 +1,8 @@
 "use server";
 
 import { buildMagicLinkPath, issueTrialMagicLinkRequests } from "@hitlink/db";
+import type { TrialBookingFormState } from "../../form-states";
 import { createTrialBooking } from "../../../lib/trial-booking";
-
-export interface TrialBookingFormState {
-  error: string | null;
-  confirmation: {
-    classTitle: string;
-    scheduledForDate: string;
-    forms: Array<{
-      requestId: string;
-      label: string;
-      href: string;
-    }>;
-  } | null;
-}
-
-export const emptyTrialBookingFormState: TrialBookingFormState = {
-  error: null,
-  confirmation: null,
-};
 
 function parseBookingOption(value: string): {
   classTemplateId: string;

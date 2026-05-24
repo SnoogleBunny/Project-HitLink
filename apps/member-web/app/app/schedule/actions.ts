@@ -3,20 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import {
+  emptyScheduleActionState,
+  type ScheduleActionState,
+} from "../../form-states";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
 import { startDropInCheckout } from "../../../lib/member-commerce";
 import {
   createSelfBooking,
   joinSelfWaitlist,
 } from "../../../lib/self-service-bookings";
-
-export interface ScheduleActionState {
-  error: string | null;
-}
-
-export const emptyScheduleActionState: ScheduleActionState = {
-  error: null,
-};
 
 async function getCheckoutUrl(pathname: string): Promise<string> {
   const headerStore = await headers();

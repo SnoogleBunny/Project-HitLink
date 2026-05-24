@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
-import {
-  createTrialBookingAction,
-  emptyTrialBookingFormState,
-} from "./actions";
+import { emptyTrialBookingFormState } from "../../form-states";
+import { createTrialBookingAction } from "./actions";
 
 interface TrialBookingDateOptionView {
   classTemplateId: string;

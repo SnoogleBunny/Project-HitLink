@@ -2,16 +2,12 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import {
+  emptyMembershipActionState,
+  type MembershipActionState,
+} from "../../form-states";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
 import { startPunchCardCheckout } from "../../../lib/member-commerce";
-
-export interface MembershipActionState {
-  error: string | null;
-}
-
-export const emptyMembershipActionState: MembershipActionState = {
-  error: null,
-};
 
 async function getCheckoutUrl(pathname: string): Promise<string> {
   const headerStore = await headers();

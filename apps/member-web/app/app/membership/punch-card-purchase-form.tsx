@@ -3,10 +3,8 @@
 import { useActionState } from "react";
 import { SubmitButton } from "../../_components/submit-button";
 import type { PurchasablePunchCardProduct } from "../../../lib/member-commerce";
-import {
-  emptyMembershipActionState,
-  startPunchCardCheckoutAction,
-} from "./actions";
+import { emptyMembershipActionState } from "../../form-states";
+import { startPunchCardCheckoutAction } from "./actions";
 
 function formatMoney(amountCents: number, currency: string): string {
   return new Intl.NumberFormat("en-CA", {

@@ -14,10 +14,8 @@ vi.mock("@hitlink/db", () => ({
   issueTrialMagicLinkRequests: issueTrialMagicLinkRequestsMock,
 }));
 
-import {
-  createTrialBookingAction,
-  emptyTrialBookingFormState,
-} from "./actions";
+import { emptyTrialBookingFormState } from "../../form-states";
+import { createTrialBookingAction } from "./actions";
 
 function buildFormData() {
   const formData = new FormData();

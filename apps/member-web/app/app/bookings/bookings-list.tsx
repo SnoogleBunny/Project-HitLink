@@ -2,9 +2,9 @@
 
 import { useActionState } from "react";
 import { SubmitButton } from "../../_components/submit-button";
+import { emptyBookingsActionState } from "../../form-states";
 import {
   cancelSelfBookingAction,
-  emptyBookingsActionState,
   leaveSelfWaitlistAction,
 } from "./actions";
 import type {

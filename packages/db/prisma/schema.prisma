@@ -704,7 +704,7 @@ model AttendanceRecord {
   updatedAt            DateTime        @updatedAt
 
   @@unique([workspaceId, memberId, classTemplateId, scheduledForDate], map: "attendance_records_member_template_date_key")
-  @@index([workspaceId, classTemplateId, scheduledForDate])
+  @@index([workspaceId, classTemplateId, scheduledForDate], map: "attendance_records_workspaceId_classTemplateId_scheduledFor_idx")
   @@index([workspaceId, classInstanceId])
   @@index([workspaceId, memberId])
   @@index([coachWorkspaceUserId])
@@ -783,7 +783,7 @@ model MembershipPlanProgramRestriction {
   updatedAt        DateTime       @updatedAt
 
   @@unique([membershipPlanId, programId], map: "membership_plan_program_restrictions_plan_program_key")
-  @@index([workspaceId, membershipPlanId])
+  @@index([workspaceId, membershipPlanId], map: "membership_plan_program_restrictions_workspaceId_membership_idx")
   @@index([workspaceId, programId])
   @@map("membership_plan_program_restrictions")
 }
@@ -825,8 +825,8 @@ model PunchCardProductProgramRestriction {
   updatedAt          DateTime         @updatedAt
 
   @@unique([punchCardProductId, programId], map: "punch_card_product_program_restrictions_product_program_key")
-  @@index([workspaceId, punchCardProductId])
-  @@index([workspaceId, programId])
+  @@index([workspaceId, punchCardProductId], map: "punch_card_product_program_restrictions_workspaceId_punchCa_idx")
+  @@index([workspaceId, programId], map: "punch_card_product_program_restrictions_workspaceId_program_idx")
   @@map("punch_card_product_program_restrictions")
 }
 
@@ -891,7 +891,7 @@ model DropInProductProgramRestriction {
   updatedAt       DateTime      @updatedAt
 
   @@unique([dropInProductId, programId], map: "drop_in_product_program_restrictions_product_program_key")
-  @@index([workspaceId, dropInProductId])
+  @@index([workspaceId, dropInProductId], map: "drop_in_product_program_restrictions_workspaceId_dropInProd_idx")
   @@index([workspaceId, programId])
   @@map("drop_in_product_program_restrictions")
 }
@@ -916,7 +916,7 @@ model WaitlistEntry {
   updatedAt         DateTime            @updatedAt
 
   @@unique([workspaceId, memberId, classTemplateId, scheduledForDate], map: "waitlist_entries_member_template_date_key")
-  @@index([workspaceId, classTemplateId, scheduledForDate, status, joinedAt])
+  @@index([workspaceId, classTemplateId, scheduledForDate, status, joinedAt], map: "waitlist_entries_workspaceId_classTemplateId_scheduledForDa_idx")
   @@index([workspaceId, classInstanceId, status, joinedAt])
   @@index([workspaceId, memberId, status])
   @@index([workspaceId, promotedBookingId])
@@ -980,7 +980,7 @@ model RequiredFormAssignment {
   updatedAt         DateTime          @updatedAt
 
   @@unique([workspaceId, formDocumentId, requirementTarget], map: "required_form_assignments_workspace_document_target_key")
-  @@index([workspaceId, requirementTarget, isActive])
+  @@index([workspaceId, requirementTarget, isActive], map: "required_form_assignments_workspaceId_requirementTarget_isA_idx")
   @@map("required_form_assignments")
 }
 
