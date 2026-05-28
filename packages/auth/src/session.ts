@@ -1,9 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
-import { prisma, type UserRole } from "@hitlink/db";
+import { prisma, type UserRole } from "@flowstate/db";
 import { AuthError } from "./errors.js";
 
-export const ADMIN_SESSION_COOKIE_NAME = "hitlink_admin_session";
-export const MEMBER_SESSION_COOKIE_NAME = "hitlink_member_session";
+export const ADMIN_SESSION_COOKIE_NAME = "flowstate_admin_session";
+export const MEMBER_SESSION_COOKIE_NAME = "flowstate_member_session";
 export const SESSION_COOKIE_NAME = ADMIN_SESSION_COOKIE_NAME;
 export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 

@@ -5,7 +5,7 @@ import {
   type BillingStateStatus,
   type MemberMembershipStatus,
   type StripeConnectionStatus,
-} from "@hitlink/db";
+} from "@flowstate/db";
 import Stripe from "stripe";
 import {
   getCurrentMemberMembershipContext,

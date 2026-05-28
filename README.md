@@ -1,6 +1,6 @@
-# HitLink
+# Flowstate
 
-HitLink is a gym management platform for Muay Thai gyms and Hyrox/HIIT-style class studios. The product goal is to replace older tools like Zen Planner with a calmer, more reliable operating system for scheduling, staff workflows, billing, attendance, and member self-service.
+Flowstate is a gym management platform for Muay Thai gyms and Hyrox/HIIT-style class studios. The product goal is to replace older tools like Zen Planner with a calmer, more reliable operating system for scheduling, staff workflows, billing, attendance, and member self-service.
 
 ## Current status
 
@@ -81,7 +81,7 @@ cp .env.example .env
 The default local database URL is:
 
 ```bash
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/hitlink_dev?schema=public"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/flowstate_dev?schema=public"
 ```
 
 ### 3. Start Postgres
@@ -164,6 +164,6 @@ These docs are the best source of truth for product and architecture decisions:
 
 ## Notes
 
-- The repo package name is `hitlink-monorepo`.
+- The repo package name is `flowstate-monorepo`.
 - `packages/db/prisma/schema.prisma` is the source of truth for the current database structure.
 - The admin and member apps currently depend on a working database; the API app is still intentionally thin.

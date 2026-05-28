@@ -61,12 +61,18 @@ describe("requireOwnerWorkspaceContext", () => {
           },
         }),
       },
+      workspaceUser: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "owner_workspace_user_1",
+        }),
+      },
     };
 
     const result = await requireOwnerWorkspaceContext({ db });
 
     expect(result.session.role).toBe("OWNER");
     expect(result.workspace.id).toBe("workspace_1");
+    expect(result.workspaceUserId).toBe("owner_workspace_user_1");
     expect(result.location.id).toBe("location_1");
     expect(db.workspace.findUnique).toHaveBeenCalledWith({
       where: {
@@ -75,6 +81,17 @@ describe("requireOwnerWorkspaceContext", () => {
       include: {
         location: true,
         settings: true,
+      },
+    });
+    expect(db.workspaceUser.findFirst).toHaveBeenCalledWith({
+      where: {
+        userId: "owner_1",
+        workspaceId: "workspace_1",
+        role: "OWNER",
+        isActive: true,
+      },
+      select: {
+        id: true,
       },
     });
   });
@@ -127,10 +144,57 @@ describe("requireOwnerWorkspaceContext", () => {
           settings: null,
         }),
       },
+      workspaceUser: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "owner_workspace_user_1",
+        }),
+      },
     };
 
     await expect(requireOwnerWorkspaceContext({ db })).rejects.toThrow(
       "NEXT_REDIRECT:/onboarding",
+    );
+  });
+
+  it("redirects to unauthorized when the owner workspace user is inactive", async () => {
+    getSessionOrNullMock.mockResolvedValue({
+      userId: "owner_1",
+      email: "owner@example.com",
+      displayName: "Dana Owner",
+      workspaceId: "workspace_1",
+      role: "OWNER",
+    });
+
+    const db = {
+      workspace: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "workspace_1",
+          name: "Sahara Muay Thai",
+          businessType: "Muay Thai gym",
+          status: "ACTIVE",
+          location: {
+            id: "location_1",
+            name: "Main Gym",
+            timezone: "America/Vancouver",
+            addressLine1: null,
+            addressLine2: null,
+            city: null,
+            region: null,
+            postalCode: null,
+            countryCode: null,
+          },
+          settings: {
+            allowMultipleRooms: true,
+          },
+        }),
+      },
+      workspaceUser: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+    };
+
+    await expect(requireOwnerWorkspaceContext({ db })).rejects.toThrow(
+      "NEXT_REDIRECT:/unauthorized",
     );
   });
 });

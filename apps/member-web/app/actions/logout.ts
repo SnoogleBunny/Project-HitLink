@@ -1,6 +1,6 @@
 "use server";
 
-import { deleteSession, MEMBER_SESSION_COOKIE_NAME } from "@hitlink/auth";
+import { deleteSession, MEMBER_SESSION_COOKIE_NAME } from "@flowstate/auth";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 

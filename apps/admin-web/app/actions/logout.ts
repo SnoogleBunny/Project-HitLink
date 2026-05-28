@@ -1,6 +1,6 @@
 "use server";
 
-import { deleteSession } from "@hitlink/auth";
+import { deleteSession } from "@flowstate/auth";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 

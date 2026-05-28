@@ -6,7 +6,7 @@ import {
   type BillingRecordStatus,
   type BillingStateStatus,
   type MemberMembershipStatus,
-} from "@hitlink/db";
+} from "@flowstate/db";
 import {
   stripeBillingGateway,
   type StripeBillingGateway,

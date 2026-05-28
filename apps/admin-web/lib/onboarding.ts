@@ -1,4 +1,4 @@
-import { prisma, type UserRole } from "@hitlink/db";
+import { prisma, type UserRole } from "@flowstate/db";
 
 export interface OwnerOnboardingInput {
   userId: string;

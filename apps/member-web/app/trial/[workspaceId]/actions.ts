@@ -1,6 +1,6 @@
 "use server";
 
-import { buildMagicLinkPath, issueTrialMagicLinkRequests } from "@hitlink/db";
+import { buildMagicLinkPath, issueTrialMagicLinkRequests } from "@flowstate/db";
 import type { TrialBookingFormState } from "../../form-states";
 import { createTrialBooking } from "../../../lib/trial-booking";
 

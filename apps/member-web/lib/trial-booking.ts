@@ -5,7 +5,7 @@ import {
   toDateOnlyString,
   type ClassBookingStatus,
   type Weekday,
-} from "@hitlink/db";
+} from "@flowstate/db";
 
 const selectableCoachRoles = ["OWNER", "COACH"] as const;
 const trialDateOptionCount = 4;

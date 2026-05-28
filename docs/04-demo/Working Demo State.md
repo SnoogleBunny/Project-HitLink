@@ -46,7 +46,7 @@ These are local demo credentials from the latest audit database:
 - Staff invite emails and coach acceptance are not complete.
 - API app is intentionally thin.
 - Alvin's separate frontends were not found in this repo or nearby searched folders.
-- The local `hitlink_dev` database had migration-history drift during audit; fresh migrations were validated against a temporary clean database after migration ordering was fixed.
+- The local `flowstate_dev` database had migration-history drift during audit; fresh migrations were validated against a temporary clean database after migration ordering was fixed.
 
 ## Verification Results From Latest Audit
 

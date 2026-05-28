@@ -9,7 +9,7 @@ import {
   type MemberMembershipStatus,
   type StripeConnectionStatus,
   type StripeWebhookProcessingStatus,
-} from "@hitlink/db";
+} from "@flowstate/db";
 import Stripe from "stripe";
 
 export interface StripeAccountSummary {

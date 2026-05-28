@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { prisma } from "@hitlink/db";
+import { prisma } from "@flowstate/db";
 import { AdminShell } from "../../_components/admin-shell";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
 import { RoomCreateForm } from "./room-create-form";

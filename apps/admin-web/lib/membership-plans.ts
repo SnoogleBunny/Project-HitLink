@@ -1,4 +1,4 @@
-import { prisma, type MembershipPlan } from "@hitlink/db";
+import { prisma, type MembershipPlan } from "@flowstate/db";
 
 const currencyPattern = /^[a-z]{3}$/;
 

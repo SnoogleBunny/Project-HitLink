@@ -16,13 +16,13 @@ const {
   verifyPasswordMock: vi.fn(),
 }));
 
-vi.mock("@hitlink/auth", () => ({
-  MEMBER_SESSION_COOKIE_NAME: "hitlink_member_session",
+vi.mock("@flowstate/auth", () => ({
+  MEMBER_SESSION_COOKIE_NAME: "flowstate_member_session",
   createSession: createSessionMock,
   verifyPassword: verifyPasswordMock,
 }));
 
-vi.mock("@hitlink/db", () => ({
+vi.mock("@flowstate/db", () => ({
   prisma: {
     user: {
       findUnique: prismaUserFindUniqueMock,
@@ -82,7 +82,7 @@ describe("member login action", () => {
     expect(createSessionMock).toHaveBeenCalledWith({
       userId: "user_1",
       cookieStore: expect.any(Object),
-      cookieName: "hitlink_member_session",
+      cookieName: "flowstate_member_session",
     });
   });
 

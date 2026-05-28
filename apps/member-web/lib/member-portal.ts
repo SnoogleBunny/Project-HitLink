@@ -6,7 +6,7 @@ import {
   type AttendanceState,
   type ClassBookingStatus,
   type Weekday,
-} from "@hitlink/db";
+} from "@flowstate/db";
 import {
   getCurrentMemberMembershipContext,
   type CurrentMembershipRecord,

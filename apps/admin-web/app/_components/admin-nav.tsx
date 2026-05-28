@@ -1,6 +1,6 @@
 "use client";
 
-import type { UserRole } from "@hitlink/db";
+import type { UserRole } from "@flowstate/db";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 

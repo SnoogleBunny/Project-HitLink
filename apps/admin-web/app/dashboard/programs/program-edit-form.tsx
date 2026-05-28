@@ -1,6 +1,6 @@
 "use client";
 
-import type { Program } from "@hitlink/db";
+import type { Program } from "@flowstate/db";
 import { useActionState } from "react";
 import { SubmitButton } from "../../_components/submit-button";
 import { emptyFormState } from "../../../lib/route-decisions";

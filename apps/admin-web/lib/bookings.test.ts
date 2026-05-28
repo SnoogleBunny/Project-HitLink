@@ -4,9 +4,9 @@ const { createAccessBackedBookingMock } = vi.hoisted(() => ({
   createAccessBackedBookingMock: vi.fn(),
 }));
 
-vi.mock("@hitlink/db", async () => {
-  const actual = await vi.importActual<typeof import("@hitlink/db")>(
-    "@hitlink/db",
+vi.mock("@flowstate/db", async () => {
+  const actual = await vi.importActual<typeof import("@flowstate/db")>(
+    "@flowstate/db",
   );
 
   return {

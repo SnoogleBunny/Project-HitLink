@@ -2,7 +2,7 @@
 
 ## Shape
 
-HitLink is a pnpm/Turborepo monorepo.
+Flowstate is a pnpm/Turborepo monorepo.
 
 Apps:
 

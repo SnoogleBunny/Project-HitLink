@@ -1,5 +1,5 @@
 {
-  "extends": "@hitlink/typescript-config/react-library.json",
+  "extends": "@flowstate/typescript-config/react-library.json",
   "compilerOptions": {
     "outDir": "dist",
     "strictNullChecks": true

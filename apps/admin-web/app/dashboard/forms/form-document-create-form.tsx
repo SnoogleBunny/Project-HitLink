@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import type { FormType } from "@hitlink/db";
+import type { FormType } from "@flowstate/db";
 import { SubmitButton } from "../../_components/submit-button";
 import { emptyFormState } from "../../../lib/route-decisions";
 import { createFormDocumentAction } from "./actions";

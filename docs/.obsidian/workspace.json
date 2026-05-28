@@ -1,16 +1,16 @@
 {
   "main": {
-    "id": "hitlink-main",
+    "id": "flowstate-main",
     "type": "split",
     "children": []
   },
   "left": {
-    "id": "hitlink-left",
+    "id": "flowstate-left",
     "type": "split",
     "children": []
   },
   "right": {
-    "id": "hitlink-right",
+    "id": "flowstate-right",
     "type": "split",
     "children": []
   },

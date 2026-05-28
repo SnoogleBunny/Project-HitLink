@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { AppSession } from "@hitlink/auth";
+import type { AppSession } from "@flowstate/auth";
 import { logoutAction } from "../actions/logout";
 import { AdminNav } from "./admin-nav";
 
@@ -26,7 +26,7 @@ export function AdminShell({
     <div className="shell">
       <aside className="shell-sidebar">
         <div className="shell-brand">
-          <span className="shell-brand-label">HitLink Admin</span>
+          <span className="shell-brand-label">Flowstate Admin</span>
           <h1>{workspaceName}</h1>
           <p>Daily operations for the current scheduling slice.</p>
         </div>

@@ -1,5 +1,5 @@
 {
-  "name": "@hitlink/auth",
+  "name": "@flowstate/auth",
   "version": "0.0.0",
   "type": "module",
   "private": true,
@@ -12,12 +12,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@hitlink/db": "workspace:*",
+    "@flowstate/db": "workspace:*",
     "bcryptjs": "^3.0.2"
   },
   "devDependencies": {
-    "@hitlink/eslint-config": "workspace:*",
-    "@hitlink/typescript-config": "workspace:*",
+    "@flowstate/eslint-config": "workspace:*",
+    "@flowstate/typescript-config": "workspace:*",
     "@types/node": "^22.15.3",
     "eslint": "^9.39.1",
     "typescript": "5.9.2"

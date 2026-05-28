@@ -1,4 +1,4 @@
-import { prisma, type UserRole, type Weekday } from "@hitlink/db";
+import { prisma, type UserRole, type Weekday } from "@flowstate/db";
 
 const selectableCoachRoles: UserRole[] = ["OWNER", "COACH"];
 

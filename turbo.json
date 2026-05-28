@@ -5,7 +5,8 @@
     "NEXT_PUBLIC_APP_URL",
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
-    "FORMS_MAGIC_LINK_SECRET"
+    "FORMS_MAGIC_LINK_SECRET",
+    "FLOWSTATE_WAITLIST_PATH"
   ],
   "ui": "tui",
   "tasks": {

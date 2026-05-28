@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { RequirementTarget } from "@hitlink/db";
+import type { RequirementTarget } from "@flowstate/db";
 import { AdminShell } from "../../../_components/admin-shell";
 import {
   formatBytesAsMegabytes,

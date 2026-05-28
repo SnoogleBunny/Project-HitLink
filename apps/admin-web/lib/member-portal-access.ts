@@ -1,5 +1,5 @@
-import { hashPassword } from "@hitlink/auth";
-import { prisma } from "@hitlink/db";
+import { hashPassword } from "@flowstate/auth";
+import { prisma } from "@flowstate/db";
 
 const minPasswordLength = 8;
 

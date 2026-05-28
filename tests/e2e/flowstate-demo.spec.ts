@@ -2,14 +2,14 @@ import { expect, test, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 
 process.env.DATABASE_URL ??=
-  "postgresql://postgres:postgres@localhost:5432/hitlink_dev?schema=public";
+  "postgresql://postgres:postgres@localhost:5432/flowstate_dev?schema=public";
 
 const prisma = new PrismaClient();
 
 const demo = {
-  ownerEmail: "demo-owner@hitlink.local",
+  ownerEmail: "demo-owner@flowstate.local",
   ownerPassword: "DemoPass123!",
-  memberEmail: "demo-member@hitlink.local",
+  memberEmail: "demo-member@flowstate.local",
   memberPassword: "MemberPass123!",
 };
 
@@ -51,13 +51,13 @@ test.afterAll(async () => {
   await prisma.$disconnect();
 });
 
-test.describe.serial("HitLink working demo", () => {
+test.describe.serial("Flowstate working demo", () => {
   test.setTimeout(300_000);
 
   test("admin, member, public trial, and API flows are connected", async ({ page, request }) => {
     const workspace = await prisma.workspace.findFirstOrThrow({
       where: {
-        name: "Demo HitLink Gym",
+        name: "Demo Flowstate Gym",
       },
       include: {
         programs: true,
@@ -90,7 +90,7 @@ test.describe.serial("HitLink working demo", () => {
 
     await loginAdmin(page);
     await expectHealthyPage(page);
-    await expect(page.getByText("Demo HitLink Gym").first()).toBeVisible();
+    await expect(page.getByText("Demo Flowstate Gym").first()).toBeVisible();
 
     const adminRoutes = [
       "/dashboard",
@@ -155,7 +155,7 @@ test.describe.serial("HitLink working demo", () => {
     await expectHealthyPage(page);
     await page.locator('select[name="bookingOption"]').selectOption({ index: 1 });
     await page.locator('input[name="fullName"]').fill("Demo Trial Prospect");
-    await page.locator('input[name="email"]').fill("demo-trial@hitlink.local");
+    await page.locator('input[name="email"]').fill("demo-trial@flowstate.local");
     await page.locator('input[name="phone"]').fill("555-0303");
     await page.getByRole("button", { name: "Book trial" }).click();
     await expect(page.getByText("Trial booked")).toBeVisible();

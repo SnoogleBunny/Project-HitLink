@@ -1,4 +1,4 @@
-import { prisma, type UserRole, type WorkspaceStatus } from "@hitlink/db";
+import { prisma, type UserRole, type WorkspaceStatus } from "@flowstate/db";
 import { redirect } from "next/navigation";
 import { getSessionOrNull, type OperationsSession } from "./admin-access";
 

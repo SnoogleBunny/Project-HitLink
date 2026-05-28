@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { prisma, type FormType, type RequirementTarget } from "@hitlink/db";
+import { prisma, type FormType, type RequirementTarget } from "@flowstate/db";
 import { emptyFormState, type BasicFormState } from "../../../lib/admin-access";
 import {
   createFormDocumentWithInitialVersion,

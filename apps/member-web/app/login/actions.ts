@@ -4,8 +4,8 @@ import {
   createSession,
   MEMBER_SESSION_COOKIE_NAME,
   verifyPassword,
-} from "@hitlink/auth";
-import { prisma } from "@hitlink/db";
+} from "@flowstate/auth";
+import { prisma } from "@flowstate/db";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {

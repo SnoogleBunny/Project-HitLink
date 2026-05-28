@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "HitLink API",
+  title: "Flowstate API",
   description: "Thin API placeholder for Phase 1 of Slice 1",
 };
 

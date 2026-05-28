@@ -9,7 +9,7 @@ vi.mock("../../../lib/trial-booking", () => ({
   createTrialBooking: createTrialBookingMock,
 }));
 
-vi.mock("@hitlink/db", () => ({
+vi.mock("@flowstate/db", () => ({
   buildMagicLinkPath: (token: string) => `/sign/forms/${token}`,
   issueTrialMagicLinkRequests: issueTrialMagicLinkRequestsMock,
 }));

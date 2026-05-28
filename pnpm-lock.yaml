@@ -26,13 +26,13 @@ importers:
 
   apps/admin-web:
     dependencies:
-      '@hitlink/auth':
+      '@flowstate/auth':
         specifier: workspace:*
         version: link:../../packages/auth
-      '@hitlink/db':
+      '@flowstate/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@hitlink/ui':
+      '@flowstate/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       next:
@@ -48,10 +48,10 @@ importers:
         specifier: ^22.0.0
         version: 22.0.0(@types/node@22.19.17)
     devDependencies:
-      '@hitlink/eslint-config':
+      '@flowstate/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
-      '@hitlink/typescript-config':
+      '@flowstate/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
       '@types/node':
@@ -82,10 +82,44 @@ importers:
         specifier: ^19.2.0
         version: 19.2.4(react@19.2.4)
     devDependencies:
-      '@hitlink/eslint-config':
+      '@flowstate/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
-      '@hitlink/typescript-config':
+      '@flowstate/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      '@types/node':
+        specifier: ^22.15.3
+        version: 22.19.17
+      '@types/react':
+        specifier: 19.2.2
+        version: 19.2.2
+      '@types/react-dom':
+        specifier: 19.2.2
+        version: 19.2.2(@types/react@19.2.2)
+      eslint:
+        specifier: ^9.39.1
+        version: 9.39.4(jiti@2.6.1)
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+
+  apps/landing-web:
+    dependencies:
+      next:
+        specifier: 16.2.0
+        version: 16.2.0(@playwright/test@1.57.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: ^19.2.0
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.2.0
+        version: 19.2.4(react@19.2.4)
+    devDependencies:
+      '@flowstate/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/eslint-config
+      '@flowstate/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
       '@types/node':
@@ -106,13 +140,13 @@ importers:
 
   apps/member-web:
     dependencies:
-      '@hitlink/auth':
+      '@flowstate/auth':
         specifier: workspace:*
         version: link:../../packages/auth
-      '@hitlink/db':
+      '@flowstate/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@hitlink/ui':
+      '@flowstate/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       next:
@@ -128,10 +162,10 @@ importers:
         specifier: ^22.0.0
         version: 22.0.0(@types/node@22.19.17)
     devDependencies:
-      '@hitlink/eslint-config':
+      '@flowstate/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
-      '@hitlink/typescript-config':
+      '@flowstate/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
       '@types/node':
@@ -152,17 +186,17 @@ importers:
 
   packages/auth:
     dependencies:
-      '@hitlink/db':
+      '@flowstate/db':
         specifier: workspace:*
         version: link:../db
       bcryptjs:
         specifier: ^3.0.2
         version: 3.0.3
     devDependencies:
-      '@hitlink/eslint-config':
+      '@flowstate/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@hitlink/typescript-config':
+      '@flowstate/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':
@@ -177,10 +211,10 @@ importers:
 
   packages/config:
     devDependencies:
-      '@hitlink/eslint-config':
+      '@flowstate/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@hitlink/typescript-config':
+      '@flowstate/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       eslint:
@@ -196,10 +230,10 @@ importers:
         specifier: ^6.18.0
         version: 6.19.3(prisma@6.19.3(typescript@5.9.2))(typescript@5.9.2)
     devDependencies:
-      '@hitlink/eslint-config':
+      '@flowstate/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@hitlink/typescript-config':
+      '@flowstate/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':
@@ -259,10 +293,10 @@ importers:
 
   packages/types:
     devDependencies:
-      '@hitlink/eslint-config':
+      '@flowstate/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@hitlink/typescript-config':
+      '@flowstate/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       eslint:
@@ -283,10 +317,10 @@ importers:
         specifier: ^19.2.0
         version: 19.2.4(react@19.2.4)
     devDependencies:
-      '@hitlink/eslint-config':
+      '@flowstate/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@hitlink/typescript-config':
+      '@flowstate/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':

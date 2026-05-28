@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { resolveRequiredFormStatusesForMember } from "@hitlink/db";
+import { resolveRequiredFormStatusesForMember } from "@flowstate/db";
 import { AdminShell } from "../../_components/admin-shell";
 import {
   listMembers,

@@ -15,7 +15,7 @@ import {
   type ClassBookingStatus,
   type ClassBookingType,
   type Weekday,
-} from "@hitlink/db";
+} from "@flowstate/db";
 
 interface BookingTemplateRecord {
   id: string;

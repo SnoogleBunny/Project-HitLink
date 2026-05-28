@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { resolveRequiredFormStatusesForMember } from "@hitlink/db";
+import { resolveRequiredFormStatusesForMember } from "@flowstate/db";
 import { AdminShell } from "../../../_components/admin-shell";
 import { formatMinutesAsTime } from "../../../../lib/class-templates";
 import {

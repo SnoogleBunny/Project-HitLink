@@ -1,5 +1,5 @@
 {
-  "name": "@hitlink/typescript-config",
+  "name": "@flowstate/typescript-config",
   "version": "0.0.0",
   "private": true,
   "scripts": {

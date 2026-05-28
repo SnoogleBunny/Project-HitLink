@@ -24,7 +24,7 @@ export function MemberShell({
     <div className="member-shell">
       <aside className="member-sidebar">
         <div className="member-brand">
-          <p className="member-eyebrow">HitLink Member</p>
+          <p className="member-eyebrow">Flowstate Member</p>
           <h1>{context.workspace.name}</h1>
           <p>{context.member.fullName}</p>
         </div>

@@ -1,5 +1,5 @@
 {
-  "name": "hitlink-monorepo",
+  "name": "flowstate-monorepo",
   "private": true,
   "packageManager": "pnpm@10.33.0",
   "scripts": {
@@ -11,13 +11,13 @@
     "test:e2e": "pnpm db:reset:demo && playwright test",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
-    "db:generate": "pnpm --filter @hitlink/db db:generate",
-    "db:migrate": "pnpm --filter @hitlink/db db:migrate",
-    "db:migrate:deploy": "pnpm --filter @hitlink/db db:migrate:deploy",
-    "db:reset:demo": "pnpm --filter @hitlink/db db:reset:demo",
-    "db:seed": "pnpm --filter @hitlink/db db:seed",
-    "db:validate": "pnpm --filter @hitlink/db db:validate",
-    "db:studio": "pnpm --filter @hitlink/db db:studio"
+    "db:generate": "pnpm --filter @flowstate/db db:generate",
+    "db:migrate": "pnpm --filter @flowstate/db db:migrate",
+    "db:migrate:deploy": "pnpm --filter @flowstate/db db:migrate:deploy",
+    "db:reset:demo": "pnpm --filter @flowstate/db db:reset:demo",
+    "db:seed": "pnpm --filter @flowstate/db db:seed",
+    "db:validate": "pnpm --filter @flowstate/db db:validate",
+    "db:studio": "pnpm --filter @flowstate/db db:studio"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

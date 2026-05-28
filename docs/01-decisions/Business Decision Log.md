@@ -1,15 +1,15 @@
 # Business Decision Log
 
-This is the running ledger for HitLink decisions. Keep entries short, dated, and linked.
+This is the running ledger for Flowstate decisions. Keep entries short, dated, and linked.
 
 ## 2026-05-23
 
-### Decision: HitLink MVP remains single-location first
+### Decision: Flowstate MVP remains single-location first
 
 Status: accepted  
 Source: [[product_decisions_ledger]], [[feature_decision_sheet]]
 
-HitLink should solve operations for one-location Muay Thai gyms and Hyrox/HIIT-style studios before expanding into multi-location or franchise use cases.
+Flowstate should solve operations for one-location Muay Thai gyms and Hyrox/HIIT-style studios before expanding into multi-location or franchise use cases.
 
 Why it matters:
 

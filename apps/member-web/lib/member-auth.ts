@@ -2,8 +2,8 @@ import {
   getSession,
   MEMBER_SESSION_COOKIE_NAME,
   type AppSession,
-} from "@hitlink/auth";
-import { prisma, type MemberStatus, type WorkspaceStatus } from "@hitlink/db";
+} from "@flowstate/auth";
+import { prisma, type MemberStatus, type WorkspaceStatus } from "@flowstate/db";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 

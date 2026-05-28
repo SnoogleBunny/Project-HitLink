@@ -14,7 +14,7 @@ import {
   type ClassBookingType,
   type UserRole,
   type Weekday,
-} from "@hitlink/db";
+} from "@flowstate/db";
 
 const attendanceStates: AttendanceState[] = [
   "PRESENT",

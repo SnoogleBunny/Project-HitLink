@@ -1,7 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
-import { recordLocalFormSignature } from "@hitlink/db";
+import { recordLocalFormSignature } from "@flowstate/db";
 import type { SignatureFormState } from "../../../_components/form-signature-form";
 import { requireMemberPortalContext } from "../../../../lib/member-auth";
 

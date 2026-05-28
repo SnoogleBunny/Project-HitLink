@@ -1,7 +1,7 @@
 import {
   prisma,
   type StripeConnectionStatus,
-} from "@hitlink/db";
+} from "@flowstate/db";
 import {
   stripeBillingGateway,
   type StripeAccountSummary,

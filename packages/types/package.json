@@ -1,5 +1,5 @@
 {
-  "name": "@hitlink/types",
+  "name": "@flowstate/types",
   "version": "0.0.0",
   "type": "module",
   "private": true,
@@ -12,8 +12,8 @@
     "test": "node -e \"console.log('No tests yet')\""
   },
   "devDependencies": {
-    "@hitlink/eslint-config": "workspace:*",
-    "@hitlink/typescript-config": "workspace:*",
+    "@flowstate/eslint-config": "workspace:*",
+    "@flowstate/typescript-config": "workspace:*",
     "eslint": "^9.39.1",
     "typescript": "5.9.2"
   }

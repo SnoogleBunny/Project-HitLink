@@ -1,4 +1,4 @@
-import { prisma } from "@hitlink/db";
+import { prisma } from "@flowstate/db";
 
 export interface RoomFormInput {
   name: string;

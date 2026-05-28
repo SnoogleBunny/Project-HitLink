@@ -5,7 +5,7 @@ import {
   validatePdfUpload,
   type FormType,
   type RequirementTarget,
-} from "@hitlink/db";
+} from "@flowstate/db";
 
 export interface AdminFormDocumentListItem {
   id: string;

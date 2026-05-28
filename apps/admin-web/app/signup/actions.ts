@@ -1,7 +1,7 @@
 "use server";
 
-import { createSession, hashPassword } from "@hitlink/auth";
-import { prisma } from "@hitlink/db";
+import { createSession, hashPassword } from "@flowstate/auth";
+import { prisma } from "@flowstate/db";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { emptyFormState, type BasicFormState } from "../../lib/admin-access";

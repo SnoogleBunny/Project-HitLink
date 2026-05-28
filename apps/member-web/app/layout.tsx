@@ -13,8 +13,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "HitLink Member",
-  description: "Future member web app for HitLink",
+  title: "Flowstate Member",
+  description: "Future member web app for Flowstate",
 };
 
 export default function RootLayout({

@@ -1,6 +1,6 @@
-# HitLink Home
+# Flowstate Home
 
-HitLink is a gym management platform for Muay Thai gyms and Hyrox/HIIT-style class studios. The product thesis is to replace clunky tools like Zen Planner with a calmer operating system for scheduling, billing, attendance, forms, staff workflows, migration, and member self-service.
+Flowstate is a gym management platform for Muay Thai gyms and Hyrox/HIIT-style class studios. The product thesis is to replace clunky tools like Zen Planner with a calmer operating system for scheduling, billing, attendance, forms, staff workflows, migration, and member self-service.
 
 ## North Star
 

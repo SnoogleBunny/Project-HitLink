@@ -1,4 +1,4 @@
-import type { AppSession } from "@hitlink/auth";
+import type { AppSession } from "@flowstate/auth";
 
 export interface BasicFormState {
   error: string | null;

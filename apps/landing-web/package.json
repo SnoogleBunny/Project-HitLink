@@ -1,0 +1,28 @@
+{
+  "name": "landing-web",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; next dev --port 3003'",
+    "build": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; next build'",
+    "start": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; next start -p 3003'",
+    "lint": "eslint --max-warnings 0",
+    "check-types": "next typegen && tsc --noEmit",
+    "test": "node -e \"console.log('No tests yet')\""
+  },
+  "dependencies": {
+    "next": "16.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@flowstate/eslint-config": "workspace:*",
+    "@flowstate/typescript-config": "workspace:*",
+    "@types/node": "^22.15.3",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "eslint": "^9.39.1",
+    "typescript": "5.9.2"
+  }
+}

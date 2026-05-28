@@ -1,6 +1,6 @@
-# HitLink Brain
+# Flowstate Brain
 
-This folder is an Obsidian vault for the HitLink product, business, and engineering brain.
+This folder is an Obsidian vault for the Flowstate product, business, and engineering brain.
 
 Start here:
 

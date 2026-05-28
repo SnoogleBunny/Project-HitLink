@@ -9,7 +9,7 @@ import {
   joinWaitlist,
   pickOldestEligiblePunchCard,
   promoteNextWaitlistEntry,
-} from "@hitlink/db";
+} from "@flowstate/db";
 
 function buildTemplateRecord() {
   return {

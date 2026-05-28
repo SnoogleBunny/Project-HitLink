@@ -1,5 +1,5 @@
-import type { AppSession } from "@hitlink/auth";
-import { getSession } from "@hitlink/auth";
+import type { AppSession } from "@flowstate/auth";
+import { getSession } from "@flowstate/auth";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {

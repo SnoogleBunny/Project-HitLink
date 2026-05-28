@@ -7,7 +7,7 @@ import {
   type RequiredFormStatusItem,
   type SignatureRequestPageData,
   type SignedFormHistoryItem,
-} from "@hitlink/db";
+} from "@flowstate/db";
 
 export interface MemberFormStatusView extends RequiredFormStatusItem {
   actionableHrefs: Array<{

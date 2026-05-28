@@ -2,7 +2,7 @@
 
 ## Thesis
 
-HitLink replaces old gym-management tools with a calmer operating system for class-based gyms.
+Flowstate replaces old gym-management tools with a calmer operating system for class-based gyms.
 
 The wedge is not "more features than Zen Planner." The wedge is that the core daily loops feel reliable, understandable, and demoable:
 

@@ -8,8 +8,8 @@ const { cookiesMock, getSessionMock, redirectMock } = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock("@hitlink/auth", () => ({
-  MEMBER_SESSION_COOKIE_NAME: "hitlink_member_session",
+vi.mock("@flowstate/auth", () => ({
+  MEMBER_SESSION_COOKIE_NAME: "flowstate_member_session",
   getSession: getSessionMock,
 }));
 

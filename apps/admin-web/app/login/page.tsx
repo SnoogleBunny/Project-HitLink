@@ -8,7 +8,7 @@ export default async function LoginPage() {
   return (
     <AuthPanel
       eyebrow="Owner access"
-      title="Log in to HitLink Admin"
+      title="Log in to Flowstate Admin"
       description="Use your owner credentials to continue into onboarding or your protected dashboard."
     >
       <LoginForm />

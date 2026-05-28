@@ -12,17 +12,17 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@hitlink/auth": "workspace:*",
-    "@hitlink/db": "workspace:*",
-    "@hitlink/ui": "workspace:*",
+    "@flowstate/auth": "workspace:*",
+    "@flowstate/db": "workspace:*",
+    "@flowstate/ui": "workspace:*",
     "next": "16.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "stripe": "^22.0.0"
   },
   "devDependencies": {
-    "@hitlink/eslint-config": "workspace:*",
-    "@hitlink/typescript-config": "workspace:*",
+    "@flowstate/eslint-config": "workspace:*",
+    "@flowstate/typescript-config": "workspace:*",
     "@types/node": "^22.15.3",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",

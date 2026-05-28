@@ -50,7 +50,7 @@ function createMockDb(): TrialBookingTestDb {
     workspace: {
       findFirst: vi.fn().mockResolvedValue({
         id: "workspace_1",
-        name: "HitLink Gym",
+        name: "Flowstate Gym",
         status: "ACTIVE",
         location: {
           id: "location_1",

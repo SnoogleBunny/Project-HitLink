@@ -2,7 +2,7 @@ import {
   prisma,
   type BillingRecordStatus,
   type BillingStateStatus,
-} from "@hitlink/db";
+} from "@flowstate/db";
 import {
   stripeBillingGateway,
   type StripeBillingGateway,

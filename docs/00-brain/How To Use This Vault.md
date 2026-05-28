@@ -1,6 +1,6 @@
 # How To Use This Vault
 
-Use this vault as the durable brain for HitLink. Every meaningful product, business, or technical decision should land here.
+Use this vault as the durable brain for Flowstate. Every meaningful product, business, or technical decision should land here.
 
 ## Decision Rule
 

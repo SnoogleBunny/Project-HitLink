@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin Daily Command Center Preview</title>
+    <link rel="stylesheet" href="../../apps/admin-web/app/globals.css" />
+    <style>
+      @font-face {
+        font-family: "Geist Preview";
+        src: url("../../apps/admin-web/app/fonts/GeistVF.woff") format("woff");
+        font-weight: 100 900;
+      }
+
+      @font-face {
+        font-family: "Geist Mono Preview";
+        src: url("../../apps/admin-web/app/fonts/GeistMonoVF.woff") format("woff");
+        font-weight: 100 900;
+      }
+
+      :root {
+        --font-geist-sans: "Geist Preview";
+        --font-geist-mono: "Geist Mono Preview";
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="shell-sidebar">
+        <div class="shell-brand">
+          <span class="shell-brand-label">Flowstate Admin</span>
+          <h1>Demo Flowstate Gym</h1>
+          <p>Daily operations for the current scheduling slice.</p>
+        </div>
+        <nav class="shell-nav" aria-label="Admin navigation">
+          <a class="shell-nav-link active" href="#">Dashboard</a>
+          <a class="shell-nav-link" href="#">Schedule</a>
+          <a class="shell-nav-link" href="#">Bookings</a>
+          <a class="shell-nav-link" href="#">Today roster</a>
+          <a class="shell-nav-link" href="#">Members</a>
+          <a class="shell-nav-link" href="#">Billing</a>
+        </nav>
+        <div class="shell-sidebar-footer">
+          <p class="shell-sidebar-caption">Signed in as</p>
+          <p class="shell-sidebar-value">Demo Owner</p>
+          <p class="shell-sidebar-caption">demo-owner@flowstate.local</p>
+        </div>
+      </aside>
+
+      <div class="shell-main">
+        <header class="shell-header">
+          <div>
+            <p class="shell-header-eyebrow">Daily command center</p>
+            <h2>Today's readiness</h2>
+            <p class="shell-header-description">
+              Start-of-day triage for classes, bookings, trials, attendance,
+              and billing exceptions.
+            </p>
+          </div>
+          <div class="shell-header-actions">
+            <button class="button button-secondary" type="button">Log out</button>
+          </div>
+        </header>
+
+        <main class="shell-content">
+          <section class="command-readiness" aria-labelledby="readiness-title">
+            <div class="command-readiness-copy">
+              <p class="dashboard-card-label">Readiness</p>
+              <h3 id="readiness-title">
+                Good morning, Demo. Today has 4 classes, 52 booked spots, 3
+                trials, and 5 items needing attention.
+              </h3>
+              <p>Demo Flowstate Gym · America/Vancouver</p>
+            </div>
+
+            <div class="command-metric-grid" aria-label="Today readiness metrics">
+              <article class="command-metric command-metric-neutral">
+                <span class="command-metric-status">Info</span>
+                <strong>4</strong>
+                <span>Classes today</span>
+                <p>Scheduled class blocks</p>
+              </article>
+              <article class="command-metric command-metric-neutral">
+                <span class="command-metric-status">Info</span>
+                <strong>52</strong>
+                <span>Booked spots</span>
+                <p>Rostered members and trials</p>
+              </article>
+              <article class="command-metric command-metric-success">
+                <span class="command-metric-status">Clear</span>
+                <strong>3</strong>
+                <span>Trials</span>
+                <p>Conversion moments today</p>
+              </article>
+              <article class="command-metric command-metric-warning">
+                <span class="command-metric-status">Watch</span>
+                <strong>11</strong>
+                <span>Attendance left</span>
+                <p>Roster spots not yet recorded</p>
+              </article>
+              <article class="command-metric command-metric-danger">
+                <span class="command-metric-status">Action</span>
+                <strong>2</strong>
+                <span>Failed payments</span>
+                <p>Billing items needing action</p>
+              </article>
+            </div>
+          </section>
+
+          <div class="command-board">
+            <section class="command-panel command-panel-priority">
+              <div class="command-panel-header">
+                <div>
+                  <p class="dashboard-card-label">Needs attention</p>
+                  <h3>Owner queue</h3>
+                </div>
+                <span class="command-status-chip command-status-chip-warning">
+                  <span class="command-status-dot" aria-hidden="true"></span>
+                  5 open
+                </span>
+              </div>
+
+              <div class="command-summary-grid" aria-label="Attention categories">
+                <div class="command-summary-chip command-status-chip-danger">
+                  <span class="command-summary-count">2</span>
+                  <span>Billing</span>
+                </div>
+                <div class="command-summary-chip command-status-chip-warning">
+                  <span class="command-summary-count">1</span>
+                  <span>Attendance</span>
+                </div>
+                <div class="command-summary-chip command-status-chip-success">
+                  <span class="command-summary-count">2</span>
+                  <span>Trials</span>
+                </div>
+                <div class="command-summary-chip command-status-chip-warning">
+                  <span class="command-summary-count">1</span>
+                  <span>Capacity</span>
+                </div>
+                <div class="command-summary-chip command-status-chip-success">
+                  <span class="command-summary-count">0</span>
+                  <span>Invites</span>
+                </div>
+              </div>
+
+              <div class="command-attention-list">
+                <article class="command-attention-item command-severity-rail command-severity-rail-danger">
+                  <div class="command-attention-copy">
+                    <span class="command-status-chip command-status-chip-danger">
+                      <span class="command-status-dot" aria-hidden="true"></span>
+                      Action
+                    </span>
+                    <h4>Payment needs action: Maya Chen</h4>
+                    <p>Payment failed · Failed May 22, 2026 · Grace ends May 29, 2026</p>
+                  </div>
+                  <a class="button button-secondary" href="#">Open billing</a>
+                </article>
+                <article class="command-attention-item command-severity-rail command-severity-rail-warning">
+                  <div class="command-attention-copy">
+                    <span class="command-status-chip command-status-chip-warning">
+                      <span class="command-status-dot" aria-hidden="true"></span>
+                      Watch
+                    </span>
+                    <h4>Attendance left: Today Fundamentals</h4>
+                    <p>8 of 20 still unrecorded · 18:00 - 19:00</p>
+                  </div>
+                  <a class="button button-secondary" href="#">Open roster</a>
+                </article>
+              </div>
+            </section>
+
+            <section class="command-panel">
+              <div class="command-panel-header">
+                <div>
+                  <p class="dashboard-card-label">Quick actions</p>
+                  <h3>Common moves</h3>
+                </div>
+              </div>
+              <div class="command-action-grid">
+                <a class="command-action" href="#"><strong>Create booking</strong><span>Place a member into class</span></a>
+                <a class="command-action" href="#"><strong>Add member</strong><span>Create a profile or prospect</span></a>
+                <a class="command-action" href="#"><strong>Today roster</strong><span>Open floor-ready class lists</span></a>
+                <a class="command-action" href="#"><strong>Manage schedule</strong><span>Edit recurring classes</span></a>
+              </div>
+            </section>
+          </div>
+
+          <section class="command-panel">
+            <div class="command-panel-header">
+              <div>
+                <p class="dashboard-card-label">Today's schedule</p>
+                <h3>4 classes</h3>
+              </div>
+              <a class="button button-secondary" href="#">Manage schedule</a>
+            </div>
+            <div class="command-schedule-list">
+              <article class="command-schedule-row">
+                <div class="command-schedule-time">
+                  <strong>18:00 - 19:00</strong>
+                  <span>Tuesday</span>
+                </div>
+                <div class="command-schedule-copy">
+                  <h4>Today Fundamentals</h4>
+                  <p>Demo Owner · Main Mat</p>
+                  <div class="command-chip-row">
+                    <span class="command-status-chip command-status-chip-warning"><span class="command-status-dot" aria-hidden="true"></span>18 / 20 booked</span>
+                    <span class="command-status-chip command-status-chip-success"><span class="command-status-dot" aria-hidden="true"></span>2 trials</span>
+                    <span class="command-status-chip command-status-chip-warning"><span class="command-status-dot" aria-hidden="true"></span>10 attendance</span>
+                  </div>
+                </div>
+                <a class="button button-secondary" href="#">Open roster</a>
+              </article>
+            </div>
+          </section>
+
+          <section class="command-panel command-setup-panel">
+            <div class="command-panel-header">
+              <div>
+                <p class="dashboard-card-label">Setup snapshot</p>
+                <h3>Demo Flowstate Gym</h3>
+              </div>
+              <span class="command-status-chip command-status-chip-neutral">
+                <span class="command-status-dot" aria-hidden="true"></span>
+                ACTIVE
+              </span>
+            </div>
+            <div class="command-setup-grid">
+              <dl class="command-setup-list">
+                <div><dt>Programs</dt><dd>2</dd></div>
+                <div><dt>Rooms</dt><dd>1</dd></div>
+                <div><dt>Active templates</dt><dd>4</dd></div>
+                <div><dt>Membership plans</dt><dd>3</dd></div>
+                <div><dt>Pending coach invites</dt><dd>0</dd></div>
+                <div><dt>Billing queue</dt><dd>2</dd></div>
+              </dl>
+              <div class="command-location-card">
+                <h4>Demo Flowstate Gym</h4>
+                <p>123 Demo Street, Vancouver, BC, V6B 1A1, CA</p>
+                <dl>
+                  <div><dt>Timezone</dt><dd>America/Vancouver</dd></div>
+                  <div><dt>Rooms enabled</dt><dd>Yes</dd></div>
+                </dl>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

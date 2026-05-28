@@ -4,7 +4,7 @@ import {
   prisma,
   type MemberStatus,
   type Weekday,
-} from "@hitlink/db";
+} from "@flowstate/db";
 
 export const MEMBER_STATUSES: MemberStatus[] = [
   "ACTIVE",

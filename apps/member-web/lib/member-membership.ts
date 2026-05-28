@@ -3,7 +3,7 @@ import {
   type BillingRecordStatus,
   type BillingStateStatus,
   type MemberMembershipStatus,
-} from "@hitlink/db";
+} from "@flowstate/db";
 
 interface ProgramRestrictionRecord {
   programId: string;

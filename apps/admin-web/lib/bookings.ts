@@ -7,7 +7,7 @@ import {
   type ClassBookingStatus,
   type ClassBookingType,
   type Weekday,
-} from "@hitlink/db";
+} from "@flowstate/db";
 
 const bookingTypes: ClassBookingType[] = ["MEMBERSHIP", "TRIAL"];
 

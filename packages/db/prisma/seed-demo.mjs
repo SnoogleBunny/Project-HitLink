@@ -8,12 +8,12 @@ import process from "node:process";
 const prisma = new PrismaClient();
 
 const demo = {
-  workspaceName: "Demo HitLink Gym",
-  ownerEmail: "demo-owner@hitlink.local",
+  workspaceName: "Demo Flowstate Gym",
+  ownerEmail: "demo-owner@flowstate.local",
   ownerPassword: "DemoPass123!",
-  memberEmail: "demo-member@hitlink.local",
+  memberEmail: "demo-member@flowstate.local",
   memberPassword: "MemberPass123!",
-  coachInviteEmail: "demo-coach@hitlink.local",
+  coachInviteEmail: "demo-coach@flowstate.local",
 };
 
 const demoTimezone = "America/Vancouver";
@@ -40,7 +40,7 @@ endobj
 4 0 obj
 << /Length 46 >>
 stream
-BT /F1 12 Tf 24 120 Td (HitLink demo waiver) Tj ET
+BT /F1 12 Tf 24 120 Td (Flowstate demo waiver) Tj ET
 endstream
 endobj
 xref

@@ -1,4 +1,4 @@
-import { MEMBER_SESSION_COOKIE_NAME } from "@hitlink/auth";
+import { MEMBER_SESSION_COOKIE_NAME } from "@flowstate/auth";
 import { NextResponse, type NextRequest } from "next/server";
 
 const AUTH_ROUTES = ["/login"];

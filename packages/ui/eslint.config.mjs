@@ -1,4 +1,4 @@
-import { config } from "@hitlink/eslint-config/react-internal";
+import { config } from "@flowstate/eslint-config/react-internal";
 
 /** @type {import("eslint").Linter.Config} */
 export default config;

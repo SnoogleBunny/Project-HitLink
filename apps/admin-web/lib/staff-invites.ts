@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { prisma, type UserRole } from "@hitlink/db";
+import { prisma, type UserRole } from "@flowstate/db";
 
 const STAFF_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const missingPendingInviteMessage = "That invite is no longer pending.";

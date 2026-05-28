@@ -1,0 +1,181 @@
+/*
+  Flowstate Landing Page Tokens
+  Philosophy: premium calm for martial arts operations.
+  These tokens are intentionally separate from the admin/member product UI.
+*/
+
+:root {
+  color-scheme: light;
+
+  --color-bg-primary: #f3f1ea;
+  --color-bg-secondary: #fffdf7;
+  --color-bg-tertiary: #e7e2d7;
+  --color-bg-inverse: #10221a;
+  --color-bg-hero-scrim: rgba(12, 28, 22, 0.54);
+
+  --color-text-primary: #15201b;
+  --color-text-secondary: #526059;
+  --color-text-tertiary: #7e8982;
+  --color-text-inverse: #fbf8ef;
+  --color-text-link: #234f3b;
+
+  --color-border-primary: rgba(21, 32, 27, 0.16);
+  --color-border-secondary: rgba(21, 32, 27, 0.08);
+  --color-border-focus: #2f6d53;
+
+  --color-accent-primary: #174d34;
+  --color-accent-primary-hover: #0f3c28;
+  --color-accent-primary-active: #092719;
+  --color-accent-secondary: #a97845;
+
+  --color-status-success: #2f6d53;
+  --color-status-warning: #9c6b23;
+  --color-status-error: #a3462d;
+  --color-status-info: #376477;
+
+  --color-surface-overlay: rgba(9, 20, 15, 0.48);
+  --color-placeholder-plane: rgba(214, 214, 209, 0.88);
+  --color-placeholder-line: rgba(84, 92, 87, 0.18);
+
+  --space-0: 0;
+  --space-1: 0.125rem;
+  --space-2: 0.25rem;
+  --space-3: 0.5rem;
+  --space-4: 0.75rem;
+  --space-5: 1rem;
+  --space-6: 1.5rem;
+  --space-7: 2rem;
+  --space-8: 3rem;
+  --space-9: 4rem;
+  --space-10: 6rem;
+  --space-11: 8rem;
+  --space-12: 10rem;
+
+  --font-family-display: var(--font-display), Georgia, serif;
+  --font-family-body: var(--font-body), "Avenir Next", sans-serif;
+  --font-family-mono: "SFMono-Regular", "Cascadia Code", monospace;
+
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-md: 1.125rem;
+  --font-size-lg: 1.375rem;
+  --font-size-xl: 1.75rem;
+  --font-size-2xl: 2.25rem;
+  --font-size-3xl: 3.25rem;
+  --font-size-4xl: clamp(4.5rem, 12vw, 9.5rem);
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 650;
+  --font-weight-bold: 760;
+
+  --line-height-tight: 0.92;
+  --line-height-normal: 1.45;
+  --line-height-relaxed: 1.72;
+
+  --letter-spacing-tight: -0.045em;
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: 0.12em;
+
+  --max-width-content: 44rem;
+  --max-width-wide: 78rem;
+  --max-width-page: 100rem;
+
+  --border-radius-sm: 0.375rem;
+  --border-radius-md: 0.625rem;
+  --border-radius-lg: 1rem;
+  --border-radius-full: 999px;
+
+  --shadow-sm: 0 8px 24px rgba(16, 34, 26, 0.08);
+  --shadow-md: 0 18px 50px rgba(16, 34, 26, 0.12);
+  --shadow-lg: 0 28px 90px rgba(16, 34, 26, 0.18);
+  --shadow-focus: 0 0 0 4px rgba(47, 109, 83, 0.2);
+
+  --duration-instant: 50ms;
+  --duration-fast: 150ms;
+  --duration-normal: 260ms;
+  --duration-slow: 480ms;
+  --duration-slower: 760ms;
+
+  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-in: cubic-bezier(0.4, 0, 1, 1);
+  --easing-out: cubic-bezier(0, 0, 0.2, 1);
+  --easing-presence: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --breakpoint-sm: 375px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg-primary: #111915;
+  --color-bg-secondary: #17231d;
+  --color-bg-tertiary: #213129;
+  --color-bg-inverse: #f3f1ea;
+  --color-bg-hero-scrim: rgba(8, 18, 14, 0.68);
+
+  --color-text-primary: #f1eee7;
+  --color-text-secondary: #c0c8c2;
+  --color-text-tertiary: #8f9b94;
+  --color-text-inverse: #15201b;
+  --color-text-link: #9bceb3;
+
+  --color-border-primary: rgba(241, 238, 231, 0.17);
+  --color-border-secondary: rgba(241, 238, 231, 0.09);
+  --color-border-focus: #91c8aa;
+
+  --color-accent-primary: #91c8aa;
+  --color-accent-primary-hover: #a9d8bd;
+  --color-accent-primary-active: #c8e8d6;
+  --color-accent-secondary: #d0a269;
+
+  --color-surface-overlay: rgba(0, 0, 0, 0.56);
+  --color-placeholder-plane: rgba(62, 68, 64, 0.9);
+  --color-placeholder-line: rgba(230, 235, 231, 0.18);
+
+  --shadow-sm: 0 8px 24px rgba(0, 0, 0, 0.22);
+  --shadow-md: 0 18px 50px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 28px 90px rgba(0, 0, 0, 0.36);
+  --shadow-focus: 0 0 0 4px rgba(145, 200, 170, 0.24);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --color-bg-primary: #111915;
+    --color-bg-secondary: #17231d;
+    --color-bg-tertiary: #213129;
+    --color-bg-inverse: #f3f1ea;
+    --color-bg-hero-scrim: rgba(8, 18, 14, 0.68);
+
+    --color-text-primary: #f1eee7;
+    --color-text-secondary: #c0c8c2;
+    --color-text-tertiary: #8f9b94;
+    --color-text-inverse: #15201b;
+    --color-text-link: #9bceb3;
+
+    --color-border-primary: rgba(241, 238, 231, 0.17);
+    --color-border-secondary: rgba(241, 238, 231, 0.09);
+    --color-border-focus: #91c8aa;
+
+    --color-accent-primary: #91c8aa;
+    --color-accent-primary-hover: #a9d8bd;
+    --color-accent-primary-active: #c8e8d6;
+    --color-accent-secondary: #d0a269;
+
+    --color-surface-overlay: rgba(0, 0, 0, 0.56);
+    --color-placeholder-plane: rgba(62, 68, 64, 0.9);
+    --color-placeholder-line: rgba(230, 235, 231, 0.18);
+
+    --shadow-sm: 0 8px 24px rgba(0, 0, 0, 0.22);
+    --shadow-md: 0 18px 50px rgba(0, 0, 0, 0.28);
+    --shadow-lg: 0 28px 90px rgba(0, 0, 0, 0.36);
+    --shadow-focus: 0 0 0 4px rgba(145, 200, 170, 0.24);
+  }
+}

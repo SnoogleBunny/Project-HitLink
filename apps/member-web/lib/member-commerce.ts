@@ -1,4 +1,4 @@
-import { prisma, type StripeConnectionStatus } from "@hitlink/db";
+import { prisma, type StripeConnectionStatus } from "@flowstate/db";
 import Stripe from "stripe";
 
 const checkoutExpirationSeconds = 15 * 60;

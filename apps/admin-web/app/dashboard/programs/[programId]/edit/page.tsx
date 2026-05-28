@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma } from "@hitlink/db";
+import { prisma } from "@flowstate/db";
 import { AdminShell } from "../../../../_components/admin-shell";
 import { requireOwnerWorkspaceContext } from "../../../../../lib/owner-workspace";
 import { archiveProgramAction } from "../../actions";

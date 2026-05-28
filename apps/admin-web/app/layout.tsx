@@ -13,8 +13,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "HitLink Admin",
-  description: "Owner admin auth, onboarding, and dashboard for HitLink",
+  title: "Flowstate Admin",
+  description: "Owner admin auth, onboarding, and dashboard for Flowstate",
 };
 
 export default function RootLayout({

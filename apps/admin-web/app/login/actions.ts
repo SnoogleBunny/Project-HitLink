@@ -1,7 +1,7 @@
 "use server";
 
-import { createSession, verifyPassword } from "@hitlink/auth";
-import { prisma } from "@hitlink/db";
+import { createSession, verifyPassword } from "@flowstate/auth";
+import { prisma } from "@flowstate/db";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {

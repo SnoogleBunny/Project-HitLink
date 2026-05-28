@@ -1,5 +1,5 @@
 {
-  "extends": "@hitlink/typescript-config/nextjs.json",
+  "extends": "@flowstate/typescript-config/nextjs.json",
   "compilerOptions": {
     "plugins": [
       {

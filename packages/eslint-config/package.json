@@ -1,5 +1,5 @@
 {
-  "name": "@hitlink/eslint-config",
+  "name": "@flowstate/eslint-config",
   "version": "0.0.0",
   "type": "module",
   "private": true,
