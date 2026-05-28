@@ -45,106 +45,112 @@ export function WaitlistForm() {
         </p>
       </div>
 
-      {hasMessage ? (
-        <div
-          className={
-            state.status === "success"
-              ? "form-message form-message-success"
-              : "form-message form-message-error"
-          }
-          role={state.status === "success" ? "status" : "alert"}
-        >
-          {state.message}
+      <div className="form-fields">
+        {hasMessage ? (
+          <div
+            className={
+              state.status === "success"
+                ? "form-message form-message-success"
+                : "form-message form-message-error"
+            }
+            role={state.status === "success" ? "status" : "alert"}
+          >
+            {state.message}
+          </div>
+        ) : null}
+
+        <div className="field-grid">
+          <label className="field">
+            <span>Your name</span>
+            <input
+              aria-describedby={
+                state.errors.ownerName ? "ownerName-error" : undefined
+              }
+              aria-invalid={Boolean(state.errors.ownerName)}
+              autoComplete="name"
+              id="ownerName"
+              name="ownerName"
+              required
+              type="text"
+            />
+            <span id="ownerName-error">
+              <FieldError message={state.errors.ownerName} />
+            </span>
+          </label>
+
+          <label className="field">
+            <span>Gym name</span>
+            <input
+              aria-describedby={state.errors.gymName ? "gymName-error" : undefined}
+              aria-invalid={Boolean(state.errors.gymName)}
+              autoComplete="organization"
+              id="gymName"
+              name="gymName"
+              required
+              type="text"
+            />
+            <span id="gymName-error">
+              <FieldError message={state.errors.gymName} />
+            </span>
+          </label>
         </div>
-      ) : null}
 
-      <div className="field-grid">
+        <div className="field-grid">
+          <label className="field">
+            <span>Email</span>
+            <input
+              aria-describedby={state.errors.email ? "email-error" : undefined}
+              aria-invalid={Boolean(state.errors.email)}
+              autoComplete="email"
+              id="email"
+              name="email"
+              required
+              type="email"
+            />
+            <span id="email-error">
+              <FieldError message={state.errors.email} />
+            </span>
+          </label>
+
+          <label className="field">
+            <span>Primary style</span>
+            <select
+              aria-describedby={state.errors.style ? "style-error" : undefined}
+              aria-invalid={Boolean(state.errors.style)}
+              id="style"
+              name="style"
+              required
+            >
+              <option value="">Choose one</option>
+              {waitlistStyles.map((style) => (
+                <option key={style} value={style}>
+                  {style}
+                </option>
+              ))}
+            </select>
+            <span id="style-error">
+              <FieldError message={state.errors.style} />
+            </span>
+          </label>
+        </div>
+
         <label className="field">
-          <span>Your name</span>
-          <input
-            aria-describedby={state.errors.ownerName ? "ownerName-error" : undefined}
-            aria-invalid={Boolean(state.errors.ownerName)}
-            autoComplete="name"
-            id="ownerName"
-            name="ownerName"
-            required
-            type="text"
+          <span>What should Flowstate solve first?</span>
+          <textarea
+            aria-describedby={state.errors.note ? "note-error" : undefined}
+            aria-invalid={Boolean(state.errors.note)}
+            id="note"
+            maxLength={500}
+            name="note"
+            rows={4}
           />
-          <span id="ownerName-error">
-            <FieldError message={state.errors.ownerName} />
+          <span id="note-error">
+            <FieldError message={state.errors.note} />
           </span>
         </label>
 
-        <label className="field">
-          <span>Gym name</span>
-          <input
-            aria-describedby={state.errors.gymName ? "gymName-error" : undefined}
-            aria-invalid={Boolean(state.errors.gymName)}
-            autoComplete="organization"
-            id="gymName"
-            name="gymName"
-            required
-            type="text"
-          />
-          <span id="gymName-error">
-            <FieldError message={state.errors.gymName} />
-          </span>
-        </label>
+        <SubmitButton />
       </div>
-
-      <label className="field">
-        <span>Email</span>
-        <input
-          aria-describedby={state.errors.email ? "email-error" : undefined}
-          aria-invalid={Boolean(state.errors.email)}
-          autoComplete="email"
-          id="email"
-          name="email"
-          required
-          type="email"
-        />
-        <span id="email-error">
-          <FieldError message={state.errors.email} />
-        </span>
-      </label>
-
-      <label className="field">
-        <span>Primary style</span>
-        <select
-          aria-describedby={state.errors.style ? "style-error" : undefined}
-          aria-invalid={Boolean(state.errors.style)}
-          id="style"
-          name="style"
-          required
-        >
-          <option value="">Choose one</option>
-          {waitlistStyles.map((style) => (
-            <option key={style} value={style}>
-              {style}
-            </option>
-          ))}
-        </select>
-        <span id="style-error">
-          <FieldError message={state.errors.style} />
-        </span>
-      </label>
-
-      <label className="field">
-        <span>What should Flowstate solve first?</span>
-        <textarea
-          aria-describedby={state.errors.note ? "note-error" : undefined}
-          aria-invalid={Boolean(state.errors.note)}
-          id="note"
-          maxLength={500}
-          name="note"
-          rows={4}
-        />
-        <span id="note-error">
-          <FieldError message={state.errors.note} />
-        </span>
-      </label>
-
-      <SubmitButton />
     </form>
   );
 }

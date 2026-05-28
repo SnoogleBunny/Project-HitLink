@@ -521,12 +521,21 @@ main {
   color: var(--color-text-primary);
   color-scheme: light;
   display: grid;
-  gap: var(--space-5);
+  gap: var(--space-7);
   padding: var(--space-6);
 }
 
 .form-intro {
   margin-bottom: var(--space-3);
+}
+
+.waitlist-form .form-intro h2 {
+  font-size: clamp(2.4rem, 6vw, 4.8rem);
+  max-width: 11ch;
+}
+
+.waitlist-form .form-intro p {
+  max-width: 32rem;
 }
 
 .form-message {
@@ -546,44 +555,66 @@ main {
   color: var(--color-status-error);
 }
 
+.form-fields {
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(21, 32, 27, 0.1);
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+}
+
 .field-grid {
   display: grid;
-  gap: var(--space-5);
+  gap: 0;
 }
 
 .field {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(21, 32, 27, 0.1);
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  padding: var(--space-4);
+  transition:
+    background-color var(--duration-fast) var(--easing-default),
+    border-color var(--duration-fast) var(--easing-default);
+}
+
+.field:focus-within {
+  background: rgba(255, 255, 255, 0.68);
 }
 
 .field span:first-child {
   color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .field input,
 .field select,
 .field textarea {
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid var(--color-border-primary);
+  background: transparent;
+  border: 0;
   border-radius: 0;
   color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--font-size-base);
   min-height: 52px;
-  padding: 0 var(--space-5);
+  padding: 0;
   width: 100%;
 }
 
 .field textarea {
-  min-height: 8rem;
-  padding: var(--space-4) var(--space-5);
+  min-height: 7.5rem;
+  padding: var(--space-2) 0 0;
   resize: vertical;
 }
 
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
-  border-color: var(--color-border-focus);
   outline: none;
 }
 
@@ -596,8 +627,8 @@ main {
 .form-submit {
   border: 0;
   cursor: pointer;
-  margin-top: var(--space-3);
-  width: 100%;
+  margin: var(--space-4);
+  width: calc(100% - (var(--space-4) * 2));
 }
 
 .form-submit:disabled {
@@ -772,12 +803,20 @@ main {
   }
 
   .waitlist-form {
-    grid-template-columns: 0.8fr 1fr;
+    align-items: start;
+    grid-template-columns: minmax(16rem, 0.68fr) minmax(0, 1fr);
   }
 
-  .form-intro,
-  .form-message,
-  .form-submit {
-    grid-column: 1 / -1;
+  .form-intro {
+    grid-column: 1;
+    margin-bottom: 0;
+  }
+
+  .form-fields {
+    grid-column: 2;
+  }
+
+  .field-grid .field:first-child {
+    border-right: 1px solid rgba(21, 32, 27, 0.1);
   }
 }
