@@ -6,6 +6,8 @@
   --color-bg-tertiary: #e7e2d7;
   --color-bg-inverse: #10221a;
   --color-bg-hero-scrim: rgba(12, 28, 22, 0.55);
+  --color-hero-text: #fbf8ef;
+  --color-hero-muted: rgba(251, 248, 239, 0.84);
 
   --color-text-primary: #15201b;
   --color-text-secondary: #526059;
@@ -99,6 +101,8 @@
   --color-bg-tertiary: #213129;
   --color-bg-inverse: #f3f1ea;
   --color-bg-hero-scrim: rgba(8, 18, 14, 0.68);
+  --color-hero-text: #fbf8ef;
+  --color-hero-muted: rgba(251, 248, 239, 0.84);
   --color-text-primary: #f1eee7;
   --color-text-secondary: #c0c8c2;
   --color-text-tertiary: #8f9b94;
@@ -127,6 +131,8 @@
     --color-bg-tertiary: #213129;
     --color-bg-inverse: #f3f1ea;
     --color-bg-hero-scrim: rgba(8, 18, 14, 0.68);
+    --color-hero-text: #fbf8ef;
+    --color-hero-muted: rgba(251, 248, 239, 0.84);
     --color-text-primary: #f1eee7;
     --color-text-secondary: #c0c8c2;
     --color-text-tertiary: #8f9b94;
@@ -211,7 +217,7 @@ textarea {
 
 .site-header {
   align-items: center;
-  color: var(--color-text-inverse);
+  color: var(--color-hero-text);
   display: grid;
   gap: var(--space-5);
   grid-template-columns: 1fr auto;
@@ -246,7 +252,7 @@ textarea {
 }
 
 .hero {
-  color: var(--color-text-inverse);
+  color: var(--color-hero-text);
   display: grid;
   min-height: 100svh;
   overflow: hidden;
@@ -294,7 +300,7 @@ textarea {
 }
 
 .hero-content > p:not(.hero-brand) {
-  color: rgba(251, 248, 239, 0.82);
+  color: var(--color-hero-muted);
   font-size: var(--font-size-md);
   line-height: var(--line-height-relaxed);
   margin: var(--space-6) 0 0;
@@ -338,7 +344,7 @@ textarea {
 
 .button-secondary {
   border: 1px solid rgba(251, 248, 239, 0.38);
-  color: var(--color-text-inverse);
+  color: var(--color-hero-text);
 }
 
 .button-secondary:hover {
@@ -348,20 +354,20 @@ textarea {
 .product-plane {
   animation: plane-reveal 900ms var(--easing-presence) 220ms both;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.52), transparent 42%),
-    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent),
-    #d8d7d0;
-  border: 2px solid rgba(255, 255, 255, 0.72);
+    linear-gradient(135deg, rgba(255, 255, 255, 0.38), transparent 42%),
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent),
+    rgba(214, 214, 209, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.58);
   box-shadow:
-    0 28px 90px rgba(0, 0, 0, 0.26),
+    0 24px 74px rgba(0, 0, 0, 0.24),
     inset 0 0 0 1px rgba(21, 32, 27, 0.05);
   display: none;
-  height: min(48vh, 31rem);
+  height: min(38vh, 25rem);
   overflow: hidden;
   position: absolute;
-  right: 7vw;
-  top: 17%;
-  width: min(34vw, 31rem);
+  right: 8vw;
+  top: 24%;
+  width: min(27vw, 24rem);
   z-index: 3;
 }
 
@@ -500,11 +506,20 @@ main {
 }
 
 .waitlist-form {
+  --color-accent-primary: #174d34;
+  --color-border-focus: #2f6d53;
+  --color-border-primary: rgba(21, 32, 27, 0.16);
+  --color-text-primary: #15201b;
+  --color-text-secondary: #526059;
+  --color-text-tertiary: #7e8982;
+
   background:
     linear-gradient(180deg, rgba(255, 253, 247, 0.94), rgba(255, 253, 247, 0.84)),
     var(--color-bg-secondary);
   border: 1px solid var(--color-border-primary);
   box-shadow: var(--shadow-md);
+  color: var(--color-text-primary);
+  color-scheme: light;
   display: grid;
   gap: var(--space-5);
   padding: var(--space-6);
