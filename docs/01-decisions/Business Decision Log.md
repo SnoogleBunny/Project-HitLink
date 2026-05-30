@@ -2,6 +2,22 @@
 
 This is the running ledger for Flowstate decisions. Keep entries short, dated, and linked.
 
+## 2026-05-30
+
+### Decision: All new onboarding is migration-first
+
+Status: accepted
+Source: [[02-product/initiatives/001-migration-first-onboarding-revamp|Initiative 001: Migration-First Onboarding Revamp]], [[06-experience-reports/codex-onboarding-business-ux/2026-05-30-onboarding-business-ux-review]]
+
+Flowstate should assume every new customer is migrating from another app. Owner onboarding should collect migration context and handoff materials, then guide the owner through a white-glove migration status flow while Flowstate handles the internal migration work.
+
+Why it matters:
+
+- Matches the expected buying motion: customers are switching from an existing system, not starting from zero.
+- Makes onboarding feel like a managed transition instead of a self-serve setup checklist.
+- Prevents the daily operations dashboard from implying the gym is ready before migration is complete.
+- Keeps technical import mapping, validation, dry-runs, and reconciliation as internal operations rather than customer-facing chores.
+
 ## 2026-05-23
 
 ### Decision: Flowstate MVP remains single-location first
@@ -62,4 +78,3 @@ Every future entry should include:
 - Why
 - Consequences
 - Links to relevant code/docs/tickets
-

@@ -32,6 +32,7 @@ The current local demo has working admin, member, and thin API apps:
 - [[01-decisions/Business Decision Log]]
 - [[01-decisions/Decision Record Template]]
 - [[02-product/Product Strategy]]
+- [[02-product/Initiatives]]
 - [[02-product/MVP Scope Brain]]
 - [[02-product/Customer And ICP]]
 - [[03-technical/Architecture Brain]]
@@ -39,4 +40,3 @@ The current local demo has working admin, member, and thin API apps:
 - [[04-demo/Working Demo State]]
 - [[04-demo/Demo Script]]
 - [[99-inbox/Open Inputs Needed From Jacky]]
-
