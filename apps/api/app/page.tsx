@@ -10,7 +10,7 @@ export default function Home() {
       }}
     >
       <h1>Flowstate API</h1>
-      <p>This Phase 1 placeholder keeps the repo shape stable for later slices.</p>
+      <p>This placeholder keeps the repo shape stable for future API work.</p>
       <p>
         Health check: <a href="/api/v1/health">/api/v1/health</a>
       </p>

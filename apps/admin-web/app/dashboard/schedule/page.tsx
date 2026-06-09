@@ -47,11 +47,11 @@ export default async function SchedulePage() {
       <section className="management-card">
         <p className="dashboard-card-label">Weekly board</p>
         <h3>Recurring classes only</h3>
-        <p className="management-copy">
-          This view shows the reusable weekly schedule template system only.
-          One-off changes, bookings, waitlists, and per-date exceptions stay
-          deferred to later slices.
-        </p>
+          <p className="management-copy">
+            This view shows the reusable weekly schedule template system only.
+            One-off changes, bookings, waitlists, and per-date exceptions stay
+            deferred to operational follow-up work.
+          </p>
       </section>
 
       <section

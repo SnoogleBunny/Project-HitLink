@@ -25,6 +25,10 @@ interface OwnerWorkspaceRecord {
   settings: {
     allowMultipleRooms: boolean;
   } | null;
+  migration: {
+    stage: string;
+    operationallyReadyAt: Date | null;
+  } | null;
 }
 
 interface OwnerWorkspaceDatabase {
@@ -36,6 +40,7 @@ interface OwnerWorkspaceDatabase {
       include: {
         location: true;
         settings: true;
+        migration: true;
       };
     }): Promise<OwnerWorkspaceRecord | null>;
   };
@@ -75,6 +80,7 @@ export async function requireOwnerWorkspaceContext(args?: {
       include: {
         location: true,
         settings: true,
+        migration: true,
       },
     }),
     db.workspaceUser.findFirst({

@@ -1693,7 +1693,7 @@ export async function promoteNextWaitlistEntry(args: {
     if (booking.status === "payment_required") {
       return {
         status: "error",
-        message: "Waitlist promotion does not support drop-ins in this slice.",
+        message: "Waitlist promotion does not support drop-ins yet.",
       };
     }
 

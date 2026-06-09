@@ -8,6 +8,7 @@
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
+    "test:e2e:onboarding": "playwright test tests/e2e/migration-first-onboarding.spec.ts --project=chromium",
     "test:e2e": "pnpm db:reset:demo && playwright test",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",

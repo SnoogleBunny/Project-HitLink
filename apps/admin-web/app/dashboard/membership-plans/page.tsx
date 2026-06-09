@@ -109,7 +109,7 @@ export default async function MembershipPlansPage() {
           <h3>Monthly recurring only</h3>
           <p className="management-copy">
             Keep pricing in cents. Punch cards, drop-ins, discounts, and taxes
-            stay out of this slice.
+            are handled in their own billing areas.
           </p>
           <MembershipPlanForm mode="create" options={options} />
         </section>
@@ -119,7 +119,7 @@ export default async function MembershipPlansPage() {
           <h3>Simple references</h3>
           <p className="management-copy">
             Cancellation and freeze policy fields are owner-facing references
-            only. This slice does not create a contract engine.
+            only. Contract automation is intentionally not part of this screen.
           </p>
           <dl className="detail-list">
             <div>

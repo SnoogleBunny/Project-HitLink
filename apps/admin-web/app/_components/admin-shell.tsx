@@ -28,7 +28,7 @@ export function AdminShell({
         <div className="shell-brand">
           <span className="shell-brand-label">Flowstate Admin</span>
           <h1>{workspaceName}</h1>
-          <p>Daily operations for the current scheduling slice.</p>
+          <p>Migration, launch readiness, and daily gym operations.</p>
         </div>
 
         <AdminNav role={session.role} />

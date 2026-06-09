@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Flowstate API",
-  description: "Thin API placeholder for Phase 1 of Slice 1",
+  description: "Thin API placeholder for Flowstate",
 };
 
 export default function RootLayout({

@@ -142,8 +142,8 @@ export default async function EditClassTemplatePage({
 
           {template.archivedAt ? (
             <p className="empty-state">
-              This template is already archived. Restore stays deferred to a
-              later slice.
+              This template is already archived. Restore is intentionally
+              deferred.
             </p>
           ) : (
             <form action={archiveClassTemplateAction} className="inline-form">

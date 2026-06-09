@@ -444,7 +444,7 @@ describe("member helpers", () => {
       }),
     ).resolves.toEqual({
       status: "error",
-      message: "A child member can have up to two guardians in this slice.",
+      message: "A child member can have up to two guardians.",
     });
 
     expect(db.guardian.create).not.toHaveBeenCalled();

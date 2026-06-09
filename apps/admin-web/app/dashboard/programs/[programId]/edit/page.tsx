@@ -78,8 +78,7 @@ export default async function EditProgramPage({
 
           {program.archivedAt ? (
             <p className="empty-state">
-              This program is already archived. Restore is intentionally deferred
-              until a later slice.
+              This program is already archived. Restore is intentionally deferred.
             </p>
           ) : (
             <form action={archiveProgramAction} className="inline-form">

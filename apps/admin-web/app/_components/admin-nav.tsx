@@ -10,6 +10,10 @@ const ownerNavItems = [
     label: "Dashboard",
   },
   {
+    href: "/dashboard/migration",
+    label: "Migration",
+  },
+  {
     href: "/dashboard/programs",
     label: "Programs",
   },

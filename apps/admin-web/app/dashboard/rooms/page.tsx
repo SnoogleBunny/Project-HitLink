@@ -48,7 +48,7 @@ export default async function RoomsPage() {
           <p className="dashboard-card-label">Create room</p>
           <h3>Primary location room</h3>
           <p className="management-copy">
-            This workspace supports one location only, so every room belongs to{" "}
+            This gym supports one location only, so every room belongs to{" "}
             {location.name}.
           </p>
           <RoomCreateForm />

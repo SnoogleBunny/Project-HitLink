@@ -39,6 +39,15 @@ function buildFormData() {
   formData.set("region", "BC");
   formData.set("postalCode", "V6B 1A1");
   formData.set("countryCode", "ca");
+  formData.set("currentSoftware", "Zen Planner");
+  formData.set("targetGoLiveDate", "2026-06-15");
+  formData.set("memberCountEstimate", "125");
+  formData.set("billingStatus", "Active subscriptions");
+  formData.set("scheduleComplexity", "Seven days a week");
+  formData.set("formsAndWaivers", "Adult and child waivers");
+  formData.append("dataScope", "Members and contact details");
+  formData.append("dataScope", "Programs and weekly schedule");
+  formData.set("accessInstructions", "Exports are ready.");
 
   return formData;
 }
@@ -90,7 +99,7 @@ describe("onboardingAction", () => {
     warnSpy.mockRestore();
   });
 
-  it("redirects to the dashboard when the workspace is created", async () => {
+  it("redirects to migration status when the workspace is created", async () => {
     createOwnerWorkspaceOnboardingMock.mockResolvedValue({
       status: "created",
       workspaceId: "workspace_1",
@@ -103,9 +112,24 @@ describe("onboardingAction", () => {
         },
         buildFormData(),
       ),
-    ).rejects.toThrow("NEXT_REDIRECT:/dashboard");
+    ).rejects.toThrow("NEXT_REDIRECT:/dashboard/migration");
 
-    expect(redirectMock).toHaveBeenCalledWith("/dashboard");
+    expect(redirectMock).toHaveBeenCalledWith("/dashboard/migration");
+    expect(createOwnerWorkspaceOnboardingMock).toHaveBeenCalledWith({
+      input: expect.objectContaining({
+        workspaceName: "Sahara Muay Thai",
+        migration: {
+          currentSoftware: "Zen Planner",
+          targetGoLiveDate: "2026-06-15",
+          memberCountEstimate: "125",
+          billingStatus: "Active subscriptions",
+          scheduleComplexity: "Seven days a week",
+          formsAndWaivers: "Adult and child waivers",
+          dataScope: ["Members and contact details", "Programs and weekly schedule"],
+          accessInstructions: "Exports are ready.",
+        },
+      }),
+    });
   });
 
   it("redirects to the returned location when onboarding is already complete", async () => {

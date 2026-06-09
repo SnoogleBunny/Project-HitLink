@@ -1,4 +1,8 @@
 import { prisma, type UserRole } from "@flowstate/db";
+import {
+  buildInitialMigrationData,
+  type MigrationIntakeInput,
+} from "./workspace-migration";
 
 export interface OwnerOnboardingInput {
   userId: string;
@@ -11,6 +15,7 @@ export interface OwnerOnboardingInput {
   region?: string;
   postalCode?: string;
   countryCode?: string;
+  migration?: MigrationIntakeInput;
 }
 
 interface ExistingMembership {
@@ -44,7 +49,7 @@ interface OwnerOnboardingTransaction {
       data: {
         name: string;
         businessType: string | null;
-        status: "ACTIVE";
+        status: "SETUP_INCOMPLETE";
       };
     }): Promise<{
       id: string;
@@ -74,6 +79,13 @@ interface OwnerOnboardingTransaction {
       };
     }): Promise<unknown>;
   };
+  workspaceMigration: {
+    create(args: {
+      data: ReturnType<typeof buildInitialMigrationData> & {
+        workspaceId: string;
+      };
+    }): Promise<unknown>;
+  };
 }
 
 interface OwnerOnboardingDatabase {
@@ -90,7 +102,7 @@ export type OwnerOnboardingResult =
     }
   | {
       status: "redirect";
-      location: "/dashboard";
+      location: "/dashboard" | "/dashboard/migration";
       workspaceId: string;
     }
   | {
@@ -123,6 +135,7 @@ function sanitizeInput(input: OwnerOnboardingInput) {
     region: cleanNullable(input.region),
     postalCode: cleanNullable(input.postalCode),
     countryCode: cleanNullable(input.countryCode)?.toUpperCase() ?? null,
+    migration: buildInitialMigrationData(input.migration ?? {}),
   };
 }
 
@@ -194,7 +207,7 @@ export async function createOwnerWorkspaceOnboarding(args: {
         data: {
           name: input.workspaceName,
           businessType: input.businessType,
-          status: "ACTIVE",
+          status: "SETUP_INCOMPLETE",
         },
       });
 
@@ -224,6 +237,13 @@ export async function createOwnerWorkspaceOnboarding(args: {
         data: {
           workspaceId: workspace.id,
           allowMultipleRooms: false,
+        },
+      });
+
+      await tx.workspaceMigration.create({
+        data: {
+          workspaceId: workspace.id,
+          ...input.migration,
         },
       });
 

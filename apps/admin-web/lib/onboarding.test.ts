@@ -12,6 +12,19 @@ function buildInput() {
     region: "BC",
     postalCode: "V6B 1A1",
     countryCode: "ca",
+    migration: {
+      currentSoftware: "Zen Planner",
+      targetGoLiveDate: "2026-06-15",
+      memberCountEstimate: "125",
+      billingStatus: "Active monthly billing",
+      scheduleComplexity: "Seven days a week",
+      formsAndWaivers: "Adult and child waivers",
+      dataScope: [
+        "Members and contact details",
+        "Programs and weekly schedule",
+      ],
+      accessInstructions: "Exports are ready.",
+    },
   };
 }
 
@@ -20,6 +33,7 @@ describe("owner workspace onboarding", () => {
     const created = {
       location: null as Record<string, unknown> | null,
       workspace: null as Record<string, unknown> | null,
+      workspaceMigration: null as Record<string, unknown> | null,
       workspaceSetting: null as Record<string, unknown> | null,
       workspaceUser: null as Record<string, unknown> | null,
     };
@@ -54,6 +68,12 @@ describe("owner workspace onboarding", () => {
               return {};
             }),
           },
+          workspaceMigration: {
+            create: vi.fn(async ({ data }) => {
+              created.workspaceMigration = data;
+              return {};
+            }),
+          },
         }),
       ),
     };
@@ -70,7 +90,7 @@ describe("owner workspace onboarding", () => {
     expect(created.workspace).toEqual({
       name: "Sahara Muay Thai",
       businessType: "Muay Thai gym",
-      status: "ACTIVE",
+      status: "SETUP_INCOMPLETE",
     });
     expect(created.location).toEqual({
       workspaceId: "workspace_1",
@@ -91,6 +111,27 @@ describe("owner workspace onboarding", () => {
     expect(created.workspaceSetting).toEqual({
       workspaceId: "workspace_1",
       allowMultipleRooms: false,
+    });
+    expect(created.workspaceMigration).toEqual({
+      workspaceId: "workspace_1",
+      stage: "INTAKE_RECEIVED",
+      currentSoftware: "Zen Planner",
+      targetGoLiveDate: new Date("2026-06-15T00:00:00.000Z"),
+      memberCountEstimate: 125,
+      billingStatus: "Active monthly billing",
+      scheduleComplexity: "Seven days a week",
+      formsAndWaivers: "Adult and child waivers",
+      dataScope: [
+        "Members and contact details",
+        "Programs and weekly schedule",
+      ],
+      accessInstructions: "Exports are ready.",
+      nextOwnerAction:
+        "Share export access or handoff instructions so Flowstate can prepare your migration service.",
+      flowstateResponsibility:
+        "Flowstate will collect exports, stage records, validate the import, reconcile issues, and coordinate go-live.",
+      expectedNextMilestone:
+        "Initial migration review within one business day after access or exports are received.",
     });
   });
 
@@ -186,6 +227,9 @@ describe("owner workspace onboarding", () => {
           workspaceSetting: {
             create: vi.fn(async () => ({})),
           },
+          workspaceMigration: {
+            create: vi.fn(async () => ({})),
+          },
         }),
       ),
     };
@@ -240,6 +284,9 @@ describe("owner workspace onboarding", () => {
           workspaceSetting: {
             create: vi.fn(async () => ({})),
           },
+          workspaceMigration: {
+            create: vi.fn(async () => ({})),
+          },
         }),
       ),
     };
@@ -286,6 +333,9 @@ describe("owner workspace onboarding", () => {
             }),
           },
           workspaceSetting: {
+            create: vi.fn(async () => ({})),
+          },
+          workspaceMigration: {
             create: vi.fn(async () => ({})),
           },
         }),

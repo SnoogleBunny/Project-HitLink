@@ -33,8 +33,8 @@ export default async function StaffInvitesPage() {
           <p className="dashboard-card-label">Invite coach</p>
           <h3>Owner-only invite flow</h3>
           <p className="management-copy">
-            This slice creates and refreshes invite records only. Full email and
-            acceptance UX will land later.
+            This creates and refreshes invite records only. Full email delivery
+            and coach acceptance are still deferred.
           </p>
           <StaffInviteForm />
         </section>
@@ -98,11 +98,11 @@ export default async function StaffInvitesPage() {
       </div>
 
       <section className="management-card">
-        <p className="dashboard-card-label">Next slice</p>
+        <p className="dashboard-card-label">Schedule readiness</p>
         <h3>Class templates + weekly schedule</h3>
         <p className="management-copy">
           Schedule setup should consume only unarchived programs and active,
-          unarchived rooms after this slice.
+          unarchived rooms.
         </p>
       </section>
     </AdminShell>

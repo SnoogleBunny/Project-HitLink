@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AdminShell } from "../_components/admin-shell";
 import {
   getOwnerDashboardSummary,
@@ -6,6 +7,7 @@ import {
   type OwnerDashboardSummary,
 } from "../../lib/dashboard";
 import { requireOwnerWorkspaceContext } from "../../lib/owner-workspace";
+import { isWorkspaceMigrationReady } from "../../lib/workspace-migration";
 
 const metricToneLabels: Record<DashboardStatusTone, string> = {
   neutral: "Info",
@@ -92,6 +94,16 @@ function getAttendanceTone(
 export default async function DashboardPage() {
   const { session, workspace, workspaceUserId } =
     await requireOwnerWorkspaceContext();
+
+  if (
+    !isWorkspaceMigrationReady({
+      workspaceStatus: workspace.status,
+      operationallyReadyAt: workspace.migration?.operationallyReadyAt,
+    })
+  ) {
+    redirect("/dashboard/migration");
+  }
+
   const dashboard = await getOwnerDashboardSummary({
     workspaceId: workspace.id,
     workspaceUserId,

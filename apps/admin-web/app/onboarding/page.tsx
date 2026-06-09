@@ -10,9 +10,9 @@ export default async function OnboardingPage() {
 
   return (
     <AuthPanel
-      eyebrow="Workspace setup"
-      title="Create your gym workspace"
-      description="This first Slice 1 onboarding step creates your workspace, primary location, owner role assignment, and workspace settings in one transaction."
+      eyebrow="Migration intake"
+      title="Set up your gym migration"
+      description="Share the access or export instructions Flowstate needs to start. The rest of this intake helps us scope the service internally, not push configuration work onto you."
     >
       <OnboardingForm defaultTimezone={defaultTimezone} />
     </AuthPanel>

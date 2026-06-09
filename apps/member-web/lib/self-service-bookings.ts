@@ -563,7 +563,7 @@ export async function listEligibleSelfServiceOccurrences(args: {
               actionLabel: "Full",
               note:
                 access?.type === "drop_in"
-                  ? "Drop-ins cannot join the waitlist in this slice."
+                  ? "Drop-ins cannot join the waitlist yet."
                   : access?.message ?? "No access product allows this class.",
             },
           ];

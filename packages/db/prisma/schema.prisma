@@ -19,6 +19,15 @@ enum WorkspaceStatus {
   DISABLED
 }
 
+enum MigrationStage {
+  INTAKE_RECEIVED
+  EXPORTS_NEEDED
+  MIGRATION_IN_PROGRESS
+  REVIEW_READY
+  GO_LIVE_SCHEDULED
+  COMPLETE
+}
+
 enum StaffInviteStatus {
   PENDING
   ACCEPTED
@@ -265,6 +274,7 @@ enum ImportRecordKind {
   MEMBER_MEMBERSHIP
   BILLING_HISTORY
   PUNCH_CARD_BALANCE
+  DROP_IN_PRODUCT
   NOTE
   STAFF
   PROGRESS
@@ -381,6 +391,7 @@ model Workspace {
   logoUrl                           String?
   status                            WorkspaceStatus                      @default(SETUP_INCOMPLETE)
   location                          Location?
+  migration                         WorkspaceMigration?
   programs                          Program[]
   membershipPlans                   MembershipPlan[]
   membershipPlanProgramRestrictions MembershipPlanProgramRestriction[]
@@ -417,6 +428,7 @@ model Workspace {
   stagingRecords                    StagingRecord[]
   validationIssues                  ValidationIssue[]
   reconciliationReports             ReconciliationReport[]
+  migrationImportedRecords          MigrationImportedRecord[]
   progressModuleSetting             ProgressModuleSetting?
   beltDefinitions                   BeltDefinition[]
   memberProgressStates              MemberProgressState[]
@@ -443,6 +455,33 @@ model Workspace {
   updatedAt                         DateTime                             @updatedAt
 
   @@map("workspaces")
+}
+
+model WorkspaceMigration {
+  id                         String         @id @default(cuid())
+  workspaceId                String         @unique
+  stage                      MigrationStage @default(INTAKE_RECEIVED)
+  currentSoftware            String?
+  targetGoLiveDate           DateTime?      @db.Date
+  memberCountEstimate        Int?
+  billingStatus              String?
+  scheduleComplexity         String?
+  formsAndWaivers            String?
+  dataScope                  String[]       @default([])
+  accessInstructions         String?
+  nextOwnerAction            String
+  flowstateResponsibility    String
+  expectedNextMilestone      String?
+  expectedNextMilestoneAt    DateTime?
+  goLiveScheduledFor         DateTime?      @db.Date
+  operationallyReadyAt       DateTime?
+  operationallyReadyByUserId String?
+  workspace                  Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt                  DateTime       @default(now())
+  updatedAt                  DateTime       @updatedAt
+
+  @@index([stage, updatedAt])
+  @@map("workspace_migrations")
 }
 
 model Location {
@@ -1508,6 +1547,25 @@ model ReconciliationReport {
 
   @@index([workspaceId, importJobId, generatedAt])
   @@map("reconciliation_reports")
+}
+
+model MigrationImportedRecord {
+  id               String           @id @default(cuid())
+  workspaceId      String
+  importJobId      String?
+  stagingRecordId  String?
+  recordKind       ImportRecordKind
+  externalId       String
+  importedModel    String
+  importedRecordId String
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([workspaceId, recordKind, externalId], map: "migration_imported_records_workspace_kind_external_key")
+  @@index([workspaceId, importJobId])
+  @@index([workspaceId, importedModel, importedRecordId])
+  @@map("migration_imported_records")
 }
 
 model ProgressModuleSetting {

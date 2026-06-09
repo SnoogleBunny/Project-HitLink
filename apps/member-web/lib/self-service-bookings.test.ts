@@ -236,7 +236,7 @@ describe("self-service booking helpers", () => {
       bookingState: "FULL",
       action: "none",
       accessLabel: "Drop-in",
-      note: "Drop-ins cannot join the waitlist in this slice.",
+      note: "Drop-ins cannot join the waitlist yet.",
     });
   });
 

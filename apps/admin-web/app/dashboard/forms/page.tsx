@@ -59,7 +59,7 @@ export default async function FormsPage() {
 
       <section className="management-card">
         <p className="dashboard-card-label">Documents</p>
-        <h3>Workspace forms</h3>
+        <h3>Gym forms</h3>
 
         {documents.length === 0 ? (
           <p className="empty-state">

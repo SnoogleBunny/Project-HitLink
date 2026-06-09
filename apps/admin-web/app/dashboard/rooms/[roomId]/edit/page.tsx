@@ -78,8 +78,7 @@ export default async function EditRoomPage({
 
           {room.archivedAt ? (
             <p className="empty-state">
-              This room is already archived. Restore is intentionally deferred
-              until a later slice.
+              This room is already archived. Restore is intentionally deferred.
             </p>
           ) : (
             <form action={archiveRoomAction} className="inline-form">

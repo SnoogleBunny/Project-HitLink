@@ -41,7 +41,7 @@ export default async function ProgramsPage() {
       workspaceName={workspace.name}
       eyebrow="Programs"
       title="Program management"
-      description="Create the programs that the next schedule slice will attach to class templates."
+      description="Create the programs that class templates and access rules attach to."
     >
       <div className="management-grid">
         <section className="management-card">
@@ -59,7 +59,7 @@ export default async function ProgramsPage() {
           <h3>Ready for schedule setup</h3>
           <p className="management-copy">
             Only unarchived programs should be available when class templates
-            arrive in the next slice.
+            are created.
           </p>
 
           {programs.length === 0 ? (

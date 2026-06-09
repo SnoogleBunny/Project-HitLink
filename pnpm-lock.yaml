@@ -35,6 +35,9 @@ importers:
       '@flowstate/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      csv-parse:
+        specifier: ^6.2.1
+        version: 6.2.1
       next:
         specifier: 16.2.0
         version: 16.2.0(@playwright/test@1.57.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -1266,6 +1269,9 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  csv-parse@6.2.1:
+    resolution: {integrity: sha512-LRLMV+UCyfMokp8Wb411duBf1gaBKJfOfBWU9eHMJ+b+cJYZsNu3AFmjJf3+yPGd59Exz1TsMjaSFyxnYB9+IQ==}
 
   data-view-buffer@1.0.2:
     resolution: {integrity: sha512-EmKO5V3OLXh1rtK2wgXRansaK1/mtVdTUEiEI0W8RkvgT05kfxaH29PliLnpLP73yYO6142Q72QNa8Wx/A5CqQ==}
@@ -3152,6 +3158,8 @@ snapshots:
       which: 2.0.2
 
   csstype@3.2.3: {}
+
+  csv-parse@6.2.1: {}
 
   data-view-buffer@1.0.2:
     dependencies:

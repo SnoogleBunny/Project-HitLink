@@ -53,7 +53,7 @@ export function GuardianLinkForm({ memberId }: { memberId: string }) {
         <input name="isPrimary" type="checkbox" />
         <div>
           <strong>Primary guardian</strong>
-          <p>Used for basic visibility only in this slice.</p>
+          <p>Used for basic family visibility and owner follow-up.</p>
         </div>
       </label>
 

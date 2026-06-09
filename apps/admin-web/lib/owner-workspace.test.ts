@@ -59,6 +59,10 @@ describe("requireOwnerWorkspaceContext", () => {
           settings: {
             allowMultipleRooms: true,
           },
+          migration: {
+            stage: "COMPLETE",
+            operationallyReadyAt: new Date("2026-05-30T12:00:00.000Z"),
+          },
         }),
       },
       workspaceUser: {
@@ -81,6 +85,7 @@ describe("requireOwnerWorkspaceContext", () => {
       include: {
         location: true,
         settings: true,
+        migration: true,
       },
     });
     expect(db.workspaceUser.findFirst).toHaveBeenCalledWith({
@@ -142,6 +147,7 @@ describe("requireOwnerWorkspaceContext", () => {
           status: "ACTIVE",
           location: null,
           settings: null,
+          migration: null,
         }),
       },
       workspaceUser: {
@@ -185,6 +191,10 @@ describe("requireOwnerWorkspaceContext", () => {
           },
           settings: {
             allowMultipleRooms: true,
+          },
+          migration: {
+            stage: "COMPLETE",
+            operationallyReadyAt: new Date("2026-05-30T12:00:00.000Z"),
           },
         }),
       },

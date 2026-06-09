@@ -873,7 +873,7 @@ export async function addGuardianToMember(args: {
   if (currentGuardianCount >= 2) {
     return {
       status: "error",
-      message: "A child member can have up to two guardians in this slice.",
+      message: "A child member can have up to two guardians.",
     };
   }
 

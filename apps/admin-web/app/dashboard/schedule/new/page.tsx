@@ -100,7 +100,7 @@ export default async function NewClassTemplatePage() {
 
           <p className="management-copy">
             Pending invites are not selectable until the invited user becomes an
-            active workspace member.
+            active staff member.
           </p>
         </section>
       </div>

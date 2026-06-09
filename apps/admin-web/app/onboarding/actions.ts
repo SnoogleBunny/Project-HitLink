@@ -17,10 +17,15 @@ export async function onboardingAction(
   const workspaceName = String(formData.get("workspaceName") ?? "").trim();
   const businessType = String(formData.get("businessType") ?? "").trim();
   const timezone = String(formData.get("timezone") ?? "").trim();
+  const currentSoftware = String(formData.get("currentSoftware") ?? "").trim();
+  const accessInstructions = String(
+    formData.get("accessInstructions") ?? "",
+  ).trim();
 
-  if (!workspaceName || !timezone) {
+  if (!workspaceName || !timezone || !currentSoftware || !accessInstructions) {
     return {
-      error: "Workspace name and timezone are required.",
+      error:
+        "Gym name, launch timezone, current software, and access instructions are required.",
     };
   }
 
@@ -36,6 +41,20 @@ export async function onboardingAction(
       region: String(formData.get("region") ?? "").trim(),
       postalCode: String(formData.get("postalCode") ?? "").trim(),
       countryCode: String(formData.get("countryCode") ?? "").trim(),
+      migration: {
+        currentSoftware,
+        targetGoLiveDate: String(formData.get("targetGoLiveDate") ?? "").trim(),
+        memberCountEstimate: String(
+          formData.get("memberCountEstimate") ?? "",
+        ).trim(),
+        billingStatus: String(formData.get("billingStatus") ?? "").trim(),
+        scheduleComplexity: String(
+          formData.get("scheduleComplexity") ?? "",
+        ).trim(),
+        formsAndWaivers: String(formData.get("formsAndWaivers") ?? "").trim(),
+        dataScope: formData.getAll("dataScope").map(String),
+        accessInstructions,
+      },
     },
   });
 
@@ -53,7 +72,9 @@ export async function onboardingAction(
     };
   }
 
-  redirect(result.status === "created" ? "/dashboard" : result.location);
+  redirect(
+    result.status === "created" ? "/dashboard/migration" : result.location,
+  );
 
   return emptyFormState;
 }

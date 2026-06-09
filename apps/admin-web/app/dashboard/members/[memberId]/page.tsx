@@ -304,8 +304,8 @@ export default async function MemberProfilePage({
             {member.portalAccess ? "Member login is active" : "Create member login"}
           </h3>
           <p className="management-copy">
-            Keep member login scoped to this one profile only. This slice does not
-            reuse unrelated existing users or support family account linking.
+            Keep member login scoped to this one profile only. This screen does
+            not reuse unrelated existing users or support family account linking.
           </p>
           <dl className="detail-list">
             <div>

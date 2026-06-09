@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AdminShell } from "../../_components/admin-shell";
 import { listBookingFormOptions } from "../../../lib/bookings";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
+import { isWorkspaceMigrationReady } from "../../../lib/workspace-migration";
 import { BookingCreateForm } from "./booking-create-form";
 
 export default async function BookingsPage() {
@@ -9,6 +10,10 @@ export default async function BookingsPage() {
   const options = await listBookingFormOptions({
     workspaceId: workspace.id,
     timezone: location.timezone,
+  });
+  const migrationReady = isWorkspaceMigrationReady({
+    workspaceStatus: workspace.status,
+    operationallyReadyAt: workspace.migration?.operationallyReadyAt,
   });
 
   return (
@@ -24,6 +29,20 @@ export default async function BookingsPage() {
         </Link>
       }
     >
+      {!migrationReady ? (
+        <section className="info-callout" role="status">
+          <strong>Migration is not complete yet.</strong>
+          <p>
+            Booking creation depends on migrated members, memberships, schedule
+            templates, and access rules. Finish migration review before using
+            this operational workflow.
+          </p>
+          <Link className="button button-secondary" href="/dashboard/migration">
+            Open migration status
+          </Link>
+        </section>
+      ) : null}
+
       <div className="management-grid">
         <section className="management-card">
           <p className="dashboard-card-label">Create booking</p>
@@ -38,11 +57,17 @@ export default async function BookingsPage() {
             If a class is only available through a paid drop-in flow, ask the
             member to book it from the portal.
           </p>
-          <BookingCreateForm options={options} />
+          {migrationReady ? (
+            <BookingCreateForm options={options} />
+          ) : (
+            <p className="empty-state">
+              Booking controls are available after migration is marked complete.
+            </p>
+          )}
         </section>
 
         <section className="management-card">
-          <p className="dashboard-card-label">Current slice</p>
+          <p className="dashboard-card-label">Access rules</p>
           <h3>Date-based class access</h3>
           <p className="management-copy">
             This page uses the template and selected date as the occurrence. It
