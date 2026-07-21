@@ -1564,7 +1564,7 @@ model MigrationImportedRecord {
 
   @@unique([workspaceId, recordKind, externalId], map: "migration_imported_records_workspace_kind_external_key")
   @@index([workspaceId, importJobId])
-  @@index([workspaceId, importedModel, importedRecordId])
+  @@index([workspaceId, importedModel, importedRecordId], map: "migration_imported_records_workspace_model_record_idx")
   @@map("migration_imported_records")
 }
 
