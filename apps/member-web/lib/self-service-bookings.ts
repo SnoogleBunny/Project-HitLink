@@ -199,7 +199,7 @@ function isPastBookingCutoff(args: {
 }): boolean {
   const startsAt = getOccurrenceStartsAt(args);
 
-  return args.now.getTime() > startsAt.getTime() - args.bookingCutoffMinutes * 60_000;
+  return args.now.getTime() >= startsAt.getTime() - args.bookingCutoffMinutes * 60_000;
 }
 
 function mapBookingItem(
@@ -848,6 +848,7 @@ export async function joinSelfWaitlist(args: {
     classTemplateId: args.classTemplateId,
     scheduledForDate: args.scheduledForDate,
     timezone: args.timezone,
+    source: "MEMBER_PORTAL",
     db: (args.db ?? selfServiceBookingDatabase) as never,
     now: args.now,
   });

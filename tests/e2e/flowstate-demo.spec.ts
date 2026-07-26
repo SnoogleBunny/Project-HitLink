@@ -11,6 +11,7 @@ const demo = {
   ownerPassword: "DemoPass123!",
   memberEmail: "demo-member@flowstate.local",
   memberPassword: "MemberPass123!",
+  trialEmail: "demo-trial@flowstate.local",
 };
 
 async function bodyText(page: Page): Promise<string> {
@@ -151,15 +152,6 @@ test.describe.serial("Flowstate working demo", () => {
     await expect(page.getByText("1 active booking")).toBeVisible();
     await expect(page.getByText("Today Fundamentals")).toBeVisible();
 
-    await page.goto(`http://localhost:3001/trial/${workspace.id}`);
-    await expectHealthyPage(page);
-    await page.locator('select[name="bookingOption"]').selectOption({ index: 1 });
-    await page.locator('input[name="fullName"]').fill("Demo Trial Prospect");
-    await page.locator('input[name="email"]').fill("demo-trial@flowstate.local");
-    await page.locator('input[name="phone"]').fill("555-0303");
-    await page.getByRole("button", { name: "Book trial" }).click();
-    await expect(page.getByText("Trial booked")).toBeVisible();
-
     const memberBooking = await prisma.classBooking.findFirstOrThrow({
       where: {
         workspaceId: workspace.id,
@@ -172,6 +164,37 @@ test.describe.serial("Flowstate working demo", () => {
       },
     });
     const rosterDate = memberBooking.scheduledForDate.toISOString().slice(0, 10);
+    const connectedOccurrenceValue = `${memberBooking.classTemplateId}|${rosterDate}`;
+
+    await page.goto(`http://localhost:3001/trial/${workspace.id}`);
+    await expectHealthyPage(page);
+    await page
+      .locator('select[name="bookingOption"]')
+      .selectOption(connectedOccurrenceValue);
+    await page.locator('input[name="fullName"]').fill("Demo Trial Prospect");
+    await page.locator('input[name="email"]').fill(demo.trialEmail);
+    await page.locator('input[name="phone"]').fill("555-0303");
+    await page.getByRole("button", { name: "Book trial" }).click();
+    await expect(page.getByText("Trial booked")).toBeVisible();
+
+    const trialBooking = await prisma.classBooking.findFirstOrThrow({
+      where: {
+        workspaceId: workspace.id,
+        member: {
+          email: demo.trialEmail,
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+    expect(trialBooking).toMatchObject({
+      bookingType: "TRIAL",
+      classTemplateId: memberBooking.classTemplateId,
+      scheduledForDate: memberBooking.scheduledForDate,
+      source: "PUBLIC_TRIAL",
+      status: "BOOKED",
+    });
 
     await loginAdmin(page);
     await page.goto(

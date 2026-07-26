@@ -10,26 +10,33 @@ type TrialBookingTestDb = NonNullable<
   Parameters<typeof createTrialBooking>[0]["db"]
 >;
 
-function buildTemplateForDates() {
+function buildTemplateForDates(args?: {
+  bookingCutoffMinutes?: number;
+  weekday?: "SUNDAY" | "TUESDAY";
+  startTimeMinutes?: number;
+  endTimeMinutes?: number;
+}) {
   return {
     id: "template_1",
     displayTitle: "Muay Thai Fundamentals",
-    weekday: "TUESDAY" as const,
-    startTimeMinutes: 18 * 60,
-    endTimeMinutes: 19 * 60,
+    weekday: args?.weekday ?? ("TUESDAY" as const),
+    startTimeMinutes: args?.startTimeMinutes ?? 18 * 60,
+    endTimeMinutes: args?.endTimeMinutes ?? 19 * 60,
+    bookingCutoffMinutes: args?.bookingCutoffMinutes ?? 0,
     programName: "Muay Thai",
     roomName: "Main Mat",
     coachDisplayName: "Casey Coach",
   };
 }
 
-function buildTemplateRecord() {
+function buildTemplateRecord(args?: { bookingCutoffMinutes?: number }) {
   return {
     id: "template_1",
     title: null,
     weekday: "TUESDAY" as const,
     startTimeMinutes: 18 * 60,
     endTimeMinutes: 19 * 60,
+    bookingCutoffMinutes: args?.bookingCutoffMinutes ?? 0,
     program: {
       name: "Muay Thai Fundamentals",
     },
@@ -96,6 +103,40 @@ function createMockDb(): TrialBookingTestDb {
 }
 
 describe("trial booking date helpers", () => {
+  it.each([
+    {
+      boundary: "immediately before",
+      now: "2026-04-07T23:59:59.999Z",
+      expectedFirstDate: "2026-04-07",
+    },
+    {
+      boundary: "at",
+      now: "2026-04-08T00:00:00.000Z",
+      expectedFirstDate: "2026-04-14",
+    },
+    {
+      boundary: "immediately after",
+      now: "2026-04-08T00:00:00.001Z",
+      expectedFirstDate: "2026-04-14",
+    },
+  ])(
+    "$boundary the workspace-local booking cutoff offers the correct first occurrence",
+    ({ now, expectedFirstDate }) => {
+      const result = buildTrialBookingDateOptions({
+        templates: [
+          buildTemplateForDates({
+            bookingCutoffMinutes: 60,
+          }),
+        ],
+        timezone: "America/Vancouver",
+        now: new Date(now),
+      });
+
+      expect(result[0]?.dateOptions[0]?.scheduledForDate).toBe(expectedFirstDate);
+      expect(result[0]?.dateOptions).toHaveLength(4);
+    },
+  );
+
   it("generates the next 4 upcoming dates for a template", () => {
     const result = buildTrialBookingDateOptions({
       templates: [buildTemplateForDates()],
@@ -115,11 +156,42 @@ describe("trial booking date helpers", () => {
     const result = buildTrialBookingDateOptions({
       templates: [buildTemplateForDates()],
       timezone: "America/Vancouver",
-      now: new Date("2026-04-08T02:00:00.000Z"),
+      now: new Date("2026-04-08T00:45:00.000Z"),
     });
 
     expect(result[0]?.dateOptions[0]?.scheduledForDate).toBe("2026-04-07");
   });
+
+  it.each([
+    {
+      boundary: "immediately before",
+      now: "2026-03-08T08:59:59.999Z",
+      expectedFirstDate: "2026-03-08",
+    },
+    {
+      boundary: "at",
+      now: "2026-03-08T09:00:00.000Z",
+      expectedFirstDate: "2026-03-15",
+    },
+  ])(
+    "$boundary the cutoff remains correct across Vancouver's daylight-saving boundary",
+    ({ now, expectedFirstDate }) => {
+      const result = buildTrialBookingDateOptions({
+        templates: [
+          buildTemplateForDates({
+            weekday: "SUNDAY",
+            startTimeMinutes: 3 * 60,
+            endTimeMinutes: 4 * 60,
+            bookingCutoffMinutes: 60,
+          }),
+        ],
+        timezone: "America/Vancouver",
+        now: new Date(now),
+      });
+
+      expect(result[0]?.dateOptions[0]?.scheduledForDate).toBe(expectedFirstDate);
+    },
+  );
 
   it("validates selected dates against generated options", () => {
     const options = buildTrialBookingDateOptions({
@@ -204,6 +276,42 @@ describe("trial booking helpers", () => {
       message: "Choose an available upcoming trial date.",
     });
     expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a date submitted at the cutoff before any member, guardian, family, or booking writes", async () => {
+    const db = createMockDb();
+    db.classTemplate.findMany = vi
+      .fn()
+      .mockResolvedValue([
+        buildTemplateRecord({
+          bookingCutoffMinutes: 60,
+        }),
+      ]);
+
+    await expect(
+      createTrialBooking({
+        workspaceId: "workspace_1",
+        now: new Date("2026-04-08T00:00:00.000Z"),
+        input: {
+          classTemplateId: "template_1",
+          scheduledForDate: "2026-04-07",
+          fullName: "Jordan Lee",
+          email: "jordan@example.com",
+        },
+        db,
+      }),
+    ).resolves.toEqual({
+      status: "error",
+      message: "Choose an available upcoming trial date.",
+    });
+
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.member.findFirst).not.toHaveBeenCalled();
+    expect(db.member.create).not.toHaveBeenCalled();
+    expect(db.guardian.create).not.toHaveBeenCalled();
+    expect(db.familyLink.create).not.toHaveBeenCalled();
+    expect(db.classBooking.create).not.toHaveBeenCalled();
+    expect(db.classBooking.update).not.toHaveBeenCalled();
   });
 
   it("reuses an exact-match member and does not create a duplicate trial member", async () => {

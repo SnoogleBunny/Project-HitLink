@@ -9,6 +9,7 @@ import {
 
 const selectableCoachRoles = ["OWNER", "COACH"] as const;
 const trialDateOptionCount = 4;
+const trialDateOptionMaxDayWindow = 42;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export interface TrialBookingTemplateForDates {
@@ -17,6 +18,7 @@ export interface TrialBookingTemplateForDates {
   weekday: Weekday;
   startTimeMinutes: number;
   endTimeMinutes: number;
+  bookingCutoffMinutes: number;
   programName: string;
   roomName: string;
   coachDisplayName: string;
@@ -63,6 +65,7 @@ interface TrialClassTemplateRecord {
   weekday: Weekday;
   startTimeMinutes: number;
   endTimeMinutes: number;
+  bookingCutoffMinutes: number;
   program: {
     name: string;
   };
@@ -193,6 +196,7 @@ function mapClassTemplate(
     weekday: template.weekday,
     startTimeMinutes: template.startTimeMinutes,
     endTimeMinutes: template.endTimeMinutes,
+    bookingCutoffMinutes: template.bookingCutoffMinutes,
     programName: template.program.name,
     roomName: template.room.name,
     coachDisplayName: coachName || template.coachWorkspaceUser.user.email,
@@ -205,15 +209,24 @@ export function buildTrialBookingDateOptions(args: {
   now: Date;
   occurrenceCount?: number;
 }): TrialBookingTemplateOption[] {
+  const occurrenceCount = args.occurrenceCount ?? trialDateOptionCount;
+
   return buildUpcomingOccurrenceDateOptions({
     templates: args.templates,
     timezone: args.timezone,
     now: args.now,
-    occurrenceCount: args.occurrenceCount ?? trialDateOptionCount,
-  }).map(({ template, dateOptions }) => ({
-    ...template,
-    dateOptions,
-  }));
+    occurrenceCount: trialDateOptionMaxDayWindow + 1,
+    maxDayWindow: trialDateOptionMaxDayWindow,
+  })
+    .map(({ template, dateOptions }) => ({
+      ...template,
+      dateOptions: dateOptions.filter(
+        (option) =>
+          args.now.getTime() <
+          option.startsAt.getTime() - template.bookingCutoffMinutes * 60_000,
+      ).slice(0, occurrenceCount),
+    }))
+    .filter((template) => template.dateOptions.length > 0);
 }
 
 export function findTrialBookingDateOption(args: {
