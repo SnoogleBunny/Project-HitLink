@@ -39,4 +39,6 @@ The current local demo has working admin, member, and thin API apps:
 - [[03-technical/Data Model Brain]]
 - [[04-demo/Working Demo State]]
 - [[04-demo/Demo Script]]
+- [[Agents/README|Flowstate Agent Team]]
+- [[Agents/Agent Operating Model]]
 - [[99-inbox/Open Inputs Needed From Jacky]]

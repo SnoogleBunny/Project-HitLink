@@ -370,16 +370,17 @@ enum PrivateLessonBookingStatus {
 }
 
 model User {
-  id               String          @id @default(cuid())
-  email            String          @unique @db.Citext
-  fullName         String?
-  passwordHash     String?
-  member           Member?
-  workspaceUsers   WorkspaceUser[]
-  authSessions     AuthSession[]
-  sentStaffInvites StaffInvite[]   @relation("StaffInviteSender")
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  id                              String               @id @default(cuid())
+  email                           String               @unique @db.Citext
+  fullName                        String?
+  passwordHash                    String?
+  member                          Member?
+  workspaceUsers                  WorkspaceUser[]
+  authSessions                    AuthSession[]
+  sentStaffInvites                StaffInvite[]        @relation("StaffInviteSender")
+  migrationReviewAcknowledgements WorkspaceMigration[] @relation("MigrationOwnerReviewAcknowledgement")
+  createdAt                       DateTime             @default(now())
+  updatedAt                       DateTime             @updatedAt
 
   @@map("users")
 }
@@ -458,27 +459,30 @@ model Workspace {
 }
 
 model WorkspaceMigration {
-  id                         String         @id @default(cuid())
-  workspaceId                String         @unique
-  stage                      MigrationStage @default(INTAKE_RECEIVED)
-  currentSoftware            String?
-  targetGoLiveDate           DateTime?      @db.Date
-  memberCountEstimate        Int?
-  billingStatus              String?
-  scheduleComplexity         String?
-  formsAndWaivers            String?
-  dataScope                  String[]       @default([])
-  accessInstructions         String?
-  nextOwnerAction            String
-  flowstateResponsibility    String
-  expectedNextMilestone      String?
-  expectedNextMilestoneAt    DateTime?
-  goLiveScheduledFor         DateTime?      @db.Date
-  operationallyReadyAt       DateTime?
-  operationallyReadyByUserId String?
-  workspace                  Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdAt                  DateTime       @default(now())
-  updatedAt                  DateTime       @updatedAt
+  id                              String         @id @default(cuid())
+  workspaceId                     String         @unique
+  stage                           MigrationStage @default(INTAKE_RECEIVED)
+  currentSoftware                 String?
+  targetGoLiveDate                DateTime?      @db.Date
+  memberCountEstimate             Int?
+  billingStatus                   String?
+  scheduleComplexity              String?
+  formsAndWaivers                 String?
+  dataScope                       String[]       @default([])
+  accessInstructions              String?
+  nextOwnerAction                 String
+  flowstateResponsibility         String
+  expectedNextMilestone           String?
+  expectedNextMilestoneAt         DateTime?
+  goLiveScheduledFor              DateTime?      @db.Date
+  ownerReviewAcknowledgedAt       DateTime?
+  ownerReviewAcknowledgedByUserId String?
+  operationallyReadyAt            DateTime?
+  operationallyReadyByUserId      String?
+  workspace                       Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ownerReviewAcknowledgedByUser   User?          @relation("MigrationOwnerReviewAcknowledgement", fields: [ownerReviewAcknowledgedByUserId], references: [id], onDelete: Restrict, map: "workspace_migrations_owner_review_user_fkey")
+  createdAt                       DateTime       @default(now())
+  updatedAt                       DateTime       @updatedAt
 
   @@index([stage, updatedAt])
   @@map("workspace_migrations")
@@ -1437,6 +1441,9 @@ model ImportJob {
   completedAt           DateTime?
   failedAt              DateTime?
   failureMessage        String?
+  cancelledAt           DateTime?
+  cancelledByOperatorId String?
+  cancellationReason    String?
   workspace             Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   sourceFiles           ImportSourceFile[]
   fieldMappings         ImportFieldMapping[]

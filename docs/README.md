@@ -8,6 +8,7 @@ Start here:
 - [[00-brain/How To Use This Vault]]
 - [[01-decisions/Business Decision Log]]
 - [[04-demo/Working Demo State]]
+- [[Agents/README|Flowstate Agent Team]]
 - [[99-inbox/Open Inputs Needed From Jacky]]
 
 Existing source docs remain part of the vault:

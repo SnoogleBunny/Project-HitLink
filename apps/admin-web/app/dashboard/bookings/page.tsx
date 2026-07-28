@@ -13,7 +13,14 @@ export default async function BookingsPage() {
   });
   const migrationReady = isWorkspaceMigrationReady({
     workspaceStatus: workspace.status,
+    migrationStage: workspace.migration?.stage,
+    ownerReviewAcknowledgedAt:
+      workspace.migration?.ownerReviewAcknowledgedAt,
+    ownerReviewAcknowledgedByUserId:
+      workspace.migration?.ownerReviewAcknowledgedByUserId,
     operationallyReadyAt: workspace.migration?.operationallyReadyAt,
+    operationallyReadyByUserId:
+      workspace.migration?.operationallyReadyByUserId,
   });
 
   return (

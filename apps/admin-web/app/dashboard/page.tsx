@@ -98,7 +98,14 @@ export default async function DashboardPage() {
   if (
     !isWorkspaceMigrationReady({
       workspaceStatus: workspace.status,
+      migrationStage: workspace.migration?.stage,
+      ownerReviewAcknowledgedAt:
+        workspace.migration?.ownerReviewAcknowledgedAt,
+      ownerReviewAcknowledgedByUserId:
+        workspace.migration?.ownerReviewAcknowledgedByUserId,
       operationallyReadyAt: workspace.migration?.operationallyReadyAt,
+      operationallyReadyByUserId:
+        workspace.migration?.operationallyReadyByUserId,
     })
   ) {
     redirect("/dashboard/migration");

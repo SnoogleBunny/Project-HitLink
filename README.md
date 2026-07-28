@@ -63,14 +63,21 @@ Still upcoming or intentionally thin:
 
 ### Prerequisites
 
-- `pnpm`
+- Node.js 20.x or 22.x
+- pnpm 10.33.0 (pinned by `packageManager`)
 - Docker Desktop or another way to run PostgreSQL locally
 
 ### 1. Install dependencies
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
+pnpm db:generate
 ```
+
+Prisma Client generation is intentionally explicit rather than a `postinstall`
+side effect. Run `pnpm db:generate` after a clean install and whenever the
+Prisma schema changes. Installation and client generation do not require a
+local `.env` file.
 
 ### 2. Create the local env file
 
@@ -96,7 +103,7 @@ pnpm db:up
 pnpm db:migrate
 ```
 
-Optional Prisma helpers:
+Additional Prisma helpers:
 
 ```bash
 pnpm db:generate

@@ -1,9 +1,21 @@
 "use client";
 
-import { useActionState } from "react";
+import {
+  type FormEvent,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { SubmitButton } from "../_components/submit-button";
 import { emptyFormState } from "../../lib/route-decisions";
 import { onboardingAction } from "./actions";
+import {
+  onboardingRequiredFieldNames,
+  type OnboardingFieldErrors,
+  type OnboardingRequiredFieldName,
+  validateOnboardingFields,
+} from "./onboarding-validation";
 
 interface OnboardingFormProps {
   defaultTimezone: string;
@@ -23,17 +35,98 @@ const dataScopeOptions = [
 
 export function OnboardingForm({ defaultTimezone }: OnboardingFormProps) {
   const [state, formAction] = useActionState(onboardingAction, emptyFormState);
+  const [fieldErrors, setFieldErrors] = useState<OnboardingFieldErrors>({});
+  const formRef = useRef<HTMLFormElement>(null);
+  const submittedValuesRef = useRef<Record<string, string> | null>(null);
+
+  useEffect(() => {
+    if (!state.error || !submittedValuesRef.current || !formRef.current) {
+      return;
+    }
+
+    const submittedValues = submittedValuesRef.current;
+    formRef.current
+      .querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+        "input:not([type='hidden']), textarea, select",
+      )
+      .forEach((field) => {
+        const submittedValue = submittedValues[field.name];
+        if (submittedValue !== undefined) {
+          field.value = submittedValue;
+        }
+      });
+  }, [state.error]);
+
+  function clearFieldError(fieldName: OnboardingRequiredFieldName) {
+    setFieldErrors((current) => {
+      if (!current[fieldName]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[fieldName];
+      return next;
+    });
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    const formData = new FormData(event.currentTarget);
+    const errors = validateOnboardingFields({
+      workspaceName: String(formData.get("workspaceName") ?? ""),
+      currentSoftware: String(formData.get("currentSoftware") ?? ""),
+      accessInstructions: String(formData.get("accessInstructions") ?? ""),
+      timezone: String(formData.get("timezone") ?? ""),
+    });
+
+    if (Object.keys(errors).length === 0) {
+      submittedValuesRef.current = Object.fromEntries(
+        Array.from(formData.entries(), ([name, value]) => [
+          name,
+          typeof value === "string" ? value : value.name,
+        ]),
+      );
+      setFieldErrors({});
+      return;
+    }
+
+    event.preventDefault();
+    setFieldErrors(errors);
+
+    const firstInvalidField = onboardingRequiredFieldNames.find(
+      (fieldName) => errors[fieldName],
+    );
+    if (firstInvalidField) {
+      event.currentTarget
+        .querySelector<HTMLElement>(`[name="${firstInvalidField}"]`)
+        ?.focus();
+    }
+  }
+
+  const clientErrorCount = Object.keys(fieldErrors).length;
 
   return (
-    <form action={formAction} className="form-stack">
+    <form
+      action={formAction}
+      className="form-stack"
+      noValidate
+      onSubmit={handleSubmit}
+      ref={formRef}
+    >
       <div className="service-promise" role="note">
         <strong>Flowstate handles the migration work.</strong>
         <p>
-          You share the system, export path, or access handoff. Our operators
-          stage, validate, reconcile, and coordinate readiness before daily
-          operations turn on.
+          Tell us which system you use, what exports are available, and who can
+          coordinate access. Flowstate stages, validates, and reconciles the
+          migration before daily operations begin.
         </p>
       </div>
+
+      {clientErrorCount > 0 ? (
+        <div className="form-error" role="alert">
+          <strong>Check the highlighted fields and try again.</strong>
+          <p>Your details are still here. Correct the fields below.</p>
+        </div>
+      ) : null}
 
       {dataScopeOptions.map((option) => (
         <input key={option} name="dataScope" type="hidden" value={option} />
@@ -44,12 +137,22 @@ export function OnboardingForm({ defaultTimezone }: OnboardingFormProps) {
           Gym name <em className="field-required">Required</em>
         </span>
         <input
-          autoComplete="organization"
+          aria-describedby={
+            fieldErrors.workspaceName ? "workspaceName-error" : undefined
+          }
+          aria-invalid={fieldErrors.workspaceName ? "true" : undefined}
           aria-required="true"
+          autoComplete="organization"
           name="workspaceName"
+          onChange={() => clearFieldError("workspaceName")}
           placeholder="Sahara Muay Thai"
           type="text"
         />
+        {fieldErrors.workspaceName ? (
+          <p className="field-error" id="workspaceName-error">
+            {fieldErrors.workspaceName}
+          </p>
+        ) : null}
       </label>
 
       <label className="field">
@@ -57,32 +160,51 @@ export function OnboardingForm({ defaultTimezone }: OnboardingFormProps) {
           Current software <em className="field-required">Required</em>
         </span>
         <input
+          aria-describedby={`currentSoftware-help${fieldErrors.currentSoftware ? " currentSoftware-error" : ""}`}
+          aria-invalid={fieldErrors.currentSoftware ? "true" : undefined}
           aria-required="true"
           name="currentSoftware"
+          onChange={() => clearFieldError("currentSoftware")}
           placeholder="Zen Planner, Mindbody, Wodify, spreadsheets..."
           type="text"
         />
-        <p className="field-help">
+        <p className="field-help" id="currentSoftware-help">
           This tells the migration team which export and validation path to
           prepare.
         </p>
+        {fieldErrors.currentSoftware ? (
+          <p className="field-error" id="currentSoftware-error">
+            {fieldErrors.currentSoftware}
+          </p>
+        ) : null}
       </label>
 
       <label className="field">
         <span>
-          Access or export instructions{" "}
+          Export and access coordination{" "}
           <em className="field-required">Required</em>
         </span>
         <textarea
+          aria-describedby={`accessInstructions-help accessInstructions-safety${fieldErrors.accessInstructions ? " accessInstructions-error" : ""}`}
+          aria-invalid={fieldErrors.accessInstructions ? "true" : undefined}
           aria-required="true"
           name="accessInstructions"
-          placeholder="Paste export links, describe where the CSVs live, share handoff notes, or tell us who should coordinate access."
+          onChange={() => clearFieldError("accessInstructions")}
+          placeholder="Describe available exports and who can coordinate access."
           rows={4}
         />
-        <p className="field-help">
-          If exports are not ready yet, say where you are stuck. That is enough
-          to start the service handoff.
+        <p className="field-help" id="accessInstructions-help">
+          If exports are not ready, describe what is blocking them.
         </p>
+        <p className="field-safety" id="accessInstructions-safety">
+          Do not paste passwords, API keys, payment credentials, private export
+          links, or live member data here.
+        </p>
+        {fieldErrors.accessInstructions ? (
+          <p className="field-error" id="accessInstructions-error">
+            {fieldErrors.accessInstructions}
+          </p>
+        ) : null}
       </label>
 
       <div className="field-row">
@@ -91,12 +213,20 @@ export function OnboardingForm({ defaultTimezone }: OnboardingFormProps) {
             Launch timezone <em className="field-required">Required</em>
           </span>
           <input
+            aria-describedby={fieldErrors.timezone ? "timezone-error" : undefined}
+            aria-invalid={fieldErrors.timezone ? "true" : undefined}
             aria-required="true"
             defaultValue={defaultTimezone}
             name="timezone"
+            onChange={() => clearFieldError("timezone")}
             placeholder="America/Vancouver"
             type="text"
           />
+          {fieldErrors.timezone ? (
+            <p className="field-error" id="timezone-error">
+              {fieldErrors.timezone}
+            </p>
+          ) : null}
         </label>
 
         <label className="field">
@@ -107,9 +237,9 @@ export function OnboardingForm({ defaultTimezone }: OnboardingFormProps) {
 
       <details className="optional-details">
         <summary>
-          <span>Pricing and scope details</span>
+          <span>Migration planning details</span>
           <strong>
-            Optional, but helpful for quoting the migration service
+            Optional. These details help Flowstate plan your migration.
           </strong>
         </summary>
 
@@ -204,7 +334,13 @@ export function OnboardingForm({ defaultTimezone }: OnboardingFormProps) {
         </div>
       </details>
 
-      {state.error ? <p className="form-error">{state.error}</p> : null}
+      {state.error ? (
+        <div className="form-error" role="alert">
+          <strong>We could not start the handoff.</strong>
+          <p>{state.error}</p>
+          <p>Your details are still here. Correct the issue and try again.</p>
+        </div>
+      ) : null}
 
       <SubmitButton pendingLabel="Starting migration...">
         Start migration handoff

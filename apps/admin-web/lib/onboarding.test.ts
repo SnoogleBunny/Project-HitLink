@@ -131,7 +131,7 @@ describe("owner workspace onboarding", () => {
       flowstateResponsibility:
         "Flowstate will collect exports, stage records, validate the import, reconcile issues, and coordinate go-live.",
       expectedNextMilestone:
-        "Initial migration review within one business day after access or exports are received.",
+        "Flowstate will confirm the migration review schedule after access or exports are received.",
     });
   });
 

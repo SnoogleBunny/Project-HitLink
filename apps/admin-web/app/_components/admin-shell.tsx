@@ -24,7 +24,7 @@ export function AdminShell({
 }: AdminShellProps) {
   return (
     <div className="shell">
-      <aside className="shell-sidebar">
+      <aside className="shell-sidebar shell-desktop-sidebar">
         <div className="shell-brand">
           <span className="shell-brand-label">Flowstate Admin</span>
           <h1>{workspaceName}</h1>
@@ -39,6 +39,29 @@ export function AdminShell({
           <p className="shell-sidebar-caption">{session.email}</p>
         </div>
       </aside>
+
+      <header className="shell-mobile-header">
+        <span className="shell-brand-label">Flowstate Admin</span>
+
+        <details className="shell-mobile-menu">
+          <summary>Menu</summary>
+
+          <div className="shell-mobile-menu-content">
+            <div className="shell-mobile-context">
+              <p className="shell-mobile-workspace-name">{workspaceName}</p>
+              <p>Migration, launch readiness, and daily gym operations.</p>
+            </div>
+
+            <AdminNav role={session.role} />
+
+            <div className="shell-sidebar-footer">
+              <p className="shell-sidebar-caption">Signed in as</p>
+              <p className="shell-sidebar-value">{session.displayName}</p>
+              <p className="shell-sidebar-caption">{session.email}</p>
+            </div>
+          </div>
+        </details>
+      </header>
 
       <div className="shell-main">
         <header className="shell-header">

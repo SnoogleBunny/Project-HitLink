@@ -27,7 +27,10 @@ interface OwnerWorkspaceRecord {
   } | null;
   migration: {
     stage: string;
+    ownerReviewAcknowledgedAt: Date | null;
+    ownerReviewAcknowledgedByUserId: string | null;
     operationallyReadyAt: Date | null;
+    operationallyReadyByUserId: string | null;
   } | null;
 }
 

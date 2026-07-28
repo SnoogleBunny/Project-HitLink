@@ -7,8 +7,9 @@
   --member-foreground: #17212b;
   --member-muted: #5b6470;
   --member-border: rgba(23, 33, 43, 0.12);
-  --member-accent: #c96a3d;
-  --member-accent-strong: #a75128;
+  --member-accent: #a75128;
+  --member-accent-strong: #8f431d;
+  --member-focus: #17352b;
   --member-success: #2b6f52;
   --member-shadow: 0 24px 60px rgba(23, 33, 43, 0.12);
 }
@@ -130,7 +131,7 @@ textarea {
 .member-field select:focus,
 .member-field textarea:focus {
   border-color: var(--member-accent);
-  box-shadow: 0 0 0 4px rgba(201, 106, 61, 0.12);
+  box-shadow: 0 0 0 4px rgba(167, 81, 40, 0.12);
   outline: none;
 }
 
@@ -140,6 +141,11 @@ textarea {
   border-radius: 16px;
   color: var(--member-accent-strong);
   padding: 0.9rem 1rem;
+}
+
+.member-form-error:focus {
+  outline: 3px solid var(--member-focus);
+  outline-offset: 2px;
 }
 
 .member-button {
@@ -163,6 +169,18 @@ textarea {
 .member-button:hover {
   background: var(--member-accent-strong);
   transform: translateY(-1px);
+}
+
+.member-button:focus-visible,
+.member-nav-link:focus-visible,
+.member-text-link:focus-visible {
+  outline: 3px solid var(--member-focus);
+  outline-offset: 3px;
+}
+
+.member-sidebar .member-button:focus-visible,
+.member-sidebar .member-nav-link:focus-visible {
+  outline-color: #fffdf8;
 }
 
 .member-button:disabled {
@@ -303,6 +321,18 @@ textarea {
 .member-stack-copy {
   display: grid;
   gap: 0.55rem;
+}
+
+.member-occurrence-action {
+  display: grid;
+  flex: 0 1 22rem;
+  gap: 0.75rem;
+  justify-items: end;
+  max-width: 22rem;
+}
+
+.member-occurrence-action .member-form-error {
+  width: 100%;
 }
 
 .member-stack-heading {
@@ -468,6 +498,12 @@ textarea {
   padding: 0.85rem 1rem;
 }
 
+@media (max-width: 1200px) {
+  .member-stack-item .member-inline-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 900px) {
   .member-shell {
     grid-template-columns: 1fr;
@@ -492,6 +528,13 @@ textarea {
   .member-header,
   .member-stack-item {
     flex-direction: column;
+  }
+
+  .member-occurrence-action {
+    flex-basis: auto;
+    justify-items: stretch;
+    max-width: none;
+    width: 100%;
   }
 
   .member-inline-meta {
