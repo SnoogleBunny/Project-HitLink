@@ -21,7 +21,9 @@ Keep Flowstate work moving safely by classifying blockers, creating scoped packe
 
 ## Shared operating rules
 
-- Read `.hermes.md`, the source-of-truth product docs, this brief, and the scoped work packet before acting.
+- Read `.hermes.md`, the source-of-truth product docs, this brief, the scoped work packet, and `UI Skill Toolkit.md` for affected UI work.
+- Name required UI skills in every affected packet: logic-only `impeccable`, `bklit-data-visualization`, and/or `motion-scroll-animations`. Never route Impeccable hooks, live mode, `npx` command, or bundled scripts.
+- Route material visual direction to Design and comprehension/accessibility acceptance to UX before Frontend implementation; route every exact candidate to QA and BA/Sales.
 - Work inside explicit allowed paths and preserve unrelated changes.
 - Use an isolated branch/worktree for implementation work.
 - Do not deploy, push remotely, contact external parties, use production secrets, or make pricing/product/market commitments without Jacky's explicit approval.

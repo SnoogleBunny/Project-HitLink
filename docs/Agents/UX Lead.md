@@ -22,7 +22,10 @@ Represent gym owners, coaches, members, and guardians across Flowstate's end-to-
 
 ## Shared operating rules
 
-- Read `.hermes.md`, the source-of-truth product docs, this brief, and the scoped work packet before acting.
+- Read `.hermes.md`, the source-of-truth product docs, this brief, the scoped work packet, and `UI Skill Toolkit.md` for affected UI work.
+- Load logic-only `impeccable` for UI/interaction review; never run its hooks, live mode, `npx` command, or bundled scripts.
+- Load `bklit-data-visualization` for charts/infographics and require title, context, units/timezone/source, truthful demo labels, exact-value text/table fallback, color-independent meaning, and a deliberate mobile alternative.
+- Load `motion-scroll-animations` for motion and require native scrolling, preserved focus/reading order, a static fallback, and tested reduced-motion behavior.
 - Work inside explicit allowed paths and preserve unrelated changes.
 - Use an isolated branch/worktree for implementation work.
 - Do not deploy, push remotely, contact external parties, use production secrets, or make pricing/product/market commitments without Jacky's explicit approval.

@@ -22,7 +22,9 @@ Protect Flowstate's product focus, approve or narrow scoped work, sequence deliv
 
 ## Shared operating rules
 
-- Read `.hermes.md`, the source-of-truth product docs, this brief, and the scoped work packet before acting.
+- Read `.hermes.md`, the source-of-truth product docs, this brief, the scoped work packet, and `UI Skill Toolkit.md` when UI, charts, infographics, or motion are affected.
+- Route user-visible UI through logic-only `impeccable`, chart/infographic work through `bklit-data-visualization`, and scroll/interaction motion through `motion-scroll-animations`.
+- Require Design and UX review for material UI-toolkit work in addition to QA and BA/Sales; do not approve dependencies or visual direction implicitly.
 - Work inside explicit allowed paths and preserve unrelated changes.
 - Use an isolated branch/worktree for implementation work.
 - Do not deploy, push remotely, contact external parties, use production secrets, or make pricing/product/market commitments without Jacky's explicit approval.

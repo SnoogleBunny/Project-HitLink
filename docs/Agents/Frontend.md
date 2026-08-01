@@ -22,7 +22,10 @@ Implement approved owner, coach, member, onboarding, and public web experiences 
 
 ## Shared operating rules
 
-- Read `.hermes.md`, the source-of-truth product docs, this brief, and the scoped work packet before acting.
+- Read `.hermes.md`, the source-of-truth product docs, this brief, the scoped work packet, and `UI Skill Toolkit.md` for affected UI work.
+- Load logic-only `impeccable` before user-visible UI implementation; never run its hooks, live mode, `npx` command, or bundled scripts.
+- Load `bklit-data-visualization` for charts/infographics and `motion-scroll-animations` for scroll or interaction motion. Inspect the existing stack and packet before adding a component or dependency.
+- Keep Bklit/Motion behavior in the smallest practical Client Component while preserving server-side data authority, native scrolling, truthful values, exact-value fallbacks, and reduced-motion behavior.
 - Work inside explicit allowed paths and preserve unrelated changes.
 - Use an isolated branch/worktree for implementation work.
 - Do not deploy, push remotely, contact external parties, use production secrets, or make pricing/product/market commitments without Jacky's explicit approval.

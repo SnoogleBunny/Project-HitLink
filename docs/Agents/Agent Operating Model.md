@@ -18,6 +18,12 @@ A separate Hermes Kanban board routes work, but the board does not grant extra a
 
 When these disagree, do not guess. Record the conflict and route it to the CEO or appropriate specialist.
 
+## Approved UI toolkit
+
+For user-visible UI, chart, infographic, or motion work, follow `docs/Agents/UI Skill Toolkit.md`. The approved bundle is logic-only `impeccable`, project-local `bklit-data-visualization`, and project-local `motion-scroll-animations`. Skill availability does not authorize dependency installation or visual direction. Design sets intent, UX sets comprehension/accessibility criteria, Frontend implements a bounded packet, QA and BA/Sales review the exact candidate, and CEO runs final gates.
+
+Do not run Impeccable hooks, live mode, `npx impeccable`, or bundled scripts. Do not reintroduce the superseded frontend-design bundle without Jacky's explicit approval.
+
 ## Standard delivery loop
 
 1. Orchestrator or CEO creates a scoped work packet.

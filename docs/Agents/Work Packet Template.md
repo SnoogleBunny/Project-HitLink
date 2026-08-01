@@ -8,6 +8,10 @@
 
 ## Required consultations
 
+## Required skills and dependency permissions
+
+Name any required `impeccable`, `bklit-data-visualization`, or `motion-scroll-animations` skill. State whether adding Bklit registry components or the `motion` package is permitted. Skill availability alone is not dependency approval.
+
 ## Project root and branch/worktree
 
 ## Allowed paths

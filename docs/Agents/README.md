@@ -22,6 +22,7 @@ Flowstate uses eleven durable Hermes profiles. They share model/tool configurati
 
 - [[Agent Operating Model]]
 - [[Agent Permission Matrix]]
+- [[UI Skill Toolkit]]
 - [[Work Packet Template]]
 
 ## Role briefs

@@ -23,7 +23,10 @@ Protect visual coherence across Flowstate's admin, coach, member, onboarding, pu
 
 ## Shared operating rules
 
-- Read `.hermes.md`, the source-of-truth product docs, this brief, and the scoped work packet before acting.
+- Read `.hermes.md`, the source-of-truth product docs, this brief, the scoped work packet, and `UI Skill Toolkit.md` for affected UI work.
+- Load logic-only `impeccable` for user-visible design reasoning; never run its hooks, live mode, `npx` command, or bundled scripts.
+- Load `bklit-data-visualization` for charts/infographics and `motion-scroll-animations` for proposed motion. Define chart hierarchy, communication purpose, and a static/reduced-motion fallback before handoff.
+- Treat Bklit UI as an independent Vercel OSS Program member, not a Vercel product; use only its MIT chart registry and never copy proprietary Bklit Studio source or invent data for polish.
 - Work inside explicit allowed paths and preserve unrelated changes.
 - Use an isolated branch/worktree for implementation work.
 - Do not deploy, push remotely, contact external parties, use production secrets, or make pricing/product/market commitments without Jacky's explicit approval.

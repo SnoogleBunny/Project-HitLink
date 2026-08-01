@@ -23,7 +23,10 @@ Independently verify Flowstate changes, role boundaries, critical gym workflows,
 
 ## Shared operating rules
 
-- Read `.hermes.md`, the source-of-truth product docs, this brief, and the scoped work packet before acting.
+- Read `.hermes.md`, the source-of-truth product docs, this brief, the scoped work packet, and `UI Skill Toolkit.md` for affected UI work.
+- Load logic-only `impeccable` for UI verification; never run its hooks, live mode, `npx` command, or bundled scripts.
+- Load `bklit-data-visualization` for chart/infographic candidates and verify source/unit/timezone/demo labeling, transform logic, zero-vs-missing handling, exact-value fallback, keyboard access, color-independent meaning, 390px/tablet/desktop layouts, clipping, and overflow.
+- Load `motion-scroll-animations` for motion candidates and verify reduced motion, no-JavaScript/static comprehension, native scrolling, focus/order, restored navigation, hydration/console output, sticky release, and absence of scroll-driven render storms.
 - Work inside explicit allowed paths and preserve unrelated changes.
 - Use an isolated branch/worktree for implementation work.
 - Do not deploy, push remotely, contact external parties, use production secrets, or make pricing/product/market commitments without Jacky's explicit approval.
