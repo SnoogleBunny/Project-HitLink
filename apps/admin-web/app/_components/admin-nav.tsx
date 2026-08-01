@@ -57,12 +57,18 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AdminNav({ role }: { role: UserRole | null }) {
+export function AdminNav({
+  role,
+  ariaLabel = "Primary admin navigation",
+}: {
+  role: UserRole | null;
+  ariaLabel?: string;
+}) {
   const pathname = usePathname();
   const navGroups = role === "COACH" ? coachNavGroups : ownerNavGroups;
 
   return (
-    <nav className="shell-nav" aria-label="Admin navigation">
+    <nav className="shell-nav" aria-label={ariaLabel}>
       {navGroups.map((group) => (
         <div className="shell-nav-group" key={group.label}>
           <p className="shell-nav-group-label">{group.label}</p>

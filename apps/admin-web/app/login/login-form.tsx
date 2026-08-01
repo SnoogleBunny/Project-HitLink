@@ -10,10 +10,10 @@ export function LoginForm() {
   const [state, formAction] = useActionState(loginAction, emptyFormState);
 
   return (
-    <form action={formAction} className="form-stack">
+    <form action={formAction} className="form-stack" aria-label="Admin login">
       <label className="field">
         <span>Email</span>
-        <input autoComplete="email" name="email" type="email" />
+        <input autoComplete="email" name="email" required type="email" />
       </label>
 
       <label className="field">
@@ -21,11 +21,16 @@ export function LoginForm() {
         <input
           autoComplete="current-password"
           name="password"
+          required
           type="password"
         />
       </label>
 
-      {state.error ? <p className="form-error">{state.error}</p> : null}
+      {state.error ? (
+        <p className="form-error" role="alert">
+          {state.error}
+        </p>
+      ) : null}
 
       <SubmitButton pendingLabel="Logging in...">Log in</SubmitButton>
 

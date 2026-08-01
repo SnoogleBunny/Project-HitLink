@@ -90,9 +90,21 @@ describe("AdminShell responsive navigation structure", () => {
 
     expect(html).toContain("Flowstate Admin");
     expect(html).toContain("North Shore Muay Thai");
+    expect(html).toContain("Owner access");
     expect(html).toContain("Signed in as");
     expect(html).toContain("Owner Example");
     expect(html).toContain("owner@example.com");
+  });
+
+  it("gives the desktop and mobile navigation landmarks distinct names", () => {
+    const html = renderShell();
+
+    expect(html).toContain(
+      '<nav class="shell-nav" aria-label="Primary admin navigation">',
+    );
+    expect(html).toContain(
+      '<nav class="shell-nav" aria-label="Mobile admin navigation">',
+    );
   });
 
   it("renders one route heading and one main content landmark", () => {
@@ -127,6 +139,18 @@ describe("AdminShell responsive navigation structure", () => {
       /\.shell-sidebar-caption\s*{[^}]*color:\s*var\(--color-sidebar-muted\);/,
     );
   });
+
+  it("keeps navigation and disclosure controls at least 44px high", () => {
+    const css = readFileSync(
+      new URL("../globals.css", import.meta.url),
+      "utf8",
+    );
+
+    expect(css).toMatch(/\.shell-nav-link\s*{[^}]*min-height:\s*2\.75rem;/);
+    expect(css).toMatch(
+      /\.shell-mobile-menu\s*>\s*summary\s*{[^}]*min-height:\s*2\.75rem;/,
+    );
+  });
 });
 
 describe("AdminNav role destinations", () => {
@@ -138,6 +162,7 @@ describe("AdminNav role destinations", () => {
   it("renders all 14 owner destinations with only Migration current", () => {
     const html = renderToStaticMarkup(<AdminNav role="OWNER" />);
 
+    expect(html).toContain('aria-label="Primary admin navigation"');
     for (const destination of ownerDestinations) {
       expect(html).toContain(`>${destination}</a>`);
     }

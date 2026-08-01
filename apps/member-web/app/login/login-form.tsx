@@ -12,10 +12,14 @@ export function LoginForm() {
   );
 
   return (
-    <form action={formAction} className="member-form-stack">
+    <form
+      action={formAction}
+      aria-label="Member login"
+      className="member-form-stack"
+    >
       <label className="member-field">
         <span>Email</span>
-        <input autoComplete="email" name="email" type="email" />
+        <input autoComplete="email" name="email" required type="email" />
       </label>
 
       <label className="member-field">
@@ -23,17 +27,22 @@ export function LoginForm() {
         <input
           autoComplete="current-password"
           name="password"
+          required
           type="password"
         />
       </label>
 
-      {state.error ? <p className="member-form-error">{state.error}</p> : null}
+      {state.error ? (
+        <p className="member-form-error" role="alert">
+          {state.error}
+        </p>
+      ) : null}
 
       <SubmitButton pendingLabel="Logging in...">Log in</SubmitButton>
 
       <p className="member-form-meta">
-        Member access is provisioned by the gym. Ask staff if you do not have a
-        portal login yet.
+        Member access is provided by your gym. Ask the gym team if you need help
+        with your portal login.
       </p>
     </form>
   );

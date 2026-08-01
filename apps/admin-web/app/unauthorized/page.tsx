@@ -1,16 +1,27 @@
 import Link from "next/link";
-import { AuthPanel } from "../_components/auth-panel";
+import { EntryShell } from "../_components/entry-shell";
 import { logoutAction } from "../actions/logout";
 import { getSessionOrNull } from "../../lib/admin-access";
 
 export default async function UnauthorizedPage() {
   const session = await getSessionOrNull();
+  const roleDescription =
+    session?.role === "COACH"
+      ? "Your coach account can use the coach workspace, but it cannot open this owner route."
+      : session?.role === "OWNER"
+        ? "Your owner account cannot open this route until its workspace is ready."
+        : session?.role === "CUSTOMER"
+          ? "Customer accounts use the member portal rather than the admin workspace."
+          : "Sign in with the owner or coach account that has access to the page you need.";
 
   return (
-    <AuthPanel
-      eyebrow="Unauthorized"
-      title="This admin area is owner-only right now"
-      description="Coach and customer roles remain valid in the data model, but this first admin dashboard is intentionally limited to owners."
+    <EntryShell
+      eyebrow="Access stays role-aware"
+      title="You can’t open this admin page"
+      description={roleDescription}
+      identityEyebrow="Protected admin"
+      identityTitle="The right role opens the right workspace."
+      identityDescription="Flowstate keeps owner, coach, and customer access separate so operational routes stay bounded."
     >
       <div className="form-stack">
         <Link className="button" href="/">
@@ -25,6 +36,6 @@ export default async function UnauthorizedPage() {
           </form>
         ) : null}
       </div>
-    </AuthPanel>
+    </EntryShell>
   );
 }

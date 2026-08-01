@@ -22,42 +22,65 @@ export function MemberShell({
 }: MemberShellProps) {
   return (
     <div className="member-shell">
-      <aside className="member-sidebar">
-        <div className="member-brand">
-          <p className="member-eyebrow">Flowstate Member</p>
-          <h1>{context.workspace.name}</h1>
-          <p>{context.member.fullName}</p>
-        </div>
-
-        <MemberNav />
-
-        <div className="member-sidebar-footer">
-          <p className="member-sidebar-label">Signed in as</p>
-          <p className="member-sidebar-value">{context.session.displayName}</p>
-          <p className="member-sidebar-label">{context.session.email}</p>
-        </div>
-      </aside>
-
-      <div className="member-main">
-        <header className="member-header">
-          <div>
-            <p className="member-eyebrow">{eyebrow}</p>
-            <h2>{title}</h2>
-            <p className="member-header-description">{description}</p>
+      <header className="member-top-shell">
+        <div className="member-identity-row">
+          <div className="member-brand">
+            <p className="member-gym-name">{context.workspace.name}</p>
+            <p className="member-product-name">Flowstate member portal</p>
           </div>
 
-          <div className="member-header-actions">
-            {actions}
+          <div className="member-account-utility">
+            <div>
+              <p className="member-account-name">{context.session.displayName}</p>
+              <p className="member-account-email">{context.session.email}</p>
+            </div>
             <form action={logoutAction}>
-              <button className="member-button member-button-secondary" type="submit">
+              <button
+                className="member-button member-button-secondary"
+                type="submit"
+              >
                 Log out
               </button>
             </form>
           </div>
-        </header>
+        </div>
 
-        <main className="member-content">{children}</main>
-      </div>
+        <div className="member-page-heading">
+          <div>
+            <p className="member-eyebrow">{eyebrow}</p>
+            <h1>{title}</h1>
+            <p className="member-header-description">{description}</p>
+          </div>
+          {actions ? <div className="member-header-actions">{actions}</div> : null}
+        </div>
+
+        <div className="member-desktop-nav">
+          <MemberNav ariaLabel="Member portal navigation" />
+        </div>
+      </header>
+
+      <details className="member-mobile-menu">
+        <summary>Menu</summary>
+        <div className="member-mobile-menu-content">
+          <MemberNav ariaLabel="Mobile member portal navigation" />
+          <div className="member-mobile-account">
+            <p>{context.member.fullName}</p>
+            <p>{context.session.email}</p>
+            <form action={logoutAction}>
+              <button
+                className="member-button member-button-secondary"
+                type="submit"
+              >
+                Log out
+              </button>
+            </form>
+          </div>
+        </div>
+      </details>
+
+      <main className="member-content">
+        <div className="member-content-inner">{children}</div>
+      </main>
     </div>
   );
 }

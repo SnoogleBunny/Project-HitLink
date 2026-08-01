@@ -3,7 +3,12 @@ import {
   MEMBER_SESSION_COOKIE_NAME,
   type AppSession,
 } from "@flowstate/auth";
-import { prisma, type MemberStatus, type WorkspaceStatus } from "@flowstate/db";
+import {
+  isWorkspaceMigrationReady,
+  prisma,
+  type MemberStatus,
+  type WorkspaceStatus,
+} from "@flowstate/db";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -15,6 +20,13 @@ interface MemberWorkspaceRecord {
     id: string;
     name: string;
     timezone: string;
+  } | null;
+  migration: {
+    stage: string;
+    ownerReviewAcknowledgedAt: Date | null;
+    ownerReviewAcknowledgedByUserId: string | null;
+    operationallyReadyAt: Date | null;
+    operationallyReadyByUserId: string | null;
   } | null;
 }
 
@@ -88,6 +100,15 @@ export async function requireMemberPortalContext(args?: {
       },
       include: {
         location: true,
+        migration: {
+          select: {
+            stage: true,
+            ownerReviewAcknowledgedAt: true,
+            ownerReviewAcknowledgedByUserId: true,
+            operationallyReadyAt: true,
+            operationallyReadyByUserId: true,
+          },
+        },
       },
     }),
     db.member.findFirst({
@@ -105,6 +126,22 @@ export async function requireMemberPortalContext(args?: {
   ]);
 
   if (!workspace?.location || !member) {
+    redirect("/unauthorized");
+  }
+
+  if (
+    !isWorkspaceMigrationReady({
+      workspaceStatus: workspace.status,
+      migrationStage: workspace.migration?.stage,
+      ownerReviewAcknowledgedAt:
+        workspace.migration?.ownerReviewAcknowledgedAt,
+      ownerReviewAcknowledgedByUserId:
+        workspace.migration?.ownerReviewAcknowledgedByUserId,
+      operationallyReadyAt: workspace.migration?.operationallyReadyAt,
+      operationallyReadyByUserId:
+        workspace.migration?.operationallyReadyByUserId,
+    })
+  ) {
     redirect("/unauthorized");
   }
 

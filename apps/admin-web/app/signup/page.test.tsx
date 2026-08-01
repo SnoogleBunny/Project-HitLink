@@ -17,14 +17,16 @@ vi.mock("./signup-form", () => ({
 import SignupPage from "./page";
 
 describe("SignupPage migration copy", () => {
-  it("uses the approved guided migration wording", async () => {
+  it("makes signup owner-only and the migration handoff explicit", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
     const html = renderToStaticMarkup(await SignupPage());
 
     expect(redirectAuthenticatedUserMock).toHaveBeenCalledOnce();
-    expect(html).toContain(
-      "Start a guided migration handoff. Flowstate will review your current system, plan the import, and guide launch readiness with you.",
-    );
+    expect(html).toContain("Owner signup");
+    expect(html).toContain("Create your owner account");
+    expect(html).toContain("guided, validated, and reviewable migration handoff");
+    expect(html).not.toContain("one-click");
+    expect(html).not.toContain("coach signup");
   });
 });

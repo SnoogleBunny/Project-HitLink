@@ -1,6 +1,11 @@
 export { prisma } from "./client.js";
 
 export {
+  isWorkspaceMigrationReady,
+  type WorkspaceMigrationReadinessInput,
+} from "./workspace-readiness.js";
+
+export {
   addDays,
   buildUpcomingOccurrenceDateOptions,
   dateOnlyStringToUtcDate,

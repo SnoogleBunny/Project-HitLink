@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { parse } from "csv-parse/sync";
 import {
   Prisma,
+  isWorkspaceMigrationReady as isSharedWorkspaceMigrationReady,
   prisma,
   type ImportJobStatus,
   type ImportRecordKind,
@@ -867,23 +868,7 @@ export function getMigrationStageLabel(stage: MigrationStage): string {
   return labels[stage];
 }
 
-export function isWorkspaceMigrationReady(args: {
-  workspaceStatus: string;
-  migrationStage?: string | null;
-  ownerReviewAcknowledgedAt?: Date | null;
-  ownerReviewAcknowledgedByUserId?: string | null;
-  operationallyReadyAt?: Date | null;
-  operationallyReadyByUserId?: string | null;
-}): boolean {
-  return (
-    args.workspaceStatus === "ACTIVE" &&
-    args.migrationStage === "COMPLETE" &&
-    Boolean(args.ownerReviewAcknowledgedAt) &&
-    Boolean(args.ownerReviewAcknowledgedByUserId?.trim()) &&
-    Boolean(args.operationallyReadyAt) &&
-    Boolean(args.operationallyReadyByUserId?.trim())
-  );
-}
+export const isWorkspaceMigrationReady = isSharedWorkspaceMigrationReady;
 
 function parseCsvRows(fileData: Uint8Array): Record<string, string>[] {
   const rawContent = new TextDecoder("utf-8").decode(fileData);

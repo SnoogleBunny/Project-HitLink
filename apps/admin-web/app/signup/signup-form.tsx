@@ -10,15 +10,15 @@ export function SignupForm() {
   const [state, formAction] = useActionState(signupAction, emptyFormState);
 
   return (
-    <form action={formAction} className="form-stack">
+    <form action={formAction} className="form-stack" aria-label="Owner signup">
       <label className="field">
         <span>Full name</span>
-        <input autoComplete="name" name="fullName" type="text" />
+        <input autoComplete="name" name="fullName" required type="text" />
       </label>
 
       <label className="field">
         <span>Email</span>
-        <input autoComplete="email" name="email" type="email" />
+        <input autoComplete="email" name="email" required type="email" />
       </label>
 
       <label className="field">
@@ -26,6 +26,7 @@ export function SignupForm() {
         <input
           autoComplete="new-password"
           name="password"
+          required
           type="password"
         />
       </label>
@@ -35,11 +36,16 @@ export function SignupForm() {
         <input
           autoComplete="new-password"
           name="confirmPassword"
+          required
           type="password"
         />
       </label>
 
-      {state.error ? <p className="form-error">{state.error}</p> : null}
+      {state.error ? (
+        <p className="form-error" role="alert">
+          {state.error}
+        </p>
+      ) : null}
 
       <SubmitButton pendingLabel="Creating account...">
         Create account
