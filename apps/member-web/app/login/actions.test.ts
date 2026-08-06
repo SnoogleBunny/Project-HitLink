@@ -22,13 +22,20 @@ vi.mock("@flowstate/auth", () => ({
   verifyPassword: verifyPasswordMock,
 }));
 
-vi.mock("@flowstate/db", () => ({
-  prisma: {
-    user: {
-      findUnique: prismaUserFindUniqueMock,
+vi.mock("@flowstate/db", async () => {
+  const actual = await vi.importActual<typeof import("@flowstate/db")>(
+    "@flowstate/db",
+  );
+
+  return {
+    ...actual,
+    prisma: {
+      user: {
+        findUnique: prismaUserFindUniqueMock,
+      },
     },
-  },
-}));
+  };
+});
 
 vi.mock("next/headers", () => ({
   cookies: cookiesMock,
@@ -40,6 +47,19 @@ vi.mock("next/navigation", () => ({
 
 import { emptyMemberLoginFormState } from "../form-states";
 import { loginAction } from "./actions";
+
+const readyMigration = {
+  stage: "COMPLETE",
+  ownerReviewAcknowledgedAt: new Date("2026-07-25T12:00:00.000Z"),
+  ownerReviewAcknowledgedByUserId: "owner_1",
+  operationallyReadyAt: new Date("2026-07-25T12:05:00.000Z"),
+  operationallyReadyByUserId: "flowstate_operator_1",
+};
+
+const readyWorkspace = {
+  status: "ACTIVE",
+  migration: readyMigration,
+};
 
 function buildFormData() {
   const formData = new FormData();
@@ -67,6 +87,7 @@ describe("member login action", () => {
         {
           workspaceId: "workspace_1",
           role: "CUSTOMER",
+          workspace: readyWorkspace,
         },
       ],
       member: {
@@ -84,9 +105,47 @@ describe("member login action", () => {
       cookieStore: expect.any(Object),
       cookieName: "flowstate_member_session",
     });
+    expect(prismaUserFindUniqueMock).toHaveBeenCalledWith({
+      where: {
+        email: "member@example.com",
+      },
+      include: {
+        workspaceUsers: {
+          where: {
+            isActive: true,
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
+          select: {
+            workspaceId: true,
+            role: true,
+            workspace: {
+              select: {
+                status: true,
+                migration: {
+                  select: {
+                    stage: true,
+                    ownerReviewAcknowledgedAt: true,
+                    ownerReviewAcknowledgedByUserId: true,
+                    operationallyReadyAt: true,
+                    operationallyReadyByUserId: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        member: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
   });
 
-  it("rejects owner or unlinked accounts from the member login flow", async () => {
+  it("rejects account-shape errors before evaluating portal readiness", async () => {
     prismaUserFindUniqueMock
       .mockResolvedValueOnce({
         id: "user_owner",
@@ -96,6 +155,10 @@ describe("member login action", () => {
           {
             workspaceId: "workspace_1",
             role: "OWNER",
+            workspace: {
+              status: "SETUP_INCOMPLETE",
+              migration: null,
+            },
           },
         ],
         member: null,
@@ -108,6 +171,10 @@ describe("member login action", () => {
           {
             workspaceId: "workspace_1",
             role: "CUSTOMER",
+            workspace: {
+              status: "SETUP_INCOMPLETE",
+              migration: null,
+            },
           },
         ],
         member: null,
@@ -126,5 +193,73 @@ describe("member login action", () => {
       error: "This login is only available for linked member accounts.",
     });
     expect(createSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("verifies credentials before returning the portal readiness error", async () => {
+    prismaUserFindUniqueMock.mockResolvedValue({
+      id: "user_1",
+      email: "member@example.com",
+      passwordHash: "hash",
+      workspaceUsers: [
+        {
+          workspaceId: "workspace_1",
+          role: "CUSTOMER",
+          workspace: {
+            status: "SETUP_INCOMPLETE",
+            migration: null,
+          },
+        },
+      ],
+      member: {
+        id: "member_1",
+      },
+    });
+    verifyPasswordMock.mockResolvedValue(false);
+
+    await expect(
+      loginAction(emptyMemberLoginFormState, buildFormData()),
+    ).resolves.toEqual({
+      error: "Invalid email or password.",
+    });
+
+    expect(cookiesMock).not.toHaveBeenCalled();
+    expect(createSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a pre-ready linked member before obtaining cookies or creating a session", async () => {
+    prismaUserFindUniqueMock.mockResolvedValue({
+      id: "user_1",
+      email: "member@example.com",
+      passwordHash: "hash",
+      workspaceUsers: [
+        {
+          workspaceId: "workspace_1",
+          role: "CUSTOMER",
+          workspace: {
+            status: "SETUP_INCOMPLETE",
+            migration: {
+              ...readyMigration,
+              stage: "REVIEW_READY",
+              operationallyReadyAt: null,
+              operationallyReadyByUserId: null,
+            },
+          },
+        },
+      ],
+      member: {
+        id: "member_1",
+      },
+    });
+    verifyPasswordMock.mockResolvedValue(true);
+
+    await expect(
+      loginAction(emptyMemberLoginFormState, buildFormData()),
+    ).resolves.toEqual({
+      error: "This member portal is not ready yet.",
+    });
+
+    expect(cookiesMock).not.toHaveBeenCalled();
+    expect(createSessionMock).not.toHaveBeenCalled();
+    expect(redirectMock).not.toHaveBeenCalled();
   });
 });

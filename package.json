@@ -2,31 +2,43 @@
   "name": "flowstate-monorepo",
   "private": true,
   "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": "^20.0.0 || ^22.0.0",
+    "pnpm": "10.33.0"
+  },
   "scripts": {
-    "dev": "turbo run dev",
-    "build": "turbo run build",
+    "dev": "dotenv -e .env -- turbo run dev",
+    "build": "dotenv -e .env -- turbo run build",
     "lint": "turbo run lint",
-    "check-types": "turbo run check-types",
+    "check-types": "corepack pnpm db:generate && turbo run check-types",
     "test": "turbo run test",
+    "test:tooling": "node --test tests/tooling/windows-bootstrap.test.mjs",
+    "test:migration:integration": "corepack pnpm --filter admin-web test:migration:integration",
     "test:e2e:onboarding": "playwright test tests/e2e/migration-first-onboarding.spec.ts --project=chromium",
-    "test:e2e": "pnpm db:reset:demo && playwright test",
+    "test:e2e": "corepack pnpm db:reset:demo && playwright test",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
-    "db:generate": "pnpm --filter @flowstate/db db:generate",
-    "db:migrate": "pnpm --filter @flowstate/db db:migrate",
-    "db:migrate:deploy": "pnpm --filter @flowstate/db db:migrate:deploy",
-    "db:reset:demo": "pnpm --filter @flowstate/db db:reset:demo",
-    "db:seed": "pnpm --filter @flowstate/db db:seed",
-    "db:validate": "pnpm --filter @flowstate/db db:validate",
+    "db:generate": "corepack pnpm --filter @flowstate/db db:generate",
+    "db:migrate": "corepack pnpm --filter @flowstate/db db:migrate",
+    "db:migrate:deploy": "corepack pnpm --filter @flowstate/db db:migrate:deploy",
+    "db:reset:demo": "corepack pnpm --filter @flowstate/db db:reset:demo",
+    "db:seed": "corepack pnpm --filter @flowstate/db db:seed",
+    "db:validate": "corepack pnpm --filter @flowstate/db db:validate",
     "db:studio": "pnpm --filter @flowstate/db db:studio"
   },
   "pnpm": {
+    "overrides": {
+      "next@16.2.12>postcss": "8.5.23",
+      "next@16.2.12>sharp": "0.35.3"
+    },
     "onlyBuiltDependencies": [
       "sharp"
     ]
   },
   "devDependencies": {
     "@playwright/test": "1.57.0",
+    "@prisma/client": "^6.18.0",
+    "dotenv-cli": "10.0.0",
     "prettier": "^3.7.4",
     "turbo": "^2.9.3",
     "typescript": "5.9.2",

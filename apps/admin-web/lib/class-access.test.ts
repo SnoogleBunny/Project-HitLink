@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   cancelAccessBackedBooking,
   countActiveOccurrenceBookings,
@@ -33,7 +33,183 @@ function buildTemplateRecord() {
   };
 }
 
+function buildCutoffDb(activeBookingCount = 0) {
+  const db = {
+    $transaction: vi.fn(async (callback: (tx: typeof db) => unknown) => callback(db)),
+    classTemplate: {
+      findFirst: vi.fn().mockResolvedValue(buildTemplateRecord()),
+    },
+    classBooking: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      count: vi.fn().mockResolvedValue(activeBookingCount),
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: "booking_cutoff" }),
+      update: vi.fn().mockResolvedValue({ id: "booking_cutoff" }),
+    },
+    memberMembership: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: "membership_1",
+        status: "ACTIVE",
+        membershipPlan: {
+          programRestrictions: [],
+        },
+      }),
+    },
+    memberPunchCard: {
+      findMany: vi.fn().mockResolvedValue([]),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    dropInProduct: {
+      findMany: vi.fn().mockResolvedValue([]),
+      findFirst: vi.fn(),
+    },
+    waitlistEntry: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn(),
+      create: vi.fn().mockResolvedValue({ id: "waitlist_cutoff" }),
+      update: vi.fn().mockResolvedValue({ id: "waitlist_cutoff" }),
+      updateMany: vi.fn(),
+    },
+  };
+
+  return db;
+}
+
+function expectCutoffGuardToSkipAccessAndWrites(db: ReturnType<typeof buildCutoffDb>) {
+  expect(db.memberMembership.findFirst).not.toHaveBeenCalled();
+  expect(db.memberPunchCard.findMany).not.toHaveBeenCalled();
+  expect(db.dropInProduct.findMany).not.toHaveBeenCalled();
+  expect(db.classBooking.findFirst).not.toHaveBeenCalled();
+  expect(db.classBooking.count).not.toHaveBeenCalled();
+  expect(db.waitlistEntry.findFirst).not.toHaveBeenCalled();
+
+  expect(db.classBooking.updateMany).not.toHaveBeenCalled();
+  expect(db.classBooking.create).not.toHaveBeenCalled();
+  expect(db.classBooking.update).not.toHaveBeenCalled();
+  expect(db.memberPunchCard.updateMany).not.toHaveBeenCalled();
+  expect(db.waitlistEntry.create).not.toHaveBeenCalled();
+  expect(db.waitlistEntry.update).not.toHaveBeenCalled();
+  expect(db.waitlistEntry.updateMany).not.toHaveBeenCalled();
+}
+
 describe("shared class access helpers", () => {
+  it("requires an explicit member-portal source to join a waitlist", () => {
+    type JoinWaitlistArgs = Parameters<typeof joinWaitlist>[0];
+    type JoinWaitlistArgsWithoutSource = Omit<JoinWaitlistArgs, "source">;
+    type AdminJoinWaitlistArgs = JoinWaitlistArgsWithoutSource & {
+      source: "ADMIN";
+    };
+
+    expectTypeOf<JoinWaitlistArgs>().toMatchTypeOf<{
+      source: "MEMBER_PORTAL";
+    }>();
+    expectTypeOf<JoinWaitlistArgsWithoutSource>().not.toMatchTypeOf<JoinWaitlistArgs>();
+    expectTypeOf<AdminJoinWaitlistArgs>().not.toMatchTypeOf<JoinWaitlistArgs>();
+  });
+
+  it.each([
+    {
+      boundary: "immediately before",
+      now: "2026-04-14T20:59:59.999Z",
+      allowed: true,
+    },
+    {
+      boundary: "exactly at",
+      now: "2026-04-14T21:00:00.000Z",
+      allowed: false,
+    },
+    {
+      boundary: "immediately after",
+      now: "2026-04-14T21:00:00.001Z",
+      allowed: false,
+    },
+  ])(
+    "enforces the member-portal booking cutoff $boundary the boundary",
+    async ({ now, allowed }) => {
+      const db = buildCutoffDb();
+
+      const result = await createAccessBackedBooking({
+        workspaceId: "workspace_1",
+        memberId: "member_1",
+        classTemplateId: "template_1",
+        scheduledForDate: "2026-04-14",
+        timezone: "America/New_York",
+        source: "MEMBER_PORTAL",
+        allowDropIn: true,
+        db: db as never,
+        now: new Date(now),
+      });
+
+      if (allowed) {
+        expect(result).toEqual({
+          status: "created",
+          bookingId: "booking_cutoff",
+          bookingType: "MEMBERSHIP",
+        });
+        expect(db.classBooking.create).toHaveBeenCalledOnce();
+        return;
+      }
+
+      expect(result).toEqual({
+        status: "error",
+        code: "INVALID",
+        message: "Choose a valid upcoming date for this class.",
+      });
+      expectCutoffGuardToSkipAccessAndWrites(db);
+    },
+  );
+
+  it.each([
+    {
+      boundary: "immediately before",
+      now: "2026-04-14T20:59:59.999Z",
+      allowed: true,
+    },
+    {
+      boundary: "exactly at",
+      now: "2026-04-14T21:00:00.000Z",
+      allowed: false,
+    },
+    {
+      boundary: "immediately after",
+      now: "2026-04-14T21:00:00.001Z",
+      allowed: false,
+    },
+  ])(
+    "enforces the member waitlist cutoff $boundary the boundary",
+    async ({ now, allowed }) => {
+      const db = buildCutoffDb(1);
+
+      const result = await joinWaitlist({
+        workspaceId: "workspace_1",
+        memberId: "member_1",
+        classTemplateId: "template_1",
+        scheduledForDate: "2026-04-14",
+        timezone: "America/New_York",
+        source: "MEMBER_PORTAL",
+        db: db as never,
+        now: new Date(now),
+      });
+
+      if (allowed) {
+        expect(result).toEqual({
+          status: "joined",
+          waitlistEntryId: "waitlist_cutoff",
+        });
+        expect(db.waitlistEntry.create).toHaveBeenCalledOnce();
+        return;
+      }
+
+      expect(result).toEqual({
+        status: "error",
+        message: "Choose a valid upcoming class date.",
+      });
+      expectCutoffGuardToSkipAccessAndWrites(db);
+    },
+  );
+
   it("cleans stale pending-payment holds before counting active bookings", async () => {
     const db = {
       classBooking: {
@@ -452,6 +628,7 @@ describe("shared class access helpers", () => {
         classTemplateId: "template_1",
         scheduledForDate: "2026-04-14",
         timezone: "UTC",
+        source: "MEMBER_PORTAL",
         db: joinDb as never,
         now: new Date("2026-04-08T12:00:00.000Z"),
       }),

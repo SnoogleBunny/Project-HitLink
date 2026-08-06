@@ -1,19 +1,22 @@
-import Link from "next/link";
+import { logoutAction } from "../actions/logout";
+import { EntryShell } from "../_components/entry-shell";
 
 export default function UnauthorizedPage() {
   return (
-    <main className="member-auth-page">
-      <section className="member-auth-card">
-        <p className="member-eyebrow">Access restricted</p>
-        <h1>Member access is not available for this account</h1>
-        <p className="member-auth-description">
-          This portal is limited to customer accounts that are linked to a
-          member profile in one workspace.
-        </p>
-        <Link className="member-button" href="/login">
-          Back to login
-        </Link>
-      </section>
-    </main>
+    <EntryShell
+      description="The portal may still be getting ready, or your current access may not include it."
+      eyebrow="Access restricted"
+      intent="restricted"
+      title="Member portal access isn’t available right now"
+    >
+      <div className="member-entry-recovery">
+        <p>Sign out before retrying member login.</p>
+        <form action={logoutAction}>
+          <button className="member-button" type="submit">
+            Sign out and return to login
+          </button>
+        </form>
+      </div>
+    </EntryShell>
   );
 }

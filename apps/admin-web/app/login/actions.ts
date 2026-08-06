@@ -1,7 +1,7 @@
 "use server";
 
 import { createSession, verifyPassword } from "@flowstate/auth";
-import { prisma } from "@flowstate/db";
+import { isWorkspaceMigrationReady, prisma } from "@flowstate/db";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
@@ -40,6 +40,20 @@ export async function loginAction(
         select: {
           workspaceId: true,
           role: true,
+          workspace: {
+            select: {
+              status: true,
+              migration: {
+                select: {
+                  stage: true,
+                  ownerReviewAcknowledgedAt: true,
+                  ownerReviewAcknowledgedByUserId: true,
+                  operationallyReadyAt: true,
+                  operationallyReadyByUserId: true,
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -53,6 +67,28 @@ export async function loginAction(
     };
   }
 
+  const membership = user.workspaceUsers[0];
+  const workspaceIsReady = membership
+    ? isWorkspaceMigrationReady({
+        workspaceStatus: membership.workspace.status,
+        migrationStage: membership.workspace.migration?.stage,
+        ownerReviewAcknowledgedAt:
+          membership.workspace.migration?.ownerReviewAcknowledgedAt,
+        ownerReviewAcknowledgedByUserId:
+          membership.workspace.migration?.ownerReviewAcknowledgedByUserId,
+        operationallyReadyAt:
+          membership.workspace.migration?.operationallyReadyAt,
+        operationallyReadyByUserId:
+          membership.workspace.migration?.operationallyReadyByUserId,
+      })
+    : false;
+
+  if (membership?.role === "COACH" && !workspaceIsReady) {
+    return {
+      error: "This workspace is not ready for operations yet.",
+    };
+  }
+
   const cookieStore = await cookies();
 
   await createSession({
@@ -60,7 +96,9 @@ export async function loginAction(
     cookieStore,
   });
 
-  const membership = user.workspaceUsers[0];
+  if (membership?.role === "OWNER" && !workspaceIsReady) {
+    redirect("/dashboard/migration");
+  }
 
   redirect(
     getHomeRouteDestination({

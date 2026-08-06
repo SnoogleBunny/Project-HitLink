@@ -4,69 +4,48 @@ import type { UserRole } from "@flowstate/db";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const ownerNavItems = [
+const ownerNavGroups = [
   {
-    href: "/dashboard",
-    label: "Dashboard",
+    label: "Overview",
+    items: [{ href: "/dashboard", label: "Dashboard" }],
   },
   {
-    href: "/dashboard/migration",
-    label: "Migration",
+    label: "Migration setup",
+    items: [{ href: "/dashboard/migration", label: "Migration" }],
   },
   {
-    href: "/dashboard/programs",
-    label: "Programs",
+    label: "Daily operations",
+    items: [
+      { href: "/dashboard/programs", label: "Programs" },
+      { href: "/dashboard/rooms", label: "Rooms" },
+      { href: "/dashboard/schedule", label: "Schedule" },
+      { href: "/dashboard/bookings", label: "Bookings" },
+      { href: "/dashboard/coach/today", label: "Today roster" },
+      { href: "/dashboard/members", label: "Members" },
+    ],
   },
   {
-    href: "/dashboard/rooms",
-    label: "Rooms",
+    label: "Products and forms",
+    items: [
+      { href: "/dashboard/forms", label: "Forms" },
+      { href: "/dashboard/membership-plans", label: "Membership plans" },
+      { href: "/dashboard/access-products", label: "Access products" },
+    ],
   },
   {
-    href: "/dashboard/schedule",
-    label: "Schedule",
-  },
-  {
-    href: "/dashboard/bookings",
-    label: "Bookings",
-  },
-  {
-    href: "/dashboard/coach/today",
-    label: "Today roster",
-  },
-  {
-    href: "/dashboard/members",
-    label: "Members",
-  },
-  {
-    href: "/dashboard/forms",
-    label: "Forms",
-  },
-  {
-    href: "/dashboard/membership-plans",
-    label: "Membership plans",
-  },
-  {
-    href: "/dashboard/access-products",
-    label: "Access products",
-  },
-  {
-    href: "/dashboard/billing",
-    label: "Billing",
-  },
-  {
-    href: "/dashboard/settings/billing",
-    label: "Billing settings",
-  },
-  {
-    href: "/dashboard/staff-invites",
-    label: "Staff invites",
+    label: "Business settings",
+    items: [
+      { href: "/dashboard/billing", label: "Billing" },
+      { href: "/dashboard/settings/billing", label: "Billing settings" },
+      { href: "/dashboard/staff-invites", label: "Staff invites" },
+    ],
   },
 ];
 
-const coachNavItems = [
+const coachNavGroups = [
   {
-    href: "/dashboard/coach/today",
-    label: "Today roster",
+    label: "Daily operations",
+    items: [{ href: "/dashboard/coach/today", label: "Today roster" }],
   },
 ];
 
@@ -78,20 +57,36 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AdminNav({ role }: { role: UserRole | null }) {
+export function AdminNav({
+  role,
+  ariaLabel = "Primary admin navigation",
+}: {
+  role: UserRole | null;
+  ariaLabel?: string;
+}) {
   const pathname = usePathname();
-  const navItems = role === "COACH" ? coachNavItems : ownerNavItems;
+  const navGroups = role === "COACH" ? coachNavGroups : ownerNavGroups;
 
   return (
-    <nav className="shell-nav" aria-label="Admin navigation">
-      {navItems.map((item) => (
-        <Link
-          key={item.href}
-          className={`shell-nav-link ${isActivePath(pathname, item.href) ? "active" : ""}`}
-          href={item.href}
-        >
-          {item.label}
-        </Link>
+    <nav className="shell-nav" aria-label={ariaLabel}>
+      {navGroups.map((group) => (
+        <div className="shell-nav-group" key={group.label}>
+          <p className="shell-nav-group-label">{group.label}</p>
+          <div className="shell-nav-group-links">
+            {group.items.map((item) => (
+              <Link
+                key={item.href}
+                aria-current={
+                  isActivePath(pathname, item.href) ? "page" : undefined
+                }
+                className={`shell-nav-link ${isActivePath(pathname, item.href) ? "active" : ""}`}
+                href={item.href}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </div>
       ))}
     </nav>
   );

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { emptyFormState, type BasicFormState } from "../../../lib/admin-access";
 import { createClassBooking } from "../../../lib/bookings";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
+import { isWorkspaceMigrationReady } from "../../../lib/workspace-migration";
 
 function parseBookingOption(value: string): {
   classTemplateId: string;
@@ -22,6 +23,26 @@ export async function createClassBookingAction(
   formData: FormData,
 ): Promise<BasicFormState> {
   const { workspace, location } = await requireOwnerWorkspaceContext();
+
+  if (
+    !isWorkspaceMigrationReady({
+      workspaceStatus: workspace.status,
+      migrationStage: workspace.migration?.stage,
+      ownerReviewAcknowledgedAt:
+        workspace.migration?.ownerReviewAcknowledgedAt,
+      ownerReviewAcknowledgedByUserId:
+        workspace.migration?.ownerReviewAcknowledgedByUserId,
+      operationallyReadyAt: workspace.migration?.operationallyReadyAt,
+      operationallyReadyByUserId:
+        workspace.migration?.operationallyReadyByUserId,
+    })
+  ) {
+    return {
+      error:
+        "Class bookings are unavailable until migration readiness is complete.",
+    };
+  }
+
   const bookingOption = parseBookingOption(
     String(formData.get("bookingOption") ?? ""),
   );

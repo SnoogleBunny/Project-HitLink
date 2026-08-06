@@ -1,4 +1,9 @@
-import { prisma, type UserRole, type WorkspaceStatus } from "@flowstate/db";
+import {
+  isWorkspaceMigrationReady,
+  prisma,
+  type UserRole,
+  type WorkspaceStatus,
+} from "@flowstate/db";
 import { redirect } from "next/navigation";
 import { getSessionOrNull, type OperationsSession } from "./admin-access";
 
@@ -21,6 +26,13 @@ interface OperationsWorkspaceRecord {
   settings: {
     allowMultipleRooms: boolean;
   } | null;
+  migration: {
+    stage: string;
+    ownerReviewAcknowledgedAt: Date | null;
+    ownerReviewAcknowledgedByUserId: string | null;
+    operationallyReadyAt: Date | null;
+    operationallyReadyByUserId: string | null;
+  } | null;
 }
 
 interface OperationsWorkspaceUserRecord {
@@ -37,6 +49,15 @@ interface OperationsWorkspaceDatabase {
       include: {
         location: true;
         settings: true;
+        migration: {
+          select: {
+            stage: true;
+            ownerReviewAcknowledgedAt: true;
+            ownerReviewAcknowledgedByUserId: true;
+            operationallyReadyAt: true;
+            operationallyReadyByUserId: true;
+          };
+        };
       };
     }): Promise<OperationsWorkspaceRecord | null>;
   };
@@ -84,6 +105,15 @@ export async function requireOperationsWorkspaceContext(args?: {
       include: {
         location: true,
         settings: true,
+        migration: {
+          select: {
+            stage: true,
+            ownerReviewAcknowledgedAt: true,
+            ownerReviewAcknowledgedByUserId: true,
+            operationallyReadyAt: true,
+            operationallyReadyByUserId: true,
+          },
+        },
       },
     }),
     db.workspaceUser.findFirst({
@@ -108,6 +138,26 @@ export async function requireOperationsWorkspaceContext(args?: {
 
   if (!workspaceUser || workspaceUser.role === "CUSTOMER") {
     redirect("/unauthorized");
+  }
+
+  if (
+    !isWorkspaceMigrationReady({
+      workspaceStatus: workspace.status,
+      migrationStage: workspace.migration?.stage,
+      ownerReviewAcknowledgedAt:
+        workspace.migration?.ownerReviewAcknowledgedAt,
+      ownerReviewAcknowledgedByUserId:
+        workspace.migration?.ownerReviewAcknowledgedByUserId,
+      operationallyReadyAt: workspace.migration?.operationallyReadyAt,
+      operationallyReadyByUserId:
+        workspace.migration?.operationallyReadyByUserId,
+    })
+  ) {
+    redirect(
+      workspaceUser.role === "OWNER"
+        ? "/dashboard/migration"
+        : "/unauthorized",
+    );
   }
 
   return {

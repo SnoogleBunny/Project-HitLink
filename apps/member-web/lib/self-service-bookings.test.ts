@@ -163,6 +163,47 @@ describe("self-service booking helpers", () => {
     });
   });
 
+  it.each([
+    {
+      boundary: "immediately before",
+      now: "2026-04-14T20:59:59.999Z",
+      expectedAvailability: true,
+    },
+    {
+      boundary: "exactly at",
+      now: "2026-04-14T21:00:00.000Z",
+      expectedAvailability: false,
+    },
+    {
+      boundary: "immediately after",
+      now: "2026-04-14T21:00:00.001Z",
+      expectedAvailability: false,
+    },
+  ])(
+    "$boundary the booking cutoff has availability $expectedAvailability in the workspace timezone",
+    async ({ now, expectedAvailability }) => {
+      const db = createMockDb();
+      db.classBooking.findMany = vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      const result = await listEligibleSelfServiceOccurrences({
+        workspaceId: "workspace_1",
+        memberId: "member_1",
+        timezone: "America/New_York",
+        now: new Date(now),
+        db,
+      });
+
+      expect(
+        result.occurrences.some(
+          (occurrence) => occurrence.scheduledForDate === "2026-04-14",
+        ),
+      ).toBe(expectedAvailability);
+    },
+  );
+
   it("shows waitlist join when a full occurrence still has membership or punch-card access", async () => {
     const db = createMockDb();
     db.classTemplate.findMany = vi.fn().mockResolvedValue([
@@ -377,6 +418,16 @@ describe("self-service booking helpers", () => {
     ).resolves.toEqual({
       status: "waitlist_restored",
       waitlistEntryId: "waitlist_1",
+    });
+    expect(joinWaitlistMock).toHaveBeenCalledWith({
+      workspaceId: "workspace_1",
+      memberId: "member_1",
+      classTemplateId: "template_1",
+      scheduledForDate: "2026-04-14",
+      timezone: "UTC",
+      source: "MEMBER_PORTAL",
+      db,
+      now: new Date("2026-04-08T12:00:00.000Z"),
     });
 
     await expect(

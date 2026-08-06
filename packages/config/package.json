@@ -9,7 +9,7 @@
   "scripts": {
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit",
-    "test": "node -e \"console.log('No tests yet')\""
+    "test": "node --test tests/turbo-environment.test.mjs"
   },
   "devDependencies": {
     "@flowstate/eslint-config": "workspace:*",

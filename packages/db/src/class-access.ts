@@ -829,6 +829,24 @@ async function createAccessBackedBookingWithDb(args: {
     };
   }
 
+  if (args.source === "MEMBER_PORTAL") {
+    const startsAt = getOccurrenceStartsAt({
+      scheduledForDate: occurrence.dateString,
+      startTimeMinutes: template.startTimeMinutes,
+      timezone: args.timezone,
+    });
+    const cutoffAt =
+      startsAt.getTime() - template.bookingCutoffMinutes * 60_000;
+
+    if (args.now.getTime() >= cutoffAt) {
+      return {
+        status: "error",
+        code: "INVALID",
+        message: "Choose a valid upcoming date for this class.",
+      };
+    }
+  }
+
   await cleanupExpiredPendingBookings({
     workspaceId: args.workspaceId,
     classTemplateId,
@@ -1285,6 +1303,7 @@ export async function joinWaitlist(args: {
   classTemplateId: string;
   scheduledForDate: string;
   timezone: string;
+  source: "MEMBER_PORTAL";
   db?: AccessDatabase;
   now?: Date;
 }): Promise<
@@ -1327,6 +1346,23 @@ export async function joinWaitlist(args: {
         status: "error",
         message: "Choose a valid upcoming class date.",
       };
+    }
+
+    if (args.source === "MEMBER_PORTAL") {
+      const startsAt = getOccurrenceStartsAt({
+        scheduledForDate: occurrence.dateString,
+        startTimeMinutes: template.startTimeMinutes,
+        timezone: args.timezone,
+      });
+      const cutoffAt =
+        startsAt.getTime() - template.bookingCutoffMinutes * 60_000;
+
+      if (now.getTime() >= cutoffAt) {
+        return {
+          status: "error",
+          message: "Choose a valid upcoming class date.",
+        };
+      }
     }
 
     const access = await resolveBookingAccessForProgramWithDb({

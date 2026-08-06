@@ -4,9 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; next dev --port 3001'",
-    "build": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; next build'",
-    "start": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; set +a; next start'",
+    "dev": "next dev --port 3001",
+    "build": "next build",
+    "start": "next start --port 3001",
     "lint": "eslint --max-warnings 0",
     "check-types": "next typegen && tsc --noEmit",
     "test": "vitest run"
@@ -15,7 +15,7 @@
     "@flowstate/auth": "workspace:*",
     "@flowstate/db": "workspace:*",
     "@flowstate/ui": "workspace:*",
-    "next": "16.2.0",
+    "next": "16.2.12",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "stripe": "^22.0.0"

@@ -22,13 +22,15 @@ export function AdminShell({
   eyebrow = "Protected dashboard",
   actions,
 }: AdminShellProps) {
+  const roleLabel = session.role === "COACH" ? "Coach access" : "Owner access";
+
   return (
     <div className="shell">
-      <aside className="shell-sidebar">
+      <aside className="shell-sidebar shell-desktop-sidebar">
         <div className="shell-brand">
           <span className="shell-brand-label">Flowstate Admin</span>
           <h1>{workspaceName}</h1>
-          <p>Migration, launch readiness, and daily gym operations.</p>
+          <p className="shell-role-context">{roleLabel}</p>
         </div>
 
         <AdminNav role={session.role} />
@@ -39,6 +41,36 @@ export function AdminShell({
           <p className="shell-sidebar-caption">{session.email}</p>
         </div>
       </aside>
+
+      <header className="shell-mobile-header">
+        <div className="shell-mobile-identity">
+          <span className="shell-brand-label">Flowstate Admin</span>
+          <p className="shell-mobile-workspace-name">{workspaceName}</p>
+          <p className="shell-role-context">{roleLabel}</p>
+        </div>
+
+        <details className="shell-mobile-menu">
+          <summary>Menu</summary>
+
+          <div className="shell-mobile-menu-content">
+            <div className="shell-mobile-context">
+              <p>Signed in as {session.displayName}</p>
+              <p>{session.email}</p>
+            </div>
+
+            <AdminNav
+              ariaLabel="Mobile admin navigation"
+              role={session.role}
+            />
+
+            <div className="shell-sidebar-footer">
+              <p className="shell-sidebar-caption">Signed in as</p>
+              <p className="shell-sidebar-value">{session.displayName}</p>
+              <p className="shell-sidebar-caption">{session.email}</p>
+            </div>
+          </div>
+        </details>
+      </header>
 
       <div className="shell-main">
         <header className="shell-header">

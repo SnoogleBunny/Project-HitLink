@@ -9,7 +9,13 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "pnpm dev",
+    command:
+      "corepack pnpm exec dotenv -e .env -- turbo run dev --env-mode=loose",
+    // Keep direct E2E operator calls and spawned apps on the same reserved test-only channel.
+    env: Object.assign(process.env, {
+      FLOWSTATE_MIGRATION_CORRECTIONS_EMAIL:
+        "migration-corrections@example.test",
+    }),
     url: "http://localhost:3000/login",
     reuseExistingServer: true,
     timeout: 180_000,

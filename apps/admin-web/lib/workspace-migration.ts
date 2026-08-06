@@ -2,13 +2,16 @@ import { createHash } from "node:crypto";
 import { parse } from "csv-parse/sync";
 import {
   Prisma,
+  isWorkspaceMigrationReady as isSharedWorkspaceMigrationReady,
   prisma,
+  type ImportJobStatus,
   type ImportRecordKind,
   type MigrationStage,
   type MemberMembershipStatus,
   type MemberStatus,
   type Weekday,
 } from "@flowstate/db";
+import { isMigrationCorrectionChannelAvailable } from "./migration-correction-channel";
 
 type MigrationDatabase = typeof prisma;
 
@@ -100,7 +103,361 @@ const defaultNextOwnerAction =
 const defaultFlowstateResponsibility =
   "Flowstate will collect exports, stage records, validate the import, reconcile issues, and coordinate go-live.";
 const defaultExpectedMilestone =
-  "Initial migration review within one business day after access or exports are received.";
+  "Flowstate will confirm the migration review schedule after access or exports are received.";
+
+type MigrationResultAttempt = {
+  status: ImportJobStatus;
+  reconciliationReports: ReadonlyArray<{ summary: unknown }>;
+};
+
+export type OwnerMigrationResultsProjection =
+  | { status: "results-in-progress" }
+  | {
+      status: "ready";
+      recordsAdded: number;
+      recordsUpdated: number;
+      recordsNotImported: number;
+      earlierIncompleteAttemptCount: number;
+    }
+  | { status: "no-results-recorded" }
+  | { status: "needs-flowstate-review" };
+
+function normalizedMigrationResultSummary(value: unknown): {
+  created: number;
+  updated: number;
+  skipped: number;
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const { created, updated, skipped } = value as Record<string, unknown>;
+
+  if (
+    !Number.isSafeInteger(created) ||
+    !Number.isSafeInteger(updated) ||
+    !Number.isSafeInteger(skipped) ||
+    (created as number) < 0 ||
+    (updated as number) < 0 ||
+    (skipped as number) < 0
+  ) {
+    return null;
+  }
+
+  return {
+    created: created as number,
+    updated: updated as number,
+    skipped: skipped as number,
+  };
+}
+
+export function projectOwnerMigrationResults(input: {
+  migrationStage: MigrationStage | null;
+  attempts: ReadonlyArray<MigrationResultAttempt>;
+}): OwnerMigrationResultsProjection {
+  if (
+    input.attempts.some(
+      (attempt) =>
+        attempt.status !== "COMPLETED" &&
+        attempt.status !== "FAILED" &&
+        attempt.status !== "CANCELLED",
+    )
+  ) {
+    return { status: "results-in-progress" };
+  }
+
+  if (!input.migrationStage && input.attempts.length > 0) {
+    return { status: "needs-flowstate-review" };
+  }
+
+  let earlierIncompleteAttemptCount = 0;
+  let completedAttemptCount = 0;
+  let recordedSummaryCount = 0;
+  const totals = {
+    recordsAdded: 0,
+    recordsUpdated: 0,
+    recordsNotImported: 0,
+  };
+
+  for (const attempt of input.attempts) {
+    if (attempt.status === "FAILED" || attempt.status === "CANCELLED") {
+      earlierIncompleteAttemptCount += 1;
+      continue;
+    }
+
+    if (attempt.status !== "COMPLETED") {
+      continue;
+    }
+
+    completedAttemptCount += 1;
+    const report = attempt.reconciliationReports[0];
+
+    if (!report) {
+      continue;
+    }
+
+    recordedSummaryCount += 1;
+    const summary = normalizedMigrationResultSummary(report.summary);
+
+    if (!summary) {
+      return { status: "needs-flowstate-review" };
+    }
+
+    const nextRecordsAdded = totals.recordsAdded + summary.created;
+    const nextRecordsUpdated = totals.recordsUpdated + summary.updated;
+    const nextRecordsNotImported = totals.recordsNotImported + summary.skipped;
+
+    if (
+      !Number.isSafeInteger(nextRecordsAdded) ||
+      !Number.isSafeInteger(nextRecordsUpdated) ||
+      !Number.isSafeInteger(nextRecordsNotImported)
+    ) {
+      return { status: "needs-flowstate-review" };
+    }
+
+    totals.recordsAdded = nextRecordsAdded;
+    totals.recordsUpdated = nextRecordsUpdated;
+    totals.recordsNotImported = nextRecordsNotImported;
+  }
+
+  if (recordedSummaryCount === 0) {
+    return input.migrationStage === "COMPLETE"
+      ? { status: "no-results-recorded" }
+      : { status: "results-in-progress" };
+  }
+
+  if (recordedSummaryCount !== completedAttemptCount) {
+    return { status: "needs-flowstate-review" };
+  }
+
+  return {
+    status: "ready",
+    ...totals,
+    earlierIncompleteAttemptCount,
+  };
+}
+
+export type MigrationScheduleFailureReason =
+  | "schedule-missing"
+  | "schedule-passed"
+  | "launch-timezone-invalid";
+
+export type MigrationScheduleClassification =
+  | { status: "current"; scheduledDateKey: string; localDateKey: string }
+  | { status: "invalid"; reason: MigrationScheduleFailureReason };
+
+function storedDateOnlyKey(value: Date | null): string | null {
+  if (!value || Number.isNaN(value.getTime())) {
+    return null;
+  }
+
+  return [
+    value.getUTCFullYear().toString().padStart(4, "0"),
+    (value.getUTCMonth() + 1).toString().padStart(2, "0"),
+    value.getUTCDate().toString().padStart(2, "0"),
+  ].join("-");
+}
+
+function localDateKey(value: Date, timezone: string | null): string | null {
+  if (!timezone?.trim() || Number.isNaN(value.getTime())) {
+    return null;
+  }
+
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      calendar: "iso8601",
+      day: "2-digit",
+      month: "2-digit",
+      numberingSystem: "latn",
+      timeZone: timezone,
+      year: "numeric",
+    }).formatToParts(value);
+    const values = new Map(parts.map((part) => [part.type, part.value]));
+    const year = values.get("year");
+    const month = values.get("month");
+    const day = values.get("day");
+
+    return year && month && day ? `${year}-${month}-${day}` : null;
+  } catch {
+    return null;
+  }
+}
+
+export function classifyMigrationSchedule(args: {
+  goLiveScheduledFor: Date | null;
+  launchTimezone: string | null;
+  now: Date;
+}): MigrationScheduleClassification {
+  const todayKey = localDateKey(args.now, args.launchTimezone);
+
+  if (!todayKey) {
+    return { status: "invalid", reason: "launch-timezone-invalid" };
+  }
+
+  const scheduledDateKey = storedDateOnlyKey(args.goLiveScheduledFor);
+
+  if (!scheduledDateKey) {
+    return { status: "invalid", reason: "schedule-missing" };
+  }
+
+  return scheduledDateKey < todayKey
+    ? { status: "invalid", reason: "schedule-passed" }
+    : { status: "current", scheduledDateKey, localDateKey: todayKey };
+}
+
+function classifyAcknowledgedSchedule(args: {
+  goLiveScheduledFor: Date | null;
+  launchTimezone: string | null;
+  ownerReviewAcknowledgedAt: Date;
+}): MigrationScheduleClassification {
+  const acknowledgmentDateKey = localDateKey(
+    args.ownerReviewAcknowledgedAt,
+    args.launchTimezone,
+  );
+
+  if (!acknowledgmentDateKey) {
+    return { status: "invalid", reason: "launch-timezone-invalid" };
+  }
+
+  const scheduledDateKey = storedDateOnlyKey(args.goLiveScheduledFor);
+
+  if (!scheduledDateKey) {
+    return { status: "invalid", reason: "schedule-missing" };
+  }
+
+  return scheduledDateKey < acknowledgmentDateKey
+    ? { status: "invalid", reason: "schedule-passed" }
+    : {
+        status: "current",
+        scheduledDateKey,
+        localDateKey: acknowledgmentDateKey,
+      };
+}
+
+interface OwnerReviewPresentationInput {
+  migration: {
+    stage: MigrationStage;
+    workspaceStatus: string;
+    goLiveScheduledFor?: Date | null;
+    launchTimezone?: string | null;
+    ownerReviewAcknowledgedAt: Date | null;
+    ownerReviewAcknowledgedByUserId: string | null;
+    operationallyReadyAt: Date | null;
+    operationallyReadyByUserId: string | null;
+  } | null;
+  now?: Date;
+  blockingValidationIssueCount: number;
+  unresolvedJobCount: number;
+}
+
+export type OwnerReviewPresentation =
+  | { status: "unavailable"; reason?: MigrationScheduleFailureReason }
+  | { status: "eligible" }
+  | {
+      status: "blocked";
+      blockingValidationIssueCount: number;
+      unresolvedJobCount: number;
+    }
+  | { status: "acknowledged" };
+
+export function getOwnerReviewPresentation(
+  input: OwnerReviewPresentationInput,
+): OwnerReviewPresentation {
+  const { migration } = input;
+
+  if (!migration) {
+    return { status: "unavailable" };
+  }
+
+  if (
+    migration.stage === "COMPLETE" &&
+    migration.workspaceStatus === "ACTIVE" &&
+    migration.ownerReviewAcknowledgedAt &&
+    migration.ownerReviewAcknowledgedByUserId?.trim() &&
+    migration.operationallyReadyAt &&
+    migration.operationallyReadyByUserId?.trim()
+  ) {
+    return { status: "acknowledged" };
+  }
+
+  if (
+    migration.stage !== "GO_LIVE_SCHEDULED" ||
+    migration.workspaceStatus !== "SETUP_INCOMPLETE" ||
+    migration.operationallyReadyAt ||
+    migration.operationallyReadyByUserId
+  ) {
+    return { status: "unavailable" };
+  }
+
+  if (
+    migration.ownerReviewAcknowledgedAt &&
+    migration.ownerReviewAcknowledgedByUserId?.trim()
+  ) {
+    return { status: "acknowledged" };
+  }
+
+  if (
+    migration.ownerReviewAcknowledgedAt ||
+    migration.ownerReviewAcknowledgedByUserId?.trim()
+  ) {
+    return { status: "unavailable" };
+  }
+
+  const schedule = classifyMigrationSchedule({
+    goLiveScheduledFor: migration.goLiveScheduledFor ?? null,
+    launchTimezone: migration.launchTimezone ?? null,
+    now: input.now ?? new Date(),
+  });
+
+  if (schedule.status === "invalid") {
+    return { status: "unavailable", reason: schedule.reason };
+  }
+
+  if (input.blockingValidationIssueCount > 0 || input.unresolvedJobCount > 0) {
+    return {
+      status: "blocked",
+      blockingValidationIssueCount: input.blockingValidationIssueCount,
+      unresolvedJobCount: input.unresolvedJobCount,
+    };
+  }
+
+  return { status: "eligible" };
+}
+
+function activeBlockingValidationIssueWhere(workspaceId: string) {
+  return {
+    severity: "ERROR" as const,
+    importJob: {
+      workspaceId,
+      NOT: {
+        status: "CANCELLED" as const,
+        cancelledAt: { not: null },
+        cancelledByOperatorId: { not: null },
+        cancellationReason: { not: null },
+      },
+    },
+  };
+}
+
+function unresolvedImportJobWhere(workspaceId: string) {
+  return {
+    workspaceId,
+    NOT: {
+      OR: [
+        {
+          status: "COMPLETED" as const,
+          reconciliationReports: { some: {} },
+        },
+        {
+          status: "CANCELLED" as const,
+          cancelledAt: { not: null },
+          cancelledByOperatorId: { not: null },
+          cancellationReason: { not: null },
+        },
+      ],
+    },
+  };
+}
 
 export interface MigrationIntakeInput {
   currentSoftware?: string;
@@ -130,6 +487,23 @@ export interface StageTransitionInput {
   goLiveScheduledFor?: string;
 }
 
+export type MigrationReadinessActor =
+  | {
+      type: "FLOWSTATE_OPERATOR";
+      actorId: string;
+    }
+  | {
+      type: "WORKSPACE_USER";
+      actorId: string;
+      role: "OWNER" | "COACH" | "CUSTOMER";
+    };
+
+const internalMigrationOperationError = {
+  status: "error" as const,
+  message:
+    "Only an authorized Flowstate operator can run migration operations.",
+};
+
 type MutationResult =
   | {
       status: "ok";
@@ -138,7 +512,48 @@ type MutationResult =
   | {
       status: "error";
       message: string;
+      reason?:
+        | MigrationScheduleFailureReason
+        | "correction-channel-unavailable";
     };
+
+function getFlowstateOperatorId(actor: MigrationReadinessActor): string | null {
+  if (actor.type !== "FLOWSTATE_OPERATOR") {
+    return null;
+  }
+
+  return cleanNullable(actor.actorId);
+}
+
+function isPrismaSerializationConflict(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2034"
+  );
+}
+
+async function runSerializableWithRetry<T>(
+  db: MigrationDatabase,
+  operation: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await db.$transaction(operation, {
+        isolationLevel: "Serializable",
+      });
+    } catch (error) {
+      if (!isPrismaSerializationConflict(error) || attempt === maxAttempts) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("Unreachable migration transaction retry state.");
+}
 
 interface StagedRow {
   externalId: string | null;
@@ -453,14 +868,7 @@ export function getMigrationStageLabel(stage: MigrationStage): string {
   return labels[stage];
 }
 
-export function isWorkspaceMigrationReady(args: {
-  workspaceStatus: string;
-  operationallyReadyAt?: Date | null;
-}): boolean {
-  return (
-    args.workspaceStatus === "ACTIVE" && Boolean(args.operationallyReadyAt)
-  );
-}
+export const isWorkspaceMigrationReady = isSharedWorkspaceMigrationReady;
 
 function parseCsvRows(fileData: Uint8Array): Record<string, string>[] {
   const rawContent = new TextDecoder("utf-8").decode(fileData);
@@ -799,7 +1207,7 @@ function hasBlockingIssues(stagedRow: StagedRow): boolean {
 }
 
 async function findIdentity(args: {
-  db: MigrationDatabase;
+  db: Prisma.TransactionClient;
   workspaceId: string;
   recordKind: ImportRecordKind;
   externalId: string;
@@ -821,7 +1229,7 @@ async function findIdentity(args: {
 }
 
 async function upsertIdentity(args: {
-  db: MigrationDatabase;
+  db: Prisma.TransactionClient;
   workspaceId: string;
   importJobId: string;
   stagingRecordId?: string | null;
@@ -861,7 +1269,7 @@ function mapped<T extends Prisma.JsonObject>(value: Prisma.JsonValue): T {
 }
 
 async function importMember(args: {
-  db: MigrationDatabase;
+  db: Prisma.TransactionClient;
   workspaceId: string;
   importJobId: string;
   stagingRecord: {
@@ -1028,7 +1436,7 @@ async function importMember(args: {
 }
 
 async function importMembershipPlan(args: {
-  db: MigrationDatabase;
+  db: Prisma.TransactionClient;
   workspaceId: string;
   importJobId: string;
   stagingRecord: {
@@ -1110,7 +1518,7 @@ async function importMembershipPlan(args: {
 }
 
 async function importMemberMembership(args: {
-  db: MigrationDatabase;
+  db: Prisma.TransactionClient;
   workspaceId: string;
   importJobId: string;
   stagingRecord: {
@@ -1243,7 +1651,7 @@ async function importMemberMembership(args: {
 }
 
 async function importPunchCardBalance(args: {
-  db: MigrationDatabase;
+  db: Prisma.TransactionClient;
   workspaceId: string;
   importJobId: string;
   stagingRecord: {
@@ -1398,7 +1806,7 @@ async function importPunchCardBalance(args: {
 }
 
 async function importDropInProduct(args: {
-  db: MigrationDatabase;
+  db: Prisma.TransactionClient;
   workspaceId: string;
   importJobId: string;
   stagingRecord: {
@@ -1480,7 +1888,7 @@ async function importDropInProduct(args: {
 }
 
 async function importScheduleTemplate(args: {
-  db: MigrationDatabase;
+  db: Prisma.TransactionClient;
   workspaceId: string;
   locationId: string;
   importJobId: string;
@@ -1626,7 +2034,7 @@ async function importScheduleTemplate(args: {
 }
 
 async function updateMigrationStageForImport(args: {
-  db: MigrationDatabase;
+  db: Prisma.TransactionClient;
   workspaceId: string;
   stage: MigrationStage;
 }): Promise<void> {
@@ -1655,69 +2063,162 @@ async function updateMigrationStageForImport(args: {
 export async function getMigrationDashboard(args: {
   workspaceId: string;
   db?: MigrationDatabase;
+  now?: Date;
 }) {
   const db = args.db ?? prisma;
-  const migration = await db.workspaceMigration.findUnique({
-    where: {
-      workspaceId: args.workspaceId,
-    },
-  });
-  const importJobs = await db.importJob.findMany({
-    where: {
-      workspaceId: args.workspaceId,
-    },
-    include: {
-      sourceFiles: {
-        orderBy: {
-          createdAt: "desc",
+  const now = args.now ?? new Date();
+  const [
+    migration,
+    importJobs,
+    migrationResultAttempts,
+    blockingValidationIssueCount,
+    unresolvedJobCount,
+  ] = await Promise.all([
+    db.workspaceMigration.findUnique({
+      where: {
+        workspaceId: args.workspaceId,
+      },
+      include: {
+        workspace: {
+          select: {
+            status: true,
+            location: { select: { timezone: true } },
+          },
         },
       },
-      validationIssues: {
-        orderBy: [
-          {
-            severity: "desc",
-          },
-          {
+    }),
+    db.importJob.findMany({
+      where: {
+        workspaceId: args.workspaceId,
+      },
+      include: {
+        sourceFiles: {
+          orderBy: {
             createdAt: "desc",
           },
-        ],
-        take: 10,
-      },
-      stagingRecords: {
-        select: {
-          id: true,
-          recordKind: true,
-          isReadyForImport: true,
-          importedAt: true,
+        },
+        validationIssues: {
+          orderBy: [
+            {
+              severity: "desc",
+            },
+            {
+              createdAt: "desc",
+            },
+            {
+              id: "asc",
+            },
+          ],
+          take: 10,
+        },
+        stagingRecords: {
+          select: {
+            id: true,
+            recordKind: true,
+            isReadyForImport: true,
+            importedAt: true,
+          },
+        },
+        reconciliationReports: {
+          orderBy: {
+            generatedAt: "desc",
+          },
+          take: 1,
         },
       },
-      reconciliationReports: {
-        orderBy: {
-          generatedAt: "desc",
-        },
-        take: 1,
+      orderBy: {
+        createdAt: "desc",
       },
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: 8,
+      take: 8,
+    }),
+    db.importJob.findMany({
+      where: {
+        workspaceId: args.workspaceId,
+      },
+      select: {
+        status: true,
+        reconciliationReports: {
+          select: {
+            summary: true,
+          },
+          orderBy: {
+            generatedAt: "desc",
+          },
+          take: 1,
+        },
+      },
+    }),
+    db.validationIssue.count({
+      where: activeBlockingValidationIssueWhere(args.workspaceId),
+    }),
+    db.importJob.count({
+      where: unresolvedImportJobWhere(args.workspaceId),
+    }),
+  ]);
+
+  const validationIssueCounts =
+    importJobs.length === 0
+      ? []
+      : await db.validationIssue.groupBy({
+          by: ["importJobId", "severity"],
+          where: {
+            workspaceId: args.workspaceId,
+            importJobId: {
+              in: importJobs.map((job) => job.id),
+            },
+          },
+          _count: {
+            _all: true,
+          },
+        });
+  const issueCountsByImportJob = new Map<
+    string,
+    { INFO: number; WARNING: number; ERROR: number }
+  >();
+
+  for (const issueCount of validationIssueCounts) {
+    const counts = issueCountsByImportJob.get(issueCount.importJobId) ?? {
+      INFO: 0,
+      WARNING: 0,
+      ERROR: 0,
+    };
+
+    counts[issueCount.severity] = issueCount._count._all;
+    issueCountsByImportJob.set(issueCount.importJobId, counts);
+  }
+
+  const ownerReview = getOwnerReviewPresentation({
+    migration: migration
+      ? {
+          stage: migration.stage,
+          workspaceStatus: migration.workspace.status,
+          goLiveScheduledFor: migration.goLiveScheduledFor,
+          launchTimezone: migration.workspace.location?.timezone ?? null,
+          ownerReviewAcknowledgedAt: migration.ownerReviewAcknowledgedAt,
+          ownerReviewAcknowledgedByUserId:
+            migration.ownerReviewAcknowledgedByUserId,
+          operationallyReadyAt: migration.operationallyReadyAt,
+          operationallyReadyByUserId: migration.operationallyReadyByUserId,
+        }
+      : null,
+    now,
+    blockingValidationIssueCount,
+    unresolvedJobCount,
   });
 
   return {
     migration,
+    ownerReview,
+    migrationResults: projectOwnerMigrationResults({
+      migrationStage: migration?.stage ?? null,
+      attempts: migrationResultAttempts,
+    }),
     importJobs: importJobs.map((job) => {
-      const issueCounts = job.validationIssues.reduce(
-        (counts, issue) => ({
-          ...counts,
-          [issue.severity]: counts[issue.severity] + 1,
-        }),
-        {
-          INFO: 0,
-          WARNING: 0,
-          ERROR: 0,
-        },
-      );
+      const issueCounts = issueCountsByImportJob.get(job.id) ?? {
+        INFO: 0,
+        WARNING: 0,
+        ERROR: 0,
+      };
 
       return {
         ...job,
@@ -1733,11 +2234,213 @@ export async function getMigrationDashboard(args: {
   };
 }
 
+export async function acknowledgeMigrationOwnerReview(args: {
+  workspaceId: string;
+  userId: string;
+  db?: MigrationDatabase;
+  now?: Date;
+}): Promise<MutationResult> {
+  const db = args.db ?? prisma;
+  const now = args.now ?? new Date();
+
+  if (!isMigrationCorrectionChannelAvailable()) {
+    return {
+      status: "error",
+      reason: "correction-channel-unavailable",
+      message:
+        "Migration correction channel is unavailable. Owner acknowledgment was not recorded.",
+    };
+  }
+
+  return runSerializableWithRetry(db, async (tx) => {
+    const owner = await tx.workspaceUser.findFirst({
+      where: {
+        workspaceId: args.workspaceId,
+        userId: args.userId,
+        role: "OWNER",
+        isActive: true,
+      },
+      select: { id: true },
+    });
+
+    if (!owner) {
+      return {
+        status: "error",
+        message:
+          "Only an active workspace owner can acknowledge migration review.",
+      };
+    }
+
+    const migration = await tx.workspaceMigration.findUnique({
+      where: { workspaceId: args.workspaceId },
+      select: {
+        stage: true,
+        goLiveScheduledFor: true,
+        ownerReviewAcknowledgedAt: true,
+        ownerReviewAcknowledgedByUserId: true,
+        operationallyReadyAt: true,
+        operationallyReadyByUserId: true,
+        workspace: {
+          select: {
+            status: true,
+            location: { select: { timezone: true } },
+          },
+        },
+      },
+    });
+
+    if (
+      !migration ||
+      migration.stage !== "GO_LIVE_SCHEDULED" ||
+      migration.workspace.status !== "SETUP_INCOMPLETE" ||
+      migration.operationallyReadyAt ||
+      migration.operationallyReadyByUserId
+    ) {
+      return {
+        status: "error",
+        message:
+          "Migration review can only be acknowledged after Flowstate schedules go-live.",
+      };
+    }
+
+    if (
+      migration.ownerReviewAcknowledgedAt &&
+      migration.ownerReviewAcknowledgedByUserId
+    ) {
+      return { status: "ok" };
+    }
+
+    if (
+      migration.ownerReviewAcknowledgedAt ||
+      migration.ownerReviewAcknowledgedByUserId
+    ) {
+      return {
+        status: "error",
+        message: "Migration owner review state is inconsistent.",
+      };
+    }
+
+    const schedule = classifyMigrationSchedule({
+      goLiveScheduledFor: migration.goLiveScheduledFor,
+      launchTimezone: migration.workspace.location?.timezone ?? null,
+      now,
+    });
+
+    if (schedule.status === "invalid") {
+      const message =
+        schedule.reason === "schedule-missing"
+          ? "Flowstate must confirm the go-live schedule before owner review can be acknowledged."
+          : schedule.reason === "schedule-passed"
+            ? "The scheduled go-live date has passed. Flowstate must confirm the schedule before owner review can be acknowledged."
+            : "Flowstate must confirm the launch timezone before owner review can be acknowledged.";
+
+      return { status: "error", reason: schedule.reason, message };
+    }
+
+    const blockingValidationIssueCount = await tx.validationIssue.count({
+      where: {
+        severity: "ERROR",
+        importJob: {
+          workspaceId: args.workspaceId,
+          NOT: {
+            status: "CANCELLED",
+            cancelledAt: { not: null },
+            cancelledByOperatorId: { not: null },
+            cancellationReason: { not: null },
+          },
+        },
+      },
+    });
+
+    if (blockingValidationIssueCount > 0) {
+      return {
+        status: "error",
+        message:
+          "Resolve blocking migration validation issues before acknowledging review.",
+      };
+    }
+
+    const unresolvedJobCount = await tx.importJob.count({
+      where: {
+        workspaceId: args.workspaceId,
+        NOT: {
+          OR: [
+            {
+              status: "COMPLETED",
+              reconciliationReports: { some: {} },
+            },
+            {
+              status: "CANCELLED",
+              cancelledAt: { not: null },
+              cancelledByOperatorId: { not: null },
+              cancellationReason: { not: null },
+            },
+          ],
+        },
+      },
+    });
+
+    if (unresolvedJobCount > 0) {
+      return {
+        status: "error",
+        message:
+          "Complete migration reconciliation before acknowledging review.",
+      };
+    }
+
+    const acknowledgment = await tx.workspaceMigration.updateMany({
+      where: {
+        workspaceId: args.workspaceId,
+        stage: "GO_LIVE_SCHEDULED",
+        goLiveScheduledFor: migration.goLiveScheduledFor,
+        ownerReviewAcknowledgedAt: null,
+        ownerReviewAcknowledgedByUserId: null,
+        operationallyReadyAt: null,
+        operationallyReadyByUserId: null,
+        workspace: {
+          status: "SETUP_INCOMPLETE",
+          location: { timezone: migration.workspace.location?.timezone },
+        },
+      },
+      data: {
+        ownerReviewAcknowledgedAt: now,
+        ownerReviewAcknowledgedByUserId: args.userId,
+      },
+    });
+
+    if (acknowledgment.count === 1) {
+      return { status: "ok" };
+    }
+
+    const acknowledged = await tx.workspaceMigration.findUnique({
+      where: { workspaceId: args.workspaceId },
+      select: {
+        ownerReviewAcknowledgedAt: true,
+        ownerReviewAcknowledgedByUserId: true,
+      },
+    });
+
+    return acknowledged?.ownerReviewAcknowledgedAt &&
+      acknowledged.ownerReviewAcknowledgedByUserId
+      ? { status: "ok" }
+      : {
+          status: "error",
+          message:
+            "Migration review eligibility changed. Refresh and try again.",
+        };
+  });
+}
+
 export async function uploadAndStageMigrationCsv(args: {
   workspaceId: string;
+  actor: MigrationReadinessActor;
   input: MigrationUploadInput;
   db?: MigrationDatabase;
 }): Promise<MutationResult> {
+  if (!getFlowstateOperatorId(args.actor)) {
+    return internalMigrationOperationError;
+  }
+
   const db = args.db ?? prisma;
   const recordKind = args.input.recordKind.trim();
 
@@ -1781,7 +2484,30 @@ export async function uploadAndStageMigrationCsv(args: {
   }
 
   const rawContent = new TextDecoder("utf-8").decode(args.input.fileData);
-  const result = await db.$transaction(async (tx) => {
+  const result = await runSerializableWithRetry(db, async (tx) => {
+    const migration = await tx.workspaceMigration.findUnique({
+      where: { workspaceId: args.workspaceId },
+      select: {
+        stage: true,
+        ownerReviewAcknowledgedAt: true,
+      },
+    });
+
+    if (
+      !migration ||
+      migration.stage === "COMPLETE" ||
+      migration.ownerReviewAcknowledgedAt
+    ) {
+      return {
+        blocked: true as const,
+        message: !migration
+          ? "Migration workspace not found."
+          : migration.ownerReviewAcknowledgedAt
+            ? "Migration operations are frozen after owner review acknowledgment."
+            : "Completed migrations cannot accept new import jobs.",
+      };
+    }
+
     const job = await tx.importJob.create({
       data: {
         workspaceId: args.workspaceId,
@@ -1888,12 +2614,20 @@ export async function uploadAndStageMigrationCsv(args: {
     });
 
     return {
+      blocked: false as const,
       jobId: job.id,
       rowCount: rows.length,
       errorCount,
       issueCount,
     };
   });
+
+  if (result.blocked) {
+    return {
+      status: "error",
+      message: result.message,
+    };
+  }
 
   return {
     status: "ok",
@@ -1909,261 +2643,772 @@ export async function runMigrationImport(args: {
   workspaceId: string;
   locationId: string;
   importJobId: string;
+  actor: MigrationReadinessActor;
   db?: MigrationDatabase;
 }): Promise<MutationResult> {
+  if (!getFlowstateOperatorId(args.actor)) {
+    return internalMigrationOperationError;
+  }
+
   const db = args.db ?? prisma;
-  const job = await db.importJob.findFirst({
-    where: {
-      id: args.importJobId,
-      workspaceId: args.workspaceId,
-    },
-    include: {
-      validationIssues: true,
-      stagingRecords: {
-        where: {
-          isReadyForImport: true,
-        },
-        orderBy: [
-          {
-            recordKind: "asc",
-          },
-          {
-            sourceRowNumber: "asc",
-          },
-        ],
-      },
-    },
-  });
-
-  if (!job) {
-    return {
-      status: "error",
-      message: "Import job not found.",
-    };
-  }
-
-  if (!productionImportKinds.has(job.stagingRecords[0]?.recordKind ?? "NOTE")) {
-    return {
-      status: "error",
-      message: "This import job is staged for review only.",
-    };
-  }
-
-  if (job.validationIssues.some((issue) => issue.severity === "ERROR")) {
-    return {
-      status: "error",
-      message: "Resolve blocking validation issues before importing.",
-    };
-  }
-
-  if (job.stagingRecords.length === 0) {
-    return {
-      status: "error",
-      message: "No validated staging rows are ready for import.",
-    };
-  }
-
-  await db.importJob.update({
-    where: {
-      id: job.id,
-    },
-    data: {
-      status: "IMPORTING",
-      startedAt: new Date(),
-    },
-  });
 
   try {
-    const summary = {
-      created: 0,
-      updated: 0,
-      skipped: 0,
-      recordKind: job.stagingRecords[0]?.recordKind ?? null,
-    };
+    return await runSerializableWithRetry(db, async (tx) => {
+      const migration = await tx.workspaceMigration.findUnique({
+        where: { workspaceId: args.workspaceId },
+        select: {
+          stage: true,
+          ownerReviewAcknowledgedAt: true,
+        },
+      });
 
-    for (const stagingRecord of job.stagingRecords) {
-      let result: "created" | "updated" | "skipped";
-
-      switch (stagingRecord.recordKind) {
-        case "MEMBER":
-          result = await importMember({
-            db,
-            workspaceId: args.workspaceId,
-            importJobId: job.id,
-            stagingRecord,
-          });
-          break;
-        case "MEMBERSHIP_PLAN":
-          result = await importMembershipPlan({
-            db,
-            workspaceId: args.workspaceId,
-            importJobId: job.id,
-            stagingRecord,
-          });
-          break;
-        case "MEMBER_MEMBERSHIP":
-          result = await importMemberMembership({
-            db,
-            workspaceId: args.workspaceId,
-            importJobId: job.id,
-            stagingRecord,
-          });
-          break;
-        case "PUNCH_CARD_BALANCE":
-          result = await importPunchCardBalance({
-            db,
-            workspaceId: args.workspaceId,
-            importJobId: job.id,
-            stagingRecord,
-          });
-          break;
-        case "DROP_IN_PRODUCT":
-          result = await importDropInProduct({
-            db,
-            workspaceId: args.workspaceId,
-            importJobId: job.id,
-            stagingRecord,
-          });
-          break;
-        case "SCHEDULE_TEMPLATE":
-          result = await importScheduleTemplate({
-            db,
-            workspaceId: args.workspaceId,
-            locationId: args.locationId,
-            importJobId: job.id,
-            stagingRecord,
-          });
-          break;
-        default:
-          result = "skipped";
+      if (!migration) {
+        return {
+          status: "error" as const,
+          message: "Migration workspace not found.",
+        };
       }
 
-      summary[result] += 1;
-    }
+      if (migration.ownerReviewAcknowledgedAt) {
+        return {
+          status: "error" as const,
+          message:
+            "Migration operations are frozen after owner review acknowledgment.",
+        };
+      }
 
-    await db.reconciliationReport.create({
-      data: {
+      if (migration.stage === "COMPLETE") {
+        return {
+          status: "error" as const,
+          message: "Completed migrations cannot run imports.",
+        };
+      }
+
+      const job = await tx.importJob.findFirst({
+        where: {
+          id: args.importJobId,
+          workspaceId: args.workspaceId,
+        },
+        include: {
+          validationIssues: true,
+          stagingRecords: {
+            where: { isReadyForImport: true },
+            orderBy: [{ recordKind: "asc" }, { sourceRowNumber: "asc" }],
+          },
+        },
+      });
+
+      if (!job) {
+        return { status: "error" as const, message: "Import job not found." };
+      }
+
+      if (job.status !== "VALIDATED") {
+        return {
+          status: "error" as const,
+          message: "Only a validated import job can be started.",
+        };
+      }
+
+      if (
+        !productionImportKinds.has(job.stagingRecords[0]?.recordKind ?? "NOTE")
+      ) {
+        return {
+          status: "error" as const,
+          message: "This import job is staged for review only.",
+        };
+      }
+
+      if (job.validationIssues.some((issue) => issue.severity === "ERROR")) {
+        return {
+          status: "error" as const,
+          message: "Resolve blocking validation issues before importing.",
+        };
+      }
+
+      if (job.stagingRecords.length === 0) {
+        return {
+          status: "error" as const,
+          message: "No validated staging rows are ready for import.",
+        };
+      }
+
+      const includesScheduleTemplates = job.stagingRecords.some(
+        (stagingRecord) => stagingRecord.recordKind === "SCHEDULE_TEMPLATE",
+      );
+      const scheduleLocation = includesScheduleTemplates
+        ? await tx.location.findFirst({
+            where: {
+              id: args.locationId,
+              workspaceId: args.workspaceId,
+            },
+            select: { id: true },
+          })
+        : null;
+
+      if (includesScheduleTemplates && !scheduleLocation) {
+        return {
+          status: "error" as const,
+          message:
+            "The selected migration location does not belong to this workspace.",
+        };
+      }
+
+      const importClaim = await tx.importJob.updateMany({
+        where: {
+          id: job.id,
+          workspaceId: args.workspaceId,
+          status: "VALIDATED",
+        },
+        data: {
+          status: "IMPORTING",
+          startedAt: new Date(),
+        },
+      });
+
+      if (importClaim.count !== 1) {
+        return {
+          status: "error" as const,
+          message: "This import job is already running or no longer validated.",
+        };
+      }
+
+      const summary = {
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        recordKind: job.stagingRecords[0]?.recordKind ?? null,
+      };
+
+      for (const stagingRecord of job.stagingRecords) {
+        let result: "created" | "updated" | "skipped";
+
+        switch (stagingRecord.recordKind) {
+          case "MEMBER":
+            result = await importMember({
+              db: tx,
+              workspaceId: args.workspaceId,
+              importJobId: job.id,
+              stagingRecord,
+            });
+            break;
+          case "MEMBERSHIP_PLAN":
+            result = await importMembershipPlan({
+              db: tx,
+              workspaceId: args.workspaceId,
+              importJobId: job.id,
+              stagingRecord,
+            });
+            break;
+          case "MEMBER_MEMBERSHIP":
+            result = await importMemberMembership({
+              db: tx,
+              workspaceId: args.workspaceId,
+              importJobId: job.id,
+              stagingRecord,
+            });
+            break;
+          case "PUNCH_CARD_BALANCE":
+            result = await importPunchCardBalance({
+              db: tx,
+              workspaceId: args.workspaceId,
+              importJobId: job.id,
+              stagingRecord,
+            });
+            break;
+          case "DROP_IN_PRODUCT":
+            result = await importDropInProduct({
+              db: tx,
+              workspaceId: args.workspaceId,
+              importJobId: job.id,
+              stagingRecord,
+            });
+            break;
+          case "SCHEDULE_TEMPLATE":
+            if (!scheduleLocation) {
+              throw new Error("Verified migration location is unavailable.");
+            }
+
+            result = await importScheduleTemplate({
+              db: tx,
+              workspaceId: args.workspaceId,
+              locationId: scheduleLocation.id,
+              importJobId: job.id,
+              stagingRecord,
+            });
+            break;
+          default:
+            result = "skipped";
+        }
+
+        summary[result] += 1;
+      }
+
+      await tx.reconciliationReport.create({
+        data: {
+          workspaceId: args.workspaceId,
+          importJobId: job.id,
+          summary,
+        },
+      });
+      await tx.importJob.update({
+        where: {
+          id: job.id,
+        },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date(),
+        },
+      });
+      await updateMigrationStageForImport({
+        db: tx,
         workspaceId: args.workspaceId,
-        importJobId: job.id,
-        summary,
-      },
-    });
-    await db.importJob.update({
-      where: {
-        id: job.id,
-      },
-      data: {
-        status: "COMPLETED",
-        completedAt: new Date(),
-      },
-    });
-    await updateMigrationStageForImport({
-      db,
-      workspaceId: args.workspaceId,
-      stage: "REVIEW_READY",
-    });
+        stage: "REVIEW_READY",
+      });
 
-    return {
-      status: "ok",
-      message: `Imported ${summary.created} created, ${summary.updated} updated, and ${summary.skipped} skipped record${summary.skipped === 1 ? "" : "s"}.`,
-    };
-  } catch (error) {
-    await db.importJob.update({
-      where: {
-        id: job.id,
-      },
-      data: {
-        status: "FAILED",
-        failedAt: new Date(),
-        failureMessage:
-          error instanceof Error
-            ? error.message
-            : "Unknown migration import failure.",
-      },
+      return {
+        status: "ok" as const,
+        message: `Imported ${summary.created} created, ${summary.updated} updated, and ${summary.skipped} skipped record${summary.skipped === 1 ? "" : "s"}.`,
+      };
     });
-
+  } catch {
     return {
       status: "error",
-      message: "The import failed. Check the job failure message and retry.",
+      message: "The import failed. Check the source data and retry.",
     };
   }
 }
 
+async function cancelMigrationImportInTransaction(args: {
+  db: MigrationDatabase;
+  workspaceId: string;
+  importJobId: string;
+  operatorId: string;
+  reason: string;
+}): Promise<MutationResult> {
+  return runSerializableWithRetry(args.db, async (tx) => {
+    const job = await tx.importJob.findFirst({
+      where: {
+        id: args.importJobId,
+        workspaceId: args.workspaceId,
+      },
+      select: {
+        status: true,
+        startedAt: true,
+        completedAt: true,
+        failedAt: true,
+        cancelledAt: true,
+        cancelledByOperatorId: true,
+        cancellationReason: true,
+      },
+    });
+
+    if (!job) {
+      return { status: "error", message: "Import job not found." };
+    }
+
+    if (
+      job.status === "CANCELLED" &&
+      job.cancelledAt &&
+      job.cancelledByOperatorId &&
+      job.cancellationReason
+    ) {
+      return { status: "ok" };
+    }
+
+    const migration = await tx.workspaceMigration.findUnique({
+      where: { workspaceId: args.workspaceId },
+      select: { ownerReviewAcknowledgedAt: true },
+    });
+
+    if (!migration) {
+      return { status: "error", message: "Migration workspace not found." };
+    }
+
+    if (migration.ownerReviewAcknowledgedAt) {
+      return {
+        status: "error",
+        message:
+          "Migration operations are frozen after owner review acknowledgment.",
+      };
+    }
+
+    if (job.status !== "MAPPED" && job.status !== "CANCELLED") {
+      return {
+        status: "error",
+        message:
+          "Only an invalid mapped job without import side effects can be cancelled.",
+      };
+    }
+
+    if (job.startedAt || job.completedAt || job.failedAt) {
+      return {
+        status: "error",
+        message:
+          "This import job has execution history and cannot be cancelled.",
+      };
+    }
+
+    const blockingIssueCount = await tx.validationIssue.count({
+      where: {
+        importJobId: args.importJobId,
+        severity: "ERROR",
+        importJob: { workspaceId: args.workspaceId },
+      },
+    });
+    const reconciliationCount = await tx.reconciliationReport.count({
+      where: {
+        importJobId: args.importJobId,
+        workspaceId: args.workspaceId,
+      },
+    });
+    const importedStagingCount = await tx.stagingRecord.count({
+      where: {
+        importJobId: args.importJobId,
+        workspaceId: args.workspaceId,
+        OR: [
+          { importedAt: { not: null } },
+          { importedModel: { not: null } },
+          { importedRecordId: { not: null } },
+        ],
+      },
+    });
+    const importedRecordCount = await tx.migrationImportedRecord.count({
+      where: {
+        importJobId: args.importJobId,
+        workspaceId: args.workspaceId,
+      },
+    });
+
+    if (blockingIssueCount === 0) {
+      return {
+        status: "error",
+        message:
+          "Only a job with a blocking validation error can be cancelled.",
+      };
+    }
+
+    if (
+      reconciliationCount > 0 ||
+      importedStagingCount > 0 ||
+      importedRecordCount > 0
+    ) {
+      return {
+        status: "error",
+        message:
+          "This import job has imported side effects and cannot be cancelled.",
+      };
+    }
+
+    const cancellation = await tx.importJob.updateMany({
+      where: {
+        id: args.importJobId,
+        workspaceId: args.workspaceId,
+        status: job.status,
+        cancelledAt: null,
+        cancelledByOperatorId: null,
+        cancellationReason: null,
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+      },
+      data: {
+        status: "CANCELLED",
+        cancelledAt: new Date(),
+        cancelledByOperatorId: args.operatorId,
+        cancellationReason: args.reason,
+      },
+    });
+
+    if (cancellation.count !== 1) {
+      const current = await tx.importJob.findFirst({
+        where: {
+          id: args.importJobId,
+          workspaceId: args.workspaceId,
+        },
+        select: {
+          status: true,
+          cancelledAt: true,
+          cancelledByOperatorId: true,
+          cancellationReason: true,
+        },
+      });
+
+      return current?.status === "CANCELLED" &&
+        current.cancelledAt &&
+        current.cancelledByOperatorId &&
+        current.cancellationReason
+        ? { status: "ok" }
+        : {
+            status: "error",
+            message: "Import job eligibility changed. Refresh and try again.",
+          };
+    }
+
+    return { status: "ok" };
+  });
+}
+
+export async function cancelMigrationImport(args: {
+  workspaceId: string;
+  importJobId: string;
+  reason: string;
+  actor: MigrationReadinessActor;
+  db?: MigrationDatabase;
+}): Promise<MutationResult> {
+  const operatorId = getFlowstateOperatorId(args.actor);
+
+  if (!operatorId) {
+    return internalMigrationOperationError;
+  }
+
+  const reason = cleanNullable(args.reason);
+
+  if (!reason) {
+    return {
+      status: "error",
+      message: "A cancellation reason is required.",
+    };
+  }
+
+  const db = args.db ?? prisma;
+  return cancelMigrationImportInTransaction({
+    db,
+    workspaceId: args.workspaceId,
+    importJobId: args.importJobId,
+    operatorId,
+    reason,
+  });
+}
+
 export async function updateMigrationStage(args: {
   workspaceId: string;
+  actor: MigrationReadinessActor;
   input: StageTransitionInput;
   db?: MigrationDatabase;
 }): Promise<MutationResult> {
-  const db = args.db ?? prisma;
+  if (!getFlowstateOperatorId(args.actor)) {
+    return internalMigrationOperationError;
+  }
 
-  if (!isMigrationStage(args.input.stage)) {
+  const db = args.db ?? prisma;
+  const stage = args.input.stage;
+
+  if (!isMigrationStage(stage)) {
     return {
       status: "error",
       message: "Select a valid migration stage.",
     };
   }
 
-  await db.workspaceMigration.update({
-    where: {
-      workspaceId: args.workspaceId,
-    },
-    data: {
-      stage: args.input.stage,
-      nextOwnerAction:
-        cleanNullable(args.input.nextOwnerAction) ?? defaultNextOwnerAction,
-      flowstateResponsibility:
-        cleanNullable(args.input.flowstateResponsibility) ??
-        defaultFlowstateResponsibility,
-      expectedNextMilestone:
-        cleanNullable(args.input.expectedNextMilestone) ??
-        defaultExpectedMilestone,
-      expectedNextMilestoneAt: parseOptionalDateTime(
-        args.input.expectedNextMilestoneAt,
-      ),
-      goLiveScheduledFor: parseDateOnly(args.input.goLiveScheduledFor),
-    },
-  });
+  if (stage === "COMPLETE") {
+    return {
+      status: "error",
+      message: "Use the activation operation to complete a migration.",
+    };
+  }
 
-  return {
-    status: "ok",
-  };
+  return runSerializableWithRetry(db, async (tx) => {
+    const currentMigration = await tx.workspaceMigration.findUnique({
+      where: { workspaceId: args.workspaceId },
+      select: {
+        stage: true,
+        ownerReviewAcknowledgedAt: true,
+      },
+    });
+
+    if (!currentMigration) {
+      return { status: "error", message: "Migration workspace not found." };
+    }
+
+    if (currentMigration.ownerReviewAcknowledgedAt) {
+      return {
+        status: "error",
+        message:
+          "Migration operations are frozen after owner review acknowledgment.",
+      };
+    }
+
+    if (currentMigration.stage === "COMPLETE") {
+      return {
+        status: "error",
+        message:
+          "Completed migrations cannot be moved back to an earlier stage.",
+      };
+    }
+
+    const transition = await tx.workspaceMigration.updateMany({
+      where: {
+        workspaceId: args.workspaceId,
+        stage: {
+          not: "COMPLETE",
+        },
+        ownerReviewAcknowledgedAt: null,
+      },
+      data: {
+        stage,
+        nextOwnerAction:
+          cleanNullable(args.input.nextOwnerAction) ?? defaultNextOwnerAction,
+        flowstateResponsibility:
+          cleanNullable(args.input.flowstateResponsibility) ??
+          defaultFlowstateResponsibility,
+        expectedNextMilestone:
+          cleanNullable(args.input.expectedNextMilestone) ??
+          defaultExpectedMilestone,
+        expectedNextMilestoneAt: parseOptionalDateTime(
+          args.input.expectedNextMilestoneAt,
+        ),
+        goLiveScheduledFor: parseDateOnly(args.input.goLiveScheduledFor),
+      },
+    });
+
+    if (transition.count === 1) {
+      return { status: "ok" };
+    }
+
+    const migration = await tx.workspaceMigration.findUnique({
+      where: { workspaceId: args.workspaceId },
+      select: {
+        stage: true,
+        ownerReviewAcknowledgedAt: true,
+      },
+    });
+
+    return {
+      status: "error",
+      message: !migration
+        ? "Migration workspace not found."
+        : migration.ownerReviewAcknowledgedAt
+          ? "Migration operations are frozen after owner review acknowledgment."
+          : "Completed migrations cannot be moved back to an earlier stage.",
+    };
+  });
 }
 
 export async function markMigrationOperationallyReady(args: {
   workspaceId: string;
-  userId: string;
+  actor: MigrationReadinessActor;
   db?: MigrationDatabase;
+  now?: Date;
 }): Promise<MutationResult> {
-  const db = args.db ?? prisma;
+  if (args.actor.type !== "FLOWSTATE_OPERATOR") {
+    return {
+      status: "error",
+      message:
+        "Only an authorized Flowstate operator can activate daily operations.",
+    };
+  }
 
-  await db.$transaction(async (tx) => {
-    await tx.workspaceMigration.update({
+  if (!args.actor.actorId.trim()) {
+    return {
+      status: "error",
+      message: "The Flowstate operator audit identity is required.",
+    };
+  }
+
+  const operatorId = args.actor.actorId.trim();
+  const db = args.db ?? prisma;
+  const now = args.now ?? new Date();
+
+  return runSerializableWithRetry(db, async (tx) => {
+    const migration = await tx.workspaceMigration.findUnique({
       where: {
         workspaceId: args.workspaceId,
       },
-      data: {
-        stage: "COMPLETE",
-        operationallyReadyAt: new Date(),
-        operationallyReadyByUserId: args.userId,
-        nextOwnerAction:
-          "Your migration is ready for review. Flowstate has activated daily operations for launch readiness.",
-        flowstateResponsibility:
-          "Flowstate will notify the owner and stay available for migration amendments and launch support.",
-        expectedNextMilestone:
-          "Owner review and daily operations in Flowstate.",
+      select: {
+        stage: true,
+        goLiveScheduledFor: true,
+        ownerReviewAcknowledgedAt: true,
+        ownerReviewAcknowledgedByUserId: true,
+        operationallyReadyAt: true,
+        operationallyReadyByUserId: true,
+        workspace: {
+          select: {
+            status: true,
+            location: { select: { timezone: true } },
+          },
+        },
       },
     });
-    await tx.workspace.update({
+
+    if (migration?.stage === "COMPLETE") {
+      return migration.ownerReviewAcknowledgedAt &&
+        migration.ownerReviewAcknowledgedByUserId &&
+        migration.operationallyReadyAt &&
+        migration.operationallyReadyByUserId &&
+        migration.workspace.status === "ACTIVE"
+        ? { status: "ok" }
+        : {
+            status: "error",
+            message: "Migration completion state is inconsistent.",
+          };
+    }
+
+    if (!isMigrationCorrectionChannelAvailable()) {
+      return {
+        status: "error",
+        reason: "correction-channel-unavailable",
+        message:
+          "The migration correction channel is unavailable. Activation was not recorded.",
+      };
+    }
+
+    if (
+      !migration ||
+      migration.stage !== "GO_LIVE_SCHEDULED" ||
+      migration.workspace.status !== "SETUP_INCOMPLETE" ||
+      migration.operationallyReadyAt ||
+      migration.operationallyReadyByUserId
+    ) {
+      return {
+        status: "error",
+        message: "Migration activation requires the approved go-live stage.",
+      };
+    }
+
+    if (
+      !migration.ownerReviewAcknowledgedAt ||
+      !migration.ownerReviewAcknowledgedByUserId
+    ) {
+      return {
+        status: "error",
+        message:
+          "Owner migration review must be acknowledged before activation.",
+      };
+    }
+
+    const schedule = classifyAcknowledgedSchedule({
+      goLiveScheduledFor: migration.goLiveScheduledFor,
+      launchTimezone: migration.workspace.location?.timezone ?? null,
+      ownerReviewAcknowledgedAt: migration.ownerReviewAcknowledgedAt,
+    });
+
+    if (schedule.status === "invalid") {
+      const message =
+        schedule.reason === "schedule-missing"
+          ? "Migration activation requires a confirmed go-live schedule."
+          : schedule.reason === "schedule-passed"
+            ? "The scheduled go-live date was already past when owner review was acknowledged."
+            : "Migration activation requires a valid launch timezone.";
+
+      return { status: "error", reason: schedule.reason, message };
+    }
+
+    const blockingValidationIssueCount = await tx.validationIssue.count({
+      where: {
+        severity: "ERROR",
+        importJob: {
+          workspaceId: args.workspaceId,
+          NOT: {
+            status: "CANCELLED",
+            cancelledAt: { not: null },
+            cancelledByOperatorId: { not: null },
+            cancellationReason: { not: null },
+          },
+        },
+      },
+    });
+
+    if (blockingValidationIssueCount > 0) {
+      return {
+        status: "error",
+        message:
+          "Resolve blocking migration validation issues before activation.",
+      };
+    }
+
+    const reconciledCompletedImportCount = await tx.importJob.count({
+      where: {
+        workspaceId: args.workspaceId,
+        status: "COMPLETED",
+        reconciliationReports: {
+          some: { workspaceId: args.workspaceId },
+        },
+      },
+    });
+
+    if (reconciledCompletedImportCount === 0) {
+      return {
+        status: "error",
+        message:
+          "Complete at least one migration import with reconciliation evidence before activation.",
+      };
+    }
+
+    const unresolvedReconciliationCount = await tx.importJob.count({
+      where: {
+        workspaceId: args.workspaceId,
+        NOT: {
+          OR: [
+            {
+              status: "COMPLETED",
+              reconciliationReports: {
+                some: { workspaceId: args.workspaceId },
+              },
+            },
+            {
+              status: "CANCELLED",
+              cancelledAt: { not: null },
+              cancelledByOperatorId: { not: null },
+              cancellationReason: { not: null },
+            },
+          ],
+        },
+      },
+    });
+
+    if (unresolvedReconciliationCount > 0) {
+      return {
+        status: "error",
+        message: "Complete migration reconciliation before activation.",
+      };
+    }
+
+    const operationallyReadyAt = now;
+    const completedMigration = await tx.workspaceMigration.updateMany({
+      where: {
+        workspaceId: args.workspaceId,
+        stage: "GO_LIVE_SCHEDULED",
+        goLiveScheduledFor: migration.goLiveScheduledFor,
+        ownerReviewAcknowledgedAt: migration.ownerReviewAcknowledgedAt,
+        ownerReviewAcknowledgedByUserId:
+          migration.ownerReviewAcknowledgedByUserId,
+        operationallyReadyAt: null,
+        operationallyReadyByUserId: null,
+        workspace: {
+          status: "SETUP_INCOMPLETE",
+          location: { timezone: migration.workspace.location?.timezone },
+        },
+      },
+      data: {
+        stage: "COMPLETE",
+        operationallyReadyAt,
+        operationallyReadyByUserId: operatorId,
+        nextOwnerAction:
+          "No further owner review is pending. Daily operations are active.",
+        flowstateResponsibility:
+          "Flowstate completed the reviewed handoff and recorded the workspace as ready for daily operations.",
+        expectedNextMilestone: "Daily operations are active in Flowstate.",
+      },
+    });
+    if (completedMigration.count !== 1) {
+      throw new Error("Migration activation eligibility changed.");
+    }
+
+    const activatedWorkspace = await tx.workspace.updateMany({
       where: {
         id: args.workspaceId,
+        status: "SETUP_INCOMPLETE",
       },
       data: {
         status: "ACTIVE",
       },
     });
-  });
+    if (activatedWorkspace.count !== 1) {
+      throw new Error("Workspace activation eligibility changed.");
+    }
 
-  return {
-    status: "ok",
-  };
+    return {
+      status: "ok",
+    };
+  });
 }

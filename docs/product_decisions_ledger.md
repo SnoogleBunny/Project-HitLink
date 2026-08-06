@@ -261,6 +261,19 @@ If Zen Planner exposes it in export and it is relevant to operations, migrate it
 ### Migration principle
 Do not promise perfect one-click migration. Provide guided, validated, reviewable migration.
 
+### Legacy completion acknowledgment integrity
+Status: accepted on 2026-07-25.
+
+Decision: choose fail-closed repair (option A), not a grandfathered completion exception.
+
+- Owner acknowledgment of the reviewed migration snapshot is required evidence for every migration presented as `COMPLETE` and every workspace admitted to normal operations after migration.
+- A legacy row with `stage=COMPLETE` and an `ACTIVE` workspace but no complete owner-acknowledgment actor/timestamp tuple is incoherent. It must not be treated as idempotent success, operationally ready, or equivalent to an acknowledged handoff.
+- Do not fabricate, infer, or backdate owner consent from an operational-readiness actor/timestamp, a migration date, import history, or a Flowstate system/operator identity.
+- All route, UI, and domain readiness gates must fail closed unless the migration is `COMPLETE`, the workspace is `ACTIVE`, the owner-acknowledgment tuple is complete, and the operational-readiness tuple is complete.
+- Detect legacy incoherent rows before normal operation. Local/demo/test rows may be reset and reseeded with a truthful deterministic owner acknowledgment. A shared row may return through the approved locked-snapshot owner acknowledgment and Flowstate-operator activation path only after Database verifies that repair is safe and preserves its audit history.
+- If a shared row has already supported normal operations or cannot be safely returned to the pre-operation handoff, stop and escalate the individual case to Jacky. Do not auto-deactivate it, silently backfill consent, or preserve it as a hidden exception.
+- Database enforcement should prevent new `COMPLETE` rows without a complete owner-acknowledgment tuple after legacy inventory/repair. Release evidence must include a zero-row legacy preflight or an explicit reviewed repair record for every detected row.
+
 ## Reporting
 ### Included in MVP
 - active members count
