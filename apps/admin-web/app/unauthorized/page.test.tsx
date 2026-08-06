@@ -41,4 +41,17 @@ describe("UnauthorizedPage recovery", () => {
     expect(html).toContain("You can’t open this admin page");
     expect(html).toContain('href="/"');
   });
+
+  it("gives coaches a truthful readiness-or-access explanation", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    getSessionOrNullMock.mockResolvedValue({ role: "COACH" });
+
+    const html = renderToStaticMarkup(await UnauthorizedPage());
+
+    expect(html).toContain(
+      "This page may be unavailable while your workspace is being prepared, or because your access does not include it.",
+    );
+    expect(html).not.toContain("can use the coach workspace");
+    expect(html).not.toContain("this owner route");
+  });
 });

@@ -33,4 +33,16 @@ describe("UnauthorizedPage recovery", () => {
     expect(html).toMatch(/Sign out before (?:trying|you try|retrying)/i);
     expect(html).not.toMatch(/<a\b[^>]*\bhref="\/login"/);
   });
+
+  it("explains portal readiness or access without claiming missing member linkage", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+
+    const html = renderToStaticMarkup(await UnauthorizedPage());
+
+    expect(html).toContain(
+      "The portal may still be getting ready, or your current access may not include it.",
+    );
+    expect(html).not.toMatch(/account[^.]*linked to a member profile/i);
+    expect(html).not.toContain("not available for this account");
+  });
 });

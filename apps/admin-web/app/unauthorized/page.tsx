@@ -7,7 +7,7 @@ export default async function UnauthorizedPage() {
   const session = await getSessionOrNull();
   const roleDescription =
     session?.role === "COACH"
-      ? "Your coach account can use the coach workspace, but it cannot open this owner route."
+      ? "This page may be unavailable while your workspace is being prepared, or because your access does not include it."
       : session?.role === "OWNER"
         ? "Your owner account cannot open this route until its workspace is ready."
         : session?.role === "CUSTOMER"
