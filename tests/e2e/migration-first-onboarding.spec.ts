@@ -7,8 +7,31 @@ process.env.DATABASE_URL ??=
   "postgresql://postgres:postgres@localhost:5432/flowstate_dev?schema=public";
 
 const prisma = new PrismaClient();
+
+function dateOnlyKeyInTimeZone(value: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    calendar: "iso8601",
+    day: "2-digit",
+    month: "2-digit",
+    numberingSystem: "latn",
+    timeZone: timezone,
+    year: "numeric",
+  }).formatToParts(value);
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  const year = values.get("year");
+  const month = values.get("month");
+  const day = values.get("day");
+
+  if (!year || !month || !day) {
+    throw new Error(`Could not resolve a date in ${timezone}.`);
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
 const runDate =
-  process.env.ONBOARDING_TEST_DATE ?? new Date().toISOString().slice(0, 10);
+  process.env.ONBOARDING_TEST_DATE ??
+  dateOnlyKeyInTimeZone(new Date(), "America/Vancouver");
 function offsetDateOnly(dateOnly: string, days: number): string {
   const date = new Date(`${dateOnly}T12:00:00.000Z`);
 
@@ -196,7 +219,7 @@ async function expectDesktopOwnerNavigation(
   await expect(page.locator(".shell-desktop-sidebar")).toBeVisible();
 
   const visibleNavigation = page.locator(
-    'nav[aria-label="Admin navigation"]:visible',
+    'nav[aria-label="Primary admin navigation"]:visible',
   );
   await expect(visibleNavigation).toHaveCount(1);
 
@@ -335,7 +358,7 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     await page.goto("/onboarding");
     await expect(page).toHaveURL(/\/login$/);
     await expect(
-      page.getByRole("heading", { name: "Log in to Flowstate Admin" }),
+      page.getByRole("heading", { name: "Welcome back" }),
     ).toBeVisible();
     await expectHealthyPage(page);
     await capture(page, "login-redirect-from-protected-onboarding");
@@ -347,7 +370,7 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     ).toBeVisible();
     await expect(
       page.getByText(
-        "Start a guided migration handoff. Flowstate will review your current system, plan the import, and guide launch readiness with you.",
+        "Start a guided, validated, and reviewable migration handoff before gym operations open.",
         { exact: true },
       ),
     ).toBeVisible();
@@ -362,9 +385,21 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     await page.setViewportSize({ width: 1280, height: 720 });
 
     await page.getByRole("button", { name: "Create account" }).click();
-    await expect(
-      page.getByText("Full name, email, and password are required."),
-    ).toBeVisible();
+    const requiredSignupFields = [
+      page.locator('input[name="fullName"]'),
+      page.locator('input[name="email"]'),
+      page.locator('input[name="password"]'),
+      page.locator('input[name="confirmPassword"]'),
+    ];
+    for (const field of requiredSignupFields) {
+      await expect(field).toHaveAttribute("required", "");
+    }
+    await expect(requiredSignupFields[0]).toBeFocused();
+    expect(
+      await requiredSignupFields[0].evaluate(
+        (input: HTMLInputElement) => input.validity.valueMissing,
+      ),
+    ).toBe(true);
     await capture(page, "signup-validation");
 
     await page.locator('input[name="fullName"]').fill("Codex Migration Owner");
@@ -1075,7 +1110,7 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     await expect(mobileMenu).toHaveAttribute("open", "");
 
     const visibleNavigation = page.locator(
-      'nav[aria-label="Admin navigation"]:visible',
+      'nav[aria-label="Mobile admin navigation"]:visible',
     );
     await expect(visibleNavigation).toHaveCount(1);
     const visibleNavigationLinks = visibleNavigation.getByRole("link");

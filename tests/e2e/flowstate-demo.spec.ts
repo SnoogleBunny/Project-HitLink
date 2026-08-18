@@ -14,6 +14,46 @@ const demo = {
   trialEmail: "demo-trial@flowstate.local",
 };
 
+function dateOnlyKeyInTimeZone(value: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    calendar: "iso8601",
+    day: "2-digit",
+    month: "2-digit",
+    numberingSystem: "latn",
+    timeZone: timezone,
+    year: "numeric",
+  }).formatToParts(value);
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  const year = values.get("year");
+  const month = values.get("month");
+  const day = values.get("day");
+
+  if (!year || !month || !day) {
+    throw new Error(`Could not resolve a date in ${timezone}.`);
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function offsetDateOnly(dateOnly: string, days: number): string {
+  const date = new Date(`${dateOnly}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function latestRecurringDateOnOrBefore(
+  scheduledForDate: string,
+  ceilingDate: string,
+): string {
+  let candidate = scheduledForDate;
+
+  while (candidate > ceilingDate) {
+    candidate = offsetDateOnly(candidate, -7);
+  }
+
+  return candidate;
+}
+
 async function bodyText(page: Page): Promise<string> {
   return (await page.locator("body").innerText()).replace(/\s+/g, " ").trim();
 }
@@ -379,6 +419,9 @@ test.describe.serial("Flowstate working demo", () => {
     expect(workspace.dropInProducts).toHaveLength(1);
     expect(workspace.formDocuments).toHaveLength(1);
     expect(workspace.members).toHaveLength(1);
+    if (!workspace.location) {
+      throw new Error("Demo workspace is missing its primary location.");
+    }
 
     const health = await request.get("http://localhost:3002/api/v1/health");
     await expect(health).toBeOK();
@@ -472,6 +515,7 @@ test.describe.serial("Flowstate working demo", () => {
         createdAt: "desc",
       },
     });
+    expect(memberBooking.classInstanceId).toBeNull();
     const rosterDate = memberBooking.scheduledForDate
       .toISOString()
       .slice(0, 10);
@@ -501,15 +545,73 @@ test.describe.serial("Flowstate working demo", () => {
     });
     expect(trialBooking).toMatchObject({
       bookingType: "TRIAL",
+      classInstanceId: null,
       classTemplateId: memberBooking.classTemplateId,
       scheduledForDate: memberBooking.scheduledForDate,
       source: "PUBLIC_TRIAL",
       status: "BOOKED",
     });
 
+    const gymLocalToday = dateOnlyKeyInTimeZone(
+      new Date(),
+      workspace.location.timezone,
+    );
+    const attendanceRosterDate = latestRecurringDateOnOrBefore(
+      rosterDate,
+      gymLocalToday,
+    );
+    const attendanceScheduledForDate = new Date(
+      `${attendanceRosterDate}T00:00:00.000Z`,
+    );
+    const [memberOccurrenceUpdate, trialOccurrenceUpdate] =
+      await prisma.$transaction([
+        prisma.classBooking.updateMany({
+          where: {
+            id: memberBooking.id,
+            classInstanceId: null,
+            classTemplateId: memberBooking.classTemplateId,
+            scheduledForDate: memberBooking.scheduledForDate,
+          },
+          data: { scheduledForDate: attendanceScheduledForDate },
+        }),
+        prisma.classBooking.updateMany({
+          where: {
+            id: trialBooking.id,
+            classInstanceId: null,
+            classTemplateId: memberBooking.classTemplateId,
+            scheduledForDate: memberBooking.scheduledForDate,
+          },
+          data: { scheduledForDate: attendanceScheduledForDate },
+        }),
+      ]);
+    expect(memberOccurrenceUpdate.count).toBe(1);
+    expect(trialOccurrenceUpdate.count).toBe(1);
+
+    const attendanceOccurrenceBookings = await prisma.classBooking.findMany({
+      where: { id: { in: [memberBooking.id, trialBooking.id] } },
+    });
+    expect(attendanceOccurrenceBookings).toHaveLength(2);
+    const attendanceBookingById = new Map(
+      attendanceOccurrenceBookings.map((booking) => [booking.id, booking]),
+    );
+    expect(attendanceBookingById.get(memberBooking.id)).toMatchObject({
+      id: memberBooking.id,
+      classInstanceId: null,
+      memberId: memberBooking.memberId,
+      classTemplateId: memberBooking.classTemplateId,
+      scheduledForDate: attendanceScheduledForDate,
+    });
+    expect(attendanceBookingById.get(trialBooking.id)).toMatchObject({
+      id: trialBooking.id,
+      classInstanceId: null,
+      memberId: trialBooking.memberId,
+      classTemplateId: memberBooking.classTemplateId,
+      scheduledForDate: attendanceScheduledForDate,
+    });
+
     await loginAdmin(page);
     await page.goto(
-      `http://localhost:3000/dashboard/schedule/${memberBooking.classTemplateId}/roster?date=${rosterDate}`,
+      `http://localhost:3000/dashboard/schedule/${memberBooking.classTemplateId}/roster?date=${attendanceRosterDate}`,
     );
     await expect(
       page.locator("dd").filter({ hasText: /^2 \/ 20 booked$/ }),
@@ -529,5 +631,34 @@ test.describe.serial("Flowstate working demo", () => {
     await expect(
       demoMemberCard.locator("span").filter({ hasText: /^Present$/ }),
     ).toBeVisible();
+
+    const attendanceRecord = await prisma.attendanceRecord.findUniqueOrThrow({
+      where: {
+        workspaceId_memberId_classTemplateId_scheduledForDate: {
+          workspaceId: workspace.id,
+          memberId: memberBooking.memberId,
+          classTemplateId: memberBooking.classTemplateId,
+          scheduledForDate: attendanceScheduledForDate,
+        },
+      },
+    });
+    expect(attendanceRecord).toMatchObject({
+      memberId: memberBooking.memberId,
+      classTemplateId: memberBooking.classTemplateId,
+      scheduledForDate: attendanceScheduledForDate,
+      state: "PRESENT",
+      note: "Playwright attendance check.",
+    });
+    await expect(
+      prisma.classBooking.findUniqueOrThrow({
+        where: { id: memberBooking.id },
+      }),
+    ).resolves.toMatchObject({
+      id: memberBooking.id,
+      memberId: memberBooking.memberId,
+      classTemplateId: memberBooking.classTemplateId,
+      scheduledForDate: attendanceScheduledForDate,
+      status: "ATTENDED",
+    });
   });
 });
