@@ -52,12 +52,18 @@ interface WorkspaceStripeSettingsRecord {
 
 interface FailedPaymentDatabase {
   membershipBillingState: {
-    findMany(args: Record<string, unknown>): Promise<FailedPaymentQueueRecord[]>;
-    findFirst(args: Record<string, unknown>): Promise<FailedPaymentQueueRecord | null>;
+    findMany(
+      args: Record<string, unknown>,
+    ): Promise<FailedPaymentQueueRecord[]>;
+    findFirst(
+      args: Record<string, unknown>,
+    ): Promise<FailedPaymentQueueRecord | null>;
     updateMany(args: Record<string, unknown>): Promise<{ count: number }>;
   };
   workspaceStripeSettings: {
-    findUnique(args: Record<string, unknown>): Promise<WorkspaceStripeSettingsRecord | null>;
+    findUnique(
+      args: Record<string, unknown>,
+    ): Promise<WorkspaceStripeSettingsRecord | null>;
   };
   billingRecord: {
     create(args: Record<string, unknown>): Promise<{ id: string }>;
@@ -75,13 +81,15 @@ type FailedPaymentMutationResult =
 
 const failedPaymentDatabase = prisma as unknown as FailedPaymentDatabase;
 
-function isStripeReady(settings: WorkspaceStripeSettingsRecord | null): settings is WorkspaceStripeSettingsRecord & {
+function isStripeReady(
+  settings: WorkspaceStripeSettingsRecord | null,
+): settings is WorkspaceStripeSettingsRecord & {
   stripeAccountId: string;
 } {
   return Boolean(
     settings?.stripeAccountId &&
-      settings.connectionStatus === "ACTIVE" &&
-      settings.chargesEnabled,
+    settings.connectionStatus === "ACTIVE" &&
+    settings.chargesEnabled,
   );
 }
 
@@ -137,11 +145,13 @@ async function createFailedPaymentRecord(args: {
       memberMembershipId: args.queueRecord.memberMembership.id,
       type: args.type,
       status: args.status,
-      amountCents: args.queueRecord.memberMembership.membershipPlan.monthlyPriceCents,
+      amountCents:
+        args.queueRecord.memberMembership.membershipPlan.monthlyPriceCents,
       currency: args.queueRecord.memberMembership.membershipPlan.currency,
       stripeInvoiceId: args.queueRecord.latestInvoiceId,
       stripePaymentIntentId: args.queueRecord.latestPaymentIntentId,
-      stripeSubscriptionId: args.queueRecord.memberMembership.stripeSubscriptionId,
+      stripeSubscriptionId:
+        args.queueRecord.memberMembership.stripeSubscriptionId,
       failureCode: args.failureCode ?? args.queueRecord.failureCode,
       failureMessage: args.failureMessage ?? args.queueRecord.failureMessage,
     },
@@ -382,10 +392,28 @@ export async function retryFailedPaymentNow(args: {
   };
 }
 
-export function formatBillingStateStatus(status: BillingStateStatus | string): string {
-  return status
-    .split("_")
-    .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
-    .join(" ");
-}
+export function formatBillingStateStatus(
+  status: BillingStateStatus | string,
+  surface: "attention-summary" | "failed-payment-queue" = "attention-summary",
+): string {
+  if (surface === "attention-summary") {
+    return status
+      .split("_")
+      .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+      .join(" ");
+  }
 
+  const labels: Record<string, string> = {
+    NOT_READY: "Billing not ready",
+    ACTIVE: "Active",
+    PENDING_PAYMENT_METHOD: "Payment method needed",
+    PAST_DUE: "Past due",
+    PAYMENT_FAILED: "Payment failed",
+    ACTION_REQUIRED: "Member action needed",
+    FROZEN: "Frozen",
+    CANCELLED: "Cancelled",
+    ENDED: "Ended",
+  };
+
+  return labels[status] ?? "Needs review";
+}

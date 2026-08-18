@@ -1,7 +1,13 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+} from "./support/browser-diagnostics";
 import { PrismaClient } from "@prisma/client";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { prepareCleanEvidence } from "./support/clean-evidence";
 
 process.env.DATABASE_URL ??=
   "postgresql://postgres:postgres@localhost:5432/flowstate_dev?schema=public";
@@ -67,6 +73,7 @@ async function capture(page: Page, label: string): Promise<string> {
   const filePath = path.join(screenshotDir, fileName);
 
   await fs.mkdir(screenshotDir, { recursive: true });
+  await prepareCleanEvidence(page);
   await page.screenshot({ fullPage: true, path: filePath });
 
   return filePath;

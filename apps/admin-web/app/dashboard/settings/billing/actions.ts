@@ -6,8 +6,19 @@ import { requireOwnerWorkspaceContext } from "../../../../lib/owner-workspace";
 import {
   refreshStripeConnectionStatus,
   startStripeConnectOnboarding,
+  type StripeSettingsMutationResult,
   updateFailedPaymentGracePeriod,
 } from "../../../../lib/stripe-settings";
+
+const billingSettingsPath = "/dashboard/settings/billing";
+
+function getBillingSettingsReturnPath(
+  result: StripeSettingsMutationResult,
+): string {
+  return result.status === "unavailable"
+    ? `${billingSettingsPath}?stripe=unavailable`
+    : billingSettingsPath;
+}
 
 export async function connectStripeAction(): Promise<void> {
   const { workspace } = await requireOwnerWorkspaceContext();
@@ -20,17 +31,17 @@ export async function connectStripeAction(): Promise<void> {
     redirect(result.url);
   }
 
-  redirect("/dashboard/settings/billing");
+  redirect(getBillingSettingsReturnPath(result));
 }
 
 export async function refreshStripeConnectionAction(): Promise<void> {
   const { workspace } = await requireOwnerWorkspaceContext();
 
-  await refreshStripeConnectionStatus({
+  const result = await refreshStripeConnectionStatus({
     workspaceId: workspace.id,
   });
 
-  redirect("/dashboard/settings/billing");
+  redirect(getBillingSettingsReturnPath(result));
 }
 
 export async function updateFailedPaymentGracePeriodAction(
@@ -51,7 +62,7 @@ export async function updateFailedPaymentGracePeriodAction(
     };
   }
 
-  redirect("/dashboard/settings/billing");
+  redirect(billingSettingsPath);
 
   return emptyFormState;
 }

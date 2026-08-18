@@ -1,6 +1,6 @@
 "use server";
 
-import { buildMagicLinkPath, issueTrialMagicLinkRequests } from "@flowstate/db";
+import { buildMagicLinkPath } from "@flowstate/db";
 import type { TrialBookingFormState } from "../../form-states";
 import { createTrialBooking } from "../../../lib/trial-booking";
 
@@ -47,17 +47,12 @@ export async function createTrialBookingAction(
     };
   }
 
-  const issuedLinks = await issueTrialMagicLinkRequests({
-    workspaceId,
-    memberId: result.memberId,
-  });
-
   return {
     error: null,
     confirmation: {
       classTitle: result.classTitle,
       scheduledForDate: result.scheduledForDate,
-      forms: issuedLinks.map((link) => ({
+      forms: result.forms.map((link) => ({
         requestId: link.requestId,
         label: link.guardianName
           ? `${link.formName} for ${link.guardianName}`

@@ -3,6 +3,7 @@
 import {
   saveWaitlistSubmission,
   validateWaitlistSubmission,
+  waitlistValuesFromSubmission,
   type WaitlistState,
 } from "../lib/waitlist";
 
@@ -15,28 +16,45 @@ export async function joinWaitlistAction(
   if (Object.keys(errors).length > 0) {
     return {
       status: "error",
-      message: "A few details need attention before we can save your spot.",
+      message: "Check the fields with errors, then submit your request again.",
       errors,
+      attemptId: submission.attemptId,
+      values: waitlistValuesFromSubmission(submission),
     };
   }
 
+  let saveResult: "saved" | "duplicate";
+
   try {
-    await saveWaitlistSubmission(submission);
+    saveResult = await saveWaitlistSubmission(submission);
   } catch {
     return {
       status: "error",
       message:
-        "We could not save your waitlist request. Please try again in a moment.",
-      errors: {
-        form: "Submission failed.",
-      },
+        "We couldn't confirm that your waitlist request was saved locally. Please try again.",
+      errors: {},
+      attemptId: submission.attemptId,
+      values: waitlistValuesFromSubmission(submission),
+    };
+  }
+
+  if (saveResult === "duplicate") {
+    return {
+      status: "duplicate",
+      message:
+        "This same waitlist request is already saved locally. You do not need to submit it again.",
+      errors: {},
+      attemptId: submission.attemptId,
+      values: waitlistValuesFromSubmission(submission),
     };
   }
 
   return {
     status: "success",
     message:
-      "You're on the Founding Gym waitlist. We'll follow up about the grandfathered 15% monthly discount.",
+      "Your Founding Gym waitlist request was saved locally. No email was sent.",
     errors: {},
+    attemptId: submission.attemptId,
+    values: waitlistValuesFromSubmission(submission),
   };
 }

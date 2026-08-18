@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "typeRoots": ["../../apps/admin-web/node_modules/@types"],
+    "types": ["node"]
+  },
+  "files": [
+    "../../playwright.config.ts",
+    "browser-diagnostics.config.ts",
+    "browser-diagnostics.helper.spec.ts",
+    "browser-diagnostics.spec.ts",
+    "every-visible-feature-certification.spec.ts",
+    "support/browser-diagnostics.ts"
+  ]
+}

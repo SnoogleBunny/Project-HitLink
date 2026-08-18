@@ -29,6 +29,29 @@ interface StripeSettingsDatabase {
   };
 }
 
+export interface StripeProviderUnavailableResult {
+  status: "unavailable";
+  reason: "stripe-secret-key-not-configured";
+  message: string;
+}
+
+export type StripeProviderAvailability =
+  | {
+      status: "ready";
+    }
+  | StripeProviderUnavailableResult;
+
+export interface StripeSettingsReadModel {
+  workspaceId: string;
+  stripeAccountId: string | null;
+  connectionStatus: StripeConnectionStatus;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+  failedPaymentGracePeriodDays: number;
+  providerAvailability: StripeProviderAvailability;
+}
+
 export type StripeSettingsMutationResult =
   | {
       status: "updated";
@@ -40,9 +63,51 @@ export type StripeSettingsMutationResult =
   | {
       status: "error";
       message: string;
-    };
+    }
+  | StripeProviderUnavailableResult;
 
 const stripeSettingsDatabase = prisma as unknown as StripeSettingsDatabase;
+
+const stripeProviderUnavailableResult: StripeProviderUnavailableResult = {
+  status: "unavailable",
+  reason: "stripe-secret-key-not-configured",
+  message: "Stripe is unavailable because STRIPE_SECRET_KEY is not configured.",
+};
+
+export function getStripeProviderAvailability(): StripeProviderAvailability {
+  return process.env.STRIPE_SECRET_KEY?.trim()
+    ? {
+        status: "ready",
+      }
+    : stripeProviderUnavailableResult;
+}
+
+function resolveStripeGateway(
+  injectedGateway?: StripeBillingGateway,
+):
+  | {
+      status: "ready";
+      gateway: StripeBillingGateway;
+    }
+  | StripeProviderUnavailableResult {
+  if (injectedGateway) {
+    return {
+      status: "ready",
+      gateway: injectedGateway,
+    };
+  }
+
+  const availability = getStripeProviderAvailability();
+
+  if (availability.status === "unavailable") {
+    return availability;
+  }
+
+  return {
+    status: "ready",
+    gateway: stripeBillingGateway,
+  };
+}
 
 function mapAccountToSettingsUpdate(account: StripeAccountSummary) {
   return {
@@ -77,18 +142,25 @@ function parseGracePeriodDays(value: string): number | "invalid" {
 export async function getWorkspaceStripeSettings(args: {
   workspaceId: string;
   db?: StripeSettingsDatabase;
-}): Promise<StripeSettingsRecord> {
+}): Promise<StripeSettingsReadModel> {
   const db = args.db ?? stripeSettingsDatabase;
-
-  return db.workspaceStripeSettings.upsert({
+  const settings = await db.workspaceStripeSettings.findUnique({
     where: {
       workspaceId: args.workspaceId,
     },
-    update: {},
-    create: {
-      workspaceId: args.workspaceId,
-    },
   });
+
+  return {
+    workspaceId: args.workspaceId,
+    stripeAccountId: settings?.stripeAccountId ?? null,
+    connectionStatus: settings?.connectionStatus ?? "NOT_CONNECTED",
+    chargesEnabled: settings?.chargesEnabled ?? false,
+    payoutsEnabled: settings?.payoutsEnabled ?? false,
+    detailsSubmitted: settings?.detailsSubmitted ?? false,
+    failedPaymentGracePeriodDays:
+      settings?.failedPaymentGracePeriodDays ?? 7,
+    providerAvailability: getStripeProviderAvailability(),
+  };
 }
 
 export async function startStripeConnectOnboarding(args: {
@@ -98,7 +170,13 @@ export async function startStripeConnectOnboarding(args: {
   stripe?: StripeBillingGateway;
 }): Promise<StripeSettingsMutationResult> {
   const db = args.db ?? stripeSettingsDatabase;
-  const stripe = args.stripe ?? stripeBillingGateway;
+  const stripeResolution = resolveStripeGateway(args.stripe);
+
+  if (stripeResolution.status === "unavailable") {
+    return stripeResolution;
+  }
+
+  const stripe = stripeResolution.gateway;
   const settings = await getWorkspaceStripeSettings({
     workspaceId: args.workspaceId,
     db,
@@ -112,11 +190,17 @@ export async function startStripeConnectOnboarding(args: {
         workspaceName: args.workspaceName,
       });
 
-  await db.workspaceStripeSettings.updateMany({
+  const settingsUpdate = mapAccountToSettingsUpdate(account);
+
+  await db.workspaceStripeSettings.upsert({
     where: {
       workspaceId: args.workspaceId,
     },
-    data: mapAccountToSettingsUpdate(account),
+    update: settingsUpdate,
+    create: {
+      workspaceId: args.workspaceId,
+      ...settingsUpdate,
+    },
   });
 
   const appUrl = getAppUrl();
@@ -138,7 +222,13 @@ export async function refreshStripeConnectionStatus(args: {
   stripe?: StripeBillingGateway;
 }): Promise<StripeSettingsMutationResult> {
   const db = args.db ?? stripeSettingsDatabase;
-  const stripe = args.stripe ?? stripeBillingGateway;
+  const stripeResolution = resolveStripeGateway(args.stripe);
+
+  if (stripeResolution.status === "unavailable") {
+    return stripeResolution;
+  }
+
+  const stripe = stripeResolution.gateway;
   const settings = await getWorkspaceStripeSettings({
     workspaceId: args.workspaceId,
     db,

@@ -23,13 +23,19 @@ function buildTemplateForDates(args?: {
     startTimeMinutes: args?.startTimeMinutes ?? 18 * 60,
     endTimeMinutes: args?.endTimeMinutes ?? 19 * 60,
     bookingCutoffMinutes: args?.bookingCutoffMinutes ?? 0,
+    capacityOverride: null,
+    roomCapacity: null,
     programName: "Muay Thai",
     roomName: "Main Mat",
     coachDisplayName: "Casey Coach",
   };
 }
 
-function buildTemplateRecord(args?: { bookingCutoffMinutes?: number }) {
+function buildTemplateRecord(args?: {
+  bookingCutoffMinutes?: number;
+  capacityOverride?: number | null;
+  roomCapacity?: number | null;
+}) {
   return {
     id: "template_1",
     title: null,
@@ -37,11 +43,13 @@ function buildTemplateRecord(args?: { bookingCutoffMinutes?: number }) {
     startTimeMinutes: 18 * 60,
     endTimeMinutes: 19 * 60,
     bookingCutoffMinutes: args?.bookingCutoffMinutes ?? 0,
+    capacityOverride: args?.capacityOverride ?? null,
     program: {
       name: "Muay Thai Fundamentals",
     },
     room: {
       name: "Main Mat",
+      capacity: args?.roomCapacity ?? null,
     },
     coachWorkspaceUser: {
       user: {
@@ -87,8 +95,12 @@ function createMockDb(): TrialBookingTestDb {
       }),
       findFirst: vi.fn().mockResolvedValue(null),
     },
+    classInstance: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     classBooking: {
       findFirst: vi.fn().mockResolvedValue(null),
+      count: vi.fn().mockResolvedValue(0),
       create: vi.fn().mockResolvedValue({
         id: "booking_1",
       }),
@@ -132,7 +144,9 @@ describe("trial booking date helpers", () => {
         now: new Date(now),
       });
 
-      expect(result[0]?.dateOptions[0]?.scheduledForDate).toBe(expectedFirstDate);
+      expect(result[0]?.dateOptions[0]?.scheduledForDate).toBe(
+        expectedFirstDate,
+      );
       expect(result[0]?.dateOptions).toHaveLength(4);
     },
   );
@@ -144,12 +158,9 @@ describe("trial booking date helpers", () => {
       now: new Date("2026-04-08T00:30:00.000Z"),
     });
 
-    expect(result[0]?.dateOptions.map((option) => option.scheduledForDate)).toEqual([
-      "2026-04-07",
-      "2026-04-14",
-      "2026-04-21",
-      "2026-04-28",
-    ]);
+    expect(
+      result[0]?.dateOptions.map((option) => option.scheduledForDate),
+    ).toEqual(["2026-04-07", "2026-04-14", "2026-04-21", "2026-04-28"]);
   });
 
   it("uses the workspace-local date for today/future options", () => {
@@ -189,7 +200,9 @@ describe("trial booking date helpers", () => {
         now: new Date(now),
       });
 
-      expect(result[0]?.dateOptions[0]?.scheduledForDate).toBe(expectedFirstDate);
+      expect(result[0]?.dateOptions[0]?.scheduledForDate).toBe(
+        expectedFirstDate,
+      );
     },
   );
 
@@ -245,7 +258,12 @@ describe("trial booking helpers", () => {
         }),
       }),
     );
-    expect(result?.templates[0]).toMatchObject({
+    expect(result).toMatchObject({
+      status: "available",
+    });
+    expect(
+      result?.status === "available" ? result.templates[0] : null,
+    ).toMatchObject({
       id: "template_1",
       displayTitle: "Muay Thai Fundamentals",
       dateOptions: expect.arrayContaining([
@@ -253,6 +271,29 @@ describe("trial booking helpers", () => {
           scheduledForDate: "2026-04-07",
         }),
       ]),
+    });
+  });
+
+  it("projects active templates with zero eligible dates as an explicit unavailable state", async () => {
+    const db = createMockDb();
+    db.classTemplate.findMany = vi
+      .fn()
+      .mockResolvedValue([
+        buildTemplateRecord({ bookingCutoffMinutes: 43 * 24 * 60 }),
+      ]);
+
+    const result = await listTrialBookingOptions({
+      workspaceId: "workspace_1",
+      now: new Date("2026-04-08T00:30:00.000Z"),
+      db,
+    });
+
+    expect(result).toEqual({
+      status: "no-eligible-dates",
+      workspaceId: "workspace_1",
+      workspaceName: "Flowstate Gym",
+      timezone: "America/Vancouver",
+      activeTemplateCount: 1,
     });
   });
 
@@ -280,13 +321,11 @@ describe("trial booking helpers", () => {
 
   it("rejects a date submitted at the cutoff before any member, guardian, family, or booking writes", async () => {
     const db = createMockDb();
-    db.classTemplate.findMany = vi
-      .fn()
-      .mockResolvedValue([
-        buildTemplateRecord({
-          bookingCutoffMinutes: 60,
-        }),
-      ]);
+    db.classTemplate.findMany = vi.fn().mockResolvedValue([
+      buildTemplateRecord({
+        bookingCutoffMinutes: 60,
+      }),
+    ]);
 
     await expect(
       createTrialBooking({
@@ -314,11 +353,75 @@ describe("trial booking helpers", () => {
     expect(db.classBooking.update).not.toHaveBeenCalled();
   });
 
+  it("rejects a full occurrence before any participant or booking writes", async () => {
+    const db = createMockDb();
+    db.classTemplate.findMany = vi
+      .fn()
+      .mockResolvedValue([buildTemplateRecord({ capacityOverride: 1 })]);
+    Object.assign(db.classBooking, {
+      count: vi.fn().mockResolvedValue(1),
+    });
+
+    await expect(
+      createTrialBooking({
+        workspaceId: "workspace_1",
+        now: new Date("2026-04-08T00:30:00.000Z"),
+        input: {
+          classTemplateId: "template_1",
+          scheduledForDate: "2026-04-07",
+          fullName: "Jordan Lee",
+          email: "jordan@example.com",
+        },
+        db,
+      }),
+    ).resolves.toEqual({
+      status: "error",
+      message: "This class is full. Choose another available trial date.",
+    });
+    expect(db.member.findFirst).not.toHaveBeenCalled();
+    expect(db.member.create).not.toHaveBeenCalled();
+    expect(db.classBooking.create).not.toHaveBeenCalled();
+    expect(db.classBooking.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a cancelled occurrence before any participant or booking writes", async () => {
+    const db = createMockDb();
+    Object.assign(db, {
+      classInstance: {
+        findFirst: vi.fn().mockResolvedValue({ id: "instance_cancelled" }),
+      },
+    });
+
+    await expect(
+      createTrialBooking({
+        workspaceId: "workspace_1",
+        now: new Date("2026-04-08T00:30:00.000Z"),
+        input: {
+          classTemplateId: "template_1",
+          scheduledForDate: "2026-04-07",
+          fullName: "Jordan Lee",
+          email: "jordan@example.com",
+        },
+        db,
+      }),
+    ).resolves.toEqual({
+      status: "error",
+      message: "Choose an available upcoming trial date.",
+    });
+    expect(db.member.findFirst).not.toHaveBeenCalled();
+    expect(db.member.create).not.toHaveBeenCalled();
+    expect(db.classBooking.create).not.toHaveBeenCalled();
+    expect(db.classBooking.update).not.toHaveBeenCalled();
+  });
+
   it("reuses an exact-match member and does not create a duplicate trial member", async () => {
     const db = createMockDb();
-    db.member.findFirst = vi.fn().mockResolvedValue({
-      id: "member_existing",
-    });
+    db.member.findFirst = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: "member_existing",
+      })
+      .mockResolvedValueOnce(null);
 
     await expect(
       createTrialBooking({
@@ -440,6 +543,82 @@ describe("trial booking helpers", () => {
       select: {
         id: true,
       },
+    });
+  });
+
+  it("issues required trial forms in the booking transaction and returns their links", async () => {
+    const db = createMockDb();
+    const issueFormRequests = vi.fn().mockResolvedValue([
+      {
+        requestId: "request_1",
+        token: "request_1.token",
+        formDocumentId: "form_1",
+        formName: "Adult Waiver",
+        formType: "WAIVER",
+        versionId: "version_1",
+        versionNumber: 1,
+        signerKind: "MEMBER",
+        guardianId: null,
+        guardianName: null,
+        expiresAt: new Date("2026-04-15T00:30:00.000Z"),
+      },
+    ]);
+    const now = new Date("2026-04-08T00:30:00.000Z");
+
+    await expect(
+      createTrialBooking({
+        workspaceId: "workspace_1",
+        now,
+        input: {
+          classTemplateId: "template_1",
+          scheduledForDate: "2026-04-07",
+          fullName: "Jordan Lee",
+          email: "jordan@example.com",
+        },
+        db,
+        issueFormRequests,
+      }),
+    ).resolves.toMatchObject({
+      status: "booked",
+      classBookingId: "booking_1",
+      forms: [
+        {
+          requestId: "request_1",
+          token: "request_1.token",
+        },
+      ],
+    });
+    expect(issueFormRequests).toHaveBeenCalledWith({
+      workspaceId: "workspace_1",
+      memberId: "member_1",
+      db,
+      now,
+    });
+  });
+
+  it("returns a truthful failure when required-form issuance fails after booking mutation", async () => {
+    const db = createMockDb();
+    const issueFormRequests = vi
+      .fn()
+      .mockRejectedValue(new Error("injected post-booking issuance failure"));
+
+    await expect(
+      createTrialBooking({
+        workspaceId: "workspace_1",
+        now: new Date("2026-04-08T00:30:00.000Z"),
+        input: {
+          classTemplateId: "template_1",
+          scheduledForDate: "2026-04-07",
+          fullName: "Jordan Lee",
+          email: "jordan@example.com",
+        },
+        db,
+        issueFormRequests,
+      }),
+    ).resolves.toEqual({
+      status: "error",
+      message:
+        "Trial booking could not be completed. No booking was saved. Try again.",
     });
   });
 
