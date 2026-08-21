@@ -20,6 +20,7 @@
   });
 
   const SURFACES = ["foundation", "dashboard", "operations", "member", "forms", "migration", "billing", "landing"];
+  const SURFACE_LABELS = { foundation: "Shared foundation", dashboard: "Owner shell + dashboard", operations: "Schedule + roster + attendance", member: "Member schedule", forms: "Forms + owner setup routes", migration: "Migration", billing: "Billing + provider", landing: "Landing refinement" };
   const STATES = ["default", "loading", "empty", "working", "success", "validation", "unavailable", "stale", "permission", "provider-missing", "outage", "planned", "readonly", "waiting", "confirmation", "long"];
   const OWNER_ROUTES = [
     { id: "dashboard", label: "Dashboard", group: "Today", surface: "dashboard" },
@@ -39,19 +40,21 @@
   ];
   const DEFAULT_ROUTE = { foundation: "foundation", dashboard: "dashboard", operations: "schedule", member: "member-schedule", forms: "forms", migration: "migration", billing: "billing", landing: "landing" };
   const CLASSES = [
-    { id: "engine", date: DEMO.isoDate, day: "Thursday · Aug 20", program: "Conditioning", time: "6:00 AM", title: "Hyrox Engine", meta: "Conditioning floor · Coach Luis · recurring template", capacity: "10 / 14", action: "roster" },
-    { id: "fundamentals", date: DEMO.isoDate, day: "Thursday · Aug 20", program: "Muay Thai", time: "6:00 PM", title: DEMO.className, meta: `${DEMO.room} · ${DEMO.coach} · recurring template`, capacity: "9 / 12", action: "book" },
-    { id: "pads", date: DEMO.isoDate, day: "Thursday · Aug 20", program: "Muay Thai", time: "7:15 PM", title: "Advanced Pads", meta: "Main mat · Coach Maya · recurring template", capacity: "12 / 12", action: "booked" },
-    { id: "night-engine", date: DEMO.isoDate, day: "Thursday · Aug 20", program: "Conditioning", time: "7:30 PM", title: "Hyrox Night Engine", meta: "Conditioning floor · Coach Luis", capacity: "12 / 12", action: "waitlist" },
-    { id: "open-mat", date: DEMO.isoDate, day: "Thursday · Aug 20", program: "Muay Thai", time: "8:15 PM", title: "Open Mat", meta: "Main mat · punch card eligible", capacity: "6 / 12", action: "punch" },
-    { id: "drop-in", date: DEMO.isoDate, day: "Thursday · Aug 20", program: "Conditioning", time: "5:15 PM", title: "Hyrox Drop-in", meta: "Conditioning floor · $28.00 drop-in", capacity: "11 / 14", action: "drop-in" },
-    { id: "friday-conditioning", date: DEMO.nextDate, day: "Friday · Aug 21", program: "Conditioning", time: "6:30 AM", title: "Friday Engine", meta: "Conditioning floor · Coach Luis · recurring template", capacity: "8 / 14", action: "book" },
+    { id: "engine", date: DEMO.isoDate, startTimeMinutes: 360, day: "Thursday · Aug 20", program: "Conditioning", time: "6:00 AM", title: "Hyrox Engine", meta: "Conditioning floor · Coach Luis · recurring template", capacity: "10 / 14", action: "roster" },
+    { id: "fundamentals", date: DEMO.isoDate, startTimeMinutes: 1080, day: "Thursday · Aug 20", program: "Muay Thai", time: "6:00 PM", title: DEMO.className, meta: `${DEMO.room} · ${DEMO.coach} · recurring template`, capacity: "9 / 12", action: "book" },
+    { id: "pads", date: DEMO.isoDate, startTimeMinutes: 1155, day: "Thursday · Aug 20", program: "Muay Thai", time: "7:15 PM", title: "Advanced Pads", meta: "Main mat · Coach Maya · recurring template", capacity: "12 / 12", action: "booked" },
+    { id: "night-engine", date: DEMO.isoDate, startTimeMinutes: 1170, day: "Thursday · Aug 20", program: "Conditioning", time: "7:30 PM", title: "Hyrox Night Engine", meta: "Conditioning floor · Coach Luis", capacity: "12 / 12", action: "waitlist" },
+    { id: "open-mat", date: DEMO.isoDate, startTimeMinutes: 1215, day: "Thursday · Aug 20", program: "Muay Thai", time: "8:15 PM", title: "Open Mat", meta: "Main mat · punch card eligible", capacity: "6 / 12", action: "punch" },
+    { id: "drop-in", date: DEMO.isoDate, startTimeMinutes: 1035, day: "Thursday · Aug 20", program: "Conditioning", time: "5:15 PM", title: "Hyrox Drop-in", meta: "Conditioning floor · $28.00 drop-in", capacity: "11 / 14", action: "drop-in" },
+    { id: "friday-conditioning", date: DEMO.nextDate, startTimeMinutes: 390, day: "Friday · Aug 21", program: "Conditioning", time: "6:30 AM", title: "Friday Engine", meta: "Conditioning floor · Coach Luis · recurring template", capacity: "8 / 14", action: "book" },
   ];
 
   const app = document.querySelector("#prototype-main");
   const surfaceSelect = document.querySelector("#surface-select");
   const stateSelect = document.querySelector("#state-select");
   const menu = document.querySelector("#prototype-menu");
+  const galleryControlsDisclosure = document.querySelector(".gallery-controls-disclosure");
+  const simulationBoundary = document.querySelector(".simulation-boundary");
   const galleryMenuOpener = document.querySelector('.gallery-header [data-action="menu-open"]');
   const announcer = document.querySelector("#live-announcer");
   let lastMenuOpener = galleryMenuOpener;
@@ -64,6 +67,7 @@
     state: "default",
     view: "schedule",
     selectedClass: "",
+    rosterOrigin: "",
     memberContext: "",
     formContext: "",
     role: "owner",
@@ -102,7 +106,7 @@
   }
 
   function prototypeBanner(persona, outcome) {
-    return `<div class="truth-banner" role="note"><div>${status("Design prototype", "info")} ${status("Simulated", "neutral")}</div><p><strong>${persona} outcome:</strong> ${outcome}</p><p>No backend, durable write, email, or live provider action. Interactions stay in this browser tab and can be reset.</p></div>`;
+    return `<div class="prototype-strip" role="note">${status("Prototype", "info")}<p><strong>${persona} outcome:</strong> ${outcome}</p></div>`;
   }
 
   const STATE_COPY = {
@@ -123,11 +127,56 @@
     long: ["Long-content stress", "Human labels stay primary. Full prototype references are available only in collapsed Technical reference sections."],
   };
 
+  const STATE_RECOVERY = Object.freeze({
+    dashboard: {
+      unavailable: { object: "avery-billing", action: `Review ${DEMO.member} billing`, reason: "Stripe setup is missing, so the payment recovery action cannot run.", nextRole: "Owner completes Stripe setup, then reviews the current local billing evidence.", recovery: "Review current dashboard" },
+      stale: { object: "avery-billing-queue", label: `${DEMO.member} billing queue item`, prior: "$145.00 payment failed; grace period ended Aug 22", current: "$145.00 payment failed; grace period ends Aug 23 as of 2:18 PM PDT", nextRole: "Owner may review the current billing information now.", recovery: "Review current dashboard" },
+    },
+    operations: {
+      unavailable: { object: "marcel-waitlist-promotion", action: "Promote Marcel Dubois", reason: "Assigned-coach authority and the current access recheck are not confirmed in this prototype.", nextRole: "Owner reviews the assigned coach and current access evidence.", recovery: "Review current schedule" },
+      stale: { object: "priya-attendance", label: "Today Fundamentals attendance for Priya Nanduri", prior: "Not recorded", current: "Late; changed by Coach Maya at 2:12 PM PDT", nextRole: "Owner or assigned coach may review the current row now.", recovery: "Review current attendance information" },
+    },
+    member: {
+      unavailable: { object: "fundamentals-booking", action: "Book Today Fundamentals", reason: "The booking cutoff has passed for this dated class.", nextRole: "Member chooses another currently available dated class.", recovery: "Review current class schedule" },
+      stale: { object: "night-engine-capacity", label: "Hyrox Night Engine capacity", prior: "11 / 12; one seat available", current: "12 / 12; Waitlist available as of 2:18 PM PDT", nextRole: "Member may review the current class information now.", recovery: "Review current class schedule" },
+    },
+    forms: {
+      unavailable: { object: "sam-replacement-request", action: "Create a replacement signing request", reason: "Sam Rivera already has an open signing request that expires Aug 27, 2026, 11:59 PM PDT.", nextRole: "Owner reviews the existing request; no new request or email is created here.", recovery: "Review current form library" },
+      stale: { object: "sam-guardian-waiver", label: "Sam Rivera Guardian waiver", prior: "No current signing-request evidence shown", current: "Open signing request via Magic link; expires Aug 27, 2026, 11:59 PM PDT", nextRole: "Owner may review the current request now.", recovery: "Review current form information" },
+    },
+    migration: {
+      unavailable: { object: "migration-acknowledgment", action: "Confirm migration acknowledgment", reason: "The completed migration snapshot is read-only and already has recorded owner and Flowstate reviews.", nextRole: "Daily operations team reviews the completed evidence.", recovery: "Review current migration evidence" },
+      stale: { object: "completed-migration-snapshot", label: "Completed migration snapshot", prior: "183 members added; 12 guardian links updated", current: "184 members added; 12 guardian links updated as of 2:18 PM PDT", nextRole: "Owner and daily operations team may review the current snapshot now.", recovery: "Review current migration evidence" },
+    },
+    billing: {
+      unavailable: { object: "avery-payment-retry", action: `Retry ${DEMO.member} payment`, reason: "Stripe setup is missing, so no provider retry can be attempted.", nextRole: "Owner completes Stripe setup and then reviews provider availability.", recovery: "Review current billing evidence" },
+      stale: { object: "avery-local-billing", label: `${DEMO.member} local billing record`, prior: "Grace period ends Aug 22", current: "Grace period ends Aug 23 as of 2:18 PM PDT; Stripe remains unconnected", nextRole: "Owner may review the current local evidence now.", recovery: "Review current billing evidence" },
+    },
+    landing: {
+      unavailable: { object: "founding-interest-request", action: "Send a Founding Gym interest request", reason: "This local prototype stores and sends nothing.", nextRole: "Prospective owner reviews the current unresolved Founding Gym terms.", recovery: "Review current Founding Gym information" },
+      stale: { object: "landing-product-preview", label: "Today Fundamentals product preview", prior: "8 / 12 booked", current: "9 / 12 booked as of 2:18 PM PDT", nextRole: "Prospective owner may review the current fictional preview now.", recovery: "Review current product preview" },
+    },
+    foundation: {
+      unavailable: { object: "foundation-comparison", action: "Choose a production visual direction", reason: "This artifact compares two approved prototype worlds but cannot approve production use.", nextRole: "Jacky reviews the current decision evidence.", recovery: "Review current comparison" },
+      stale: { object: "foundation-comparison", label: "Visual comparison evidence", prior: "Earlier hierarchy evidence", current: "Pass-2 hierarchy evidence as of 2:18 PM PDT", nextRole: "Design reviewer may review the current comparison now.", recovery: "Review current comparison" },
+    },
+  });
+
   function stateHeading() {
     if (runtime.state === "default" || runtime.state === "long") return "";
-    const [label, copy] = STATE_COPY[runtime.state];
+    let [label, copy] = STATE_COPY[runtime.state];
+    if (runtime.state === "unavailable") {
+      const recovery = STATE_RECOVERY[runtime.surface].unavailable;
+      label = `${recovery.action} unavailable`;
+      copy = `Reason: ${recovery.reason} Next responsible actor: ${recovery.nextRole}`;
+    } else if (runtime.state === "stale") {
+      const recovery = STATE_RECOVERY[runtime.surface].stale;
+      label = `${recovery.label} changed`;
+      copy = `Prior value: ${recovery.prior}. Current value: ${recovery.current}. ${recovery.nextRole}`;
+    }
     const tone = ["validation", "stale", "outage"].includes(runtime.state) ? "critical" : runtime.state === "success" ? "positive" : ["loading", "working", "provider-missing", "confirmation", "waiting"].includes(runtime.state) ? "caution" : "info";
-    return `<section class="state-lens state-${runtime.state}" aria-labelledby="state-lens-title"><div aria-hidden="true" class="state-glyph">${runtime.state === "success" ? "✓" : runtime.state === "loading" || runtime.state === "working" || runtime.state === "waiting" ? "…" : ["validation", "stale", "outage"].includes(runtime.state) ? "!" : "i"}</div><div><p class="micro-label">Selected state lens</p><h2 id="state-lens-title" tabindex="-1">${label}</h2><p>${copy}</p></div>${status(label, tone)}</section>`;
+    const statusLabel = runtime.state === "unavailable" ? "Action unavailable" : runtime.state === "stale" ? "Information changed" : label;
+    return `<section class="state-lens state-${runtime.state}" aria-labelledby="state-lens-title"><div aria-hidden="true" class="state-glyph">${runtime.state === "success" ? "✓" : runtime.state === "loading" || runtime.state === "working" || runtime.state === "waiting" ? "…" : ["validation", "stale", "outage"].includes(runtime.state) ? "!" : "i"}</div><div><p class="micro-label">Selected state lens</p><h2 id="state-lens-title" tabindex="-1">${label}</h2><p>${copy}</p></div>${status(statusLabel, tone)}</section>`;
   }
 
   function loadingRegion(surface) {
@@ -141,8 +190,14 @@
     if (runtime.state === "working") return `<section class="state-replacement" aria-busy="true"><h2 tabindex="-1">Local action pending</h2><p>The affected control stays unavailable while this prototype request is pending.</p><button type="button" disabled aria-describedby="working-reason">Working…</button><p id="working-reason">Disabled to prevent a duplicate local action.</p></section>`;
     if (runtime.state === "success") return `<section class="state-replacement success-replacement"><h2 tabindex="-1">Local prototype result</h2><p>Nothing was saved, sent, charged, booked, signed, or changed outside this tab.</p><button type="button" data-action="clear-state">Reset this result</button></section>`;
     if (runtime.state === "validation") return `<section class="state-replacement validation-replacement"><div class="error-summary" id="state-errors" role="alert" tabindex="-1"><strong>Review one required choice</strong><a href="#state-recovery">Choose a safe recovery route.</a></div><label for="state-recovery">Recovery route <span>Required</span></label><select id="state-recovery" aria-invalid="true" aria-describedby="state-recovery-error"><option value="">Choose one</option><option>Return to current information</option></select><p id="state-recovery-error">Choose a route before continuing.</p><button type="button" data-action="clear-state">Reset validation</button></section>`;
-    if (runtime.state === "unavailable") return `<section class="state-replacement unavailable-replacement"><h2 tabindex="-1">Action unavailable</h2><p>This action is not available yet. Flowstate must finish reviewing it with the gym owner before it can be used.</p><p>No action control is rendered.</p><details><summary>Technical reference</summary><p>The production contract for this ${surface} action is unresolved.</p></details></section>`;
-    if (runtime.state === "stale") return `<section class="state-replacement stale-replacement"><h2 tabindex="-1">Fresh information is ready to review</h2><p>The prior value is not actionable. Review this current prototype timestamp: 2:18 PM PDT.</p><button type="button" data-action="clear-state">Review current information</button></section>`;
+    if (runtime.state === "unavailable") {
+      const recovery = STATE_RECOVERY[surface].unavailable;
+      return `<section class="state-replacement unavailable-replacement" data-state-object="${recovery.object}" data-current-value="unavailable" data-next-role="${recovery.nextRole}"><h2 tabindex="-1">${recovery.action} unavailable</h2><p><strong>Reason:</strong> ${recovery.reason}</p><p><strong>Next responsible actor:</strong> ${recovery.nextRole}</p><button type="button" data-action="clear-state">${recovery.recovery}</button><details><summary>Technical reference</summary><p>The blocked action is absent. This safe recovery only returns to current fictional information.</p></details></section>`;
+    }
+    if (runtime.state === "stale") {
+      const recovery = STATE_RECOVERY[surface].stale;
+      return `<section class="state-replacement stale-replacement" data-state-object="${recovery.object}" data-prior-value="${recovery.prior}" data-current-value="${recovery.current}" data-next-role="${recovery.nextRole}"><h2 tabindex="-1">${recovery.label} changed</h2><p><strong>Prior value:</strong> ${recovery.prior}</p><p><strong>Current value:</strong> ${recovery.current}</p><p><strong>Permitted actor and time:</strong> ${recovery.nextRole}</p><button type="button" data-action="clear-state">${recovery.recovery}</button></section>`;
+    }
     if (runtime.state === "permission") return `<section class="state-replacement permission-replacement"><h2 tabindex="-1">Safe recovery for this role</h2><p>Owner-only routes, member names, amounts, and record details are absent from this region.</p><button type="button" data-action="coach-today">Open Coach Today</button></section>`;
     if (runtime.state === "provider-missing") return `<section class="state-replacement"><h2 tabindex="-1">Stripe setup missing</h2><p>No connected account is configured. The owner completes setup next; readable local records are not treated as Stripe evidence.</p><button type="button" disabled aria-describedby="provider-setup-reason">Continue with Stripe</button><p id="provider-setup-reason">Disabled in this local prototype. No external call can be made.</p></section>`;
     if (runtime.state === "outage") return `<section class="state-replacement"><h2 tabindex="-1">Stripe status unavailable</h2><p>This lens proves only that availability could not be verified. It does not claim an outage or a successful money action.</p><button type="button" disabled aria-describedby="provider-status-reason">Retry money action</button><p id="provider-status-reason">Disabled until Stripe status is known.</p></section>`;
@@ -168,8 +223,8 @@
     return `<div class="owner-shell">${ownerRail()}<div class="owner-workspace"><header class="workspace-header"><button class="shell-menu" type="button" data-action="menu-open" aria-controls="prototype-menu" aria-expanded="false">Menu</button><div><span>${DEMO.date}</span><strong>${DEMO.timezone}</strong></div>${status("Owner", "info")}</header>${content}</div></div>`;
   }
 
-  function coachShell() {
-    const coachContent = surfaceFrame({
+  function coachShell(framedContent = "") {
+    const coachContent = framedContent || surfaceFrame({
       surface: "operations",
       eyebrow: "Coach Today · assigned work only",
       title: "Coach Today",
@@ -177,7 +232,7 @@
       persona: "Assigned coach",
       outcome: "open today’s assigned roster without seeing owner-only routes",
       aside: status("Coach", "info"),
-      content: `<section class="coach-today-card"><h2>Today’s assigned class</h2><p><strong>${DEMO.className}</strong> · ${DEMO.classTime} · ${DEMO.room}</p><button type="button" data-action="open-roster" data-class="fundamentals">Open ${DEMO.className} roster</button><button type="button" class="secondary-action" data-action="owner-demo">Return to owner prototype</button></section>`,
+      content: `<section class="coach-today-card"><h2>Today’s assigned class</h2><p><strong>${DEMO.className}</strong> · ${DEMO.classTime} · ${DEMO.room}</p><button id="coach-roster-fundamentals" type="button" data-action="open-roster" data-class="fundamentals" data-origin-key="coach-roster-fundamentals" data-origin-context="coach">Open ${DEMO.className} roster</button><button type="button" class="secondary-action" data-action="owner-demo">Return to owner prototype</button></section>`,
     });
     return `<div class="coach-shell"><header class="coach-header"><strong>Flowstate · Coach Today</strong><nav aria-label="Coach navigation"><a href="?surface=operations&role=coach" aria-current="page">Today</a></nav></header>${coachContent}</div>`;
   }
@@ -193,16 +248,20 @@
   }
 
   function readinessTuple() {
-    return `<section class="readiness-band readiness-tuple"><div><p class="micro-label">Daily operations status</p><strong>Gym status: Ready for daily operations</strong><p>This fictional gym has completed the owner and Flowstate readiness reviews.</p></div>${status("Ready", "positive")}<dl><div><dt>Gym status</dt><dd>Ready for daily operations</dd></div><div><dt>Migration</dt><dd>Complete</dd></div><div><dt>Owner review</dt><dd>Recorded · Jordan Lee · Aug 19, 4:08 PM PDT</dd></div><div><dt>Flowstate readiness review</dt><dd>Recorded · Aug 19, 4:22 PM PDT</dd></div></dl><details><summary>Technical reference</summary><p>Workspace ACTIVE · MigrationStage COMPLETE · owner-review tuple persisted · operational-readiness tuple persisted · derived gate READY.</p></details></section>`;
+    return `<section class="operational-gate" role="note"><p><span class="micro-label">Operational gate</span><strong>Ready for daily operations</strong> · 3 follow-ups still need attention.</p>${status("Gate ready", "positive")}</section>`;
+  }
+
+  function readinessDetails() {
+    return `<details class="readiness-details"><summary>View full readiness evidence</summary><div class="readiness-tuple"><dl><div><dt>Gym status</dt><dd>Ready for daily operations</dd></div><div><dt>Migration</dt><dd>Complete</dd></div><div><dt>Owner review</dt><dd>Recorded · Jordan Lee · Aug 19, 4:08 PM PDT</dd></div><div><dt>Flowstate readiness review</dt><dd>Recorded · Aug 19, 4:22 PM PDT</dd></div></dl><details><summary>Technical reference</summary><p>Workspace ACTIVE · MigrationStage COMPLETE · owner-review tuple persisted · operational-readiness tuple persisted · derived gate READY.</p></details></div></details>`;
   }
 
   function dashboardSurface() {
-    const content = `${readinessTuple()}<div class="dashboard-grid"><section class="action-queue"><div class="section-heading compact"><div><p class="micro-label">Risk ordered</p><h2>Needs action</h2></div><span>3 items</span></div><ol><li class="severity-critical"><span class="queue-index">01</span><div><strong>Payment failed · ${DEMO.member}</strong><p>$145.00 USD · failed 9:14 AM · grace period ends Aug 23</p></div>${status("Payment failed", "critical")}<a href="?surface=billing&route=billing&member=avery-hernandez-lawson" data-route-link="billing" data-route-surface="billing" data-member-context="avery-hernandez-lawson">Review ${DEMO.member} billing</a></li><li class="severity-caution"><span class="queue-index">02</span><div><strong>Attendance not recorded · ${DEMO.className}</strong><p>${DEMO.classTime} · class ended 7:00 PM</p></div>${status("Attendance gap", "caution")}<a href="?surface=operations&route=roster&view=roster&class=fundamentals&date=${DEMO.isoDate}" data-route-link="roster" data-route-surface="operations" data-view="roster" data-class-context="fundamentals">Open ${DEMO.className} roster for Aug 20</a></li><li><span class="queue-index">03</span><div><strong>Guardian waiver needs a current signature</strong><p>Sam Rivera · current guardian requirement</p></div>${status("Signature needed", "info")}<a href="?surface=forms&route=forms&form=guardian-waiver&member=sam-rivera" data-route-link="forms" data-route-surface="forms" data-form-context="guardian-waiver" data-member-context="sam-rivera">Review Sam Rivera current guardian requirement</a></li></ol></section><section class="today-list"><div class="section-heading compact"><div><p class="micro-label">Chronological</p><h2>Today’s classes</h2></div><span>3 templates</span></div><ol><li><time>6:00 AM</time><div><strong>Hyrox Engine</strong><p>Coach Luis · Conditioning floor</p></div><span>10 / 14</span>${status("Attendance recorded", "positive")}</li><li class="current"><time>6:00 PM</time><div><strong>${DEMO.className}</strong><p>${DEMO.coach} · ${DEMO.room}</p></div><span>9 / 12</span>${status("Attendance gap", "caution")}</li><li><time>7:30 PM</time><div><strong>Hyrox Night Engine</strong><p>Coach Luis · Conditioning floor</p></div><span>12 / 12</span>${status("Full", "caution")}</li></ol></section><section class="setup-evidence"><div class="section-heading compact"><div><p class="micro-label">First-run lens</p><h2>Setup evidence</h2></div>${status("Complete", "positive")}</div><dl><div><dt>Primary location</dt><dd>North Harbour · one location</dd></div><div><dt>Rooms</dt><dd>Main mat · Conditioning floor</dd></div><div><dt>Programs</dt><dd>Muay Thai · Conditioning · Youth</dd></div><div><dt>Staff</dt><dd>Owner + 3 coaches</dd></div></dl><button type="button" data-action="coach-today">Preview permission-safe Coach Today</button></section></div>`;
-    return ownerShell(surfaceFrame({ surface: "dashboard", eyebrow: "02 · Returning dashboard", title: "Today at North Harbour", description: `${DEMO.date} · ${DEMO.timezone}`, persona: "Owner", outcome: "see current risk and open the exact next task", aside: status("Daily operations ready", "positive"), content }));
+    const content = `${readinessTuple()}<div class="dashboard-grid"><section class="action-queue"><div class="section-heading compact"><div><p class="micro-label">Risk ordered</p><h2>Needs action</h2></div><span>3 items</span></div><ol><li class="severity-critical"><span class="queue-index">01</span><div><strong>Payment failed · ${DEMO.member}</strong><p>$145.00 USD · failed 9:14 AM · grace period ends Aug 23</p></div>${status("Payment failed", "critical")}<a href="?surface=billing&route=billing&member=avery-hernandez-lawson" data-route-link="billing" data-route-surface="billing" data-member-context="avery-hernandez-lawson">Review ${DEMO.member} billing</a></li><li class="severity-caution"><span class="queue-index">02</span><div><strong>Attendance not recorded · ${DEMO.className}</strong><p>${DEMO.classTime} · class ended 7:00 PM</p></div>${status("Attendance gap", "caution")}<a href="?surface=operations&route=roster&view=roster&class=fundamentals&date=${DEMO.isoDate}" data-route-link="roster" data-route-surface="operations" data-view="roster" data-class-context="fundamentals">Open ${DEMO.className} roster for Aug 20</a></li><li><span class="queue-index">03</span><div><strong>Guardian waiver needs a current signature</strong><p>Sam Rivera · current guardian requirement</p></div>${status("Signature needed", "info")}<a href="?surface=forms&route=forms&form=guardian-waiver&member=sam-rivera" data-route-link="forms" data-route-surface="forms" data-form-context="guardian-waiver" data-member-context="sam-rivera">Review Sam Rivera current guardian requirement</a></li></ol></section><section class="today-list"><div class="section-heading compact"><div><p class="micro-label">Chronological</p><h2>Today’s classes</h2></div><span>3 scheduled classes</span></div><ol><li><time>6:00 AM</time><div><strong>Hyrox Engine</strong><p>Coach Luis · Conditioning floor</p></div><span>10 / 14</span>${status("Attendance recorded", "positive")}</li><li class="current"><time>6:00 PM</time><div><strong>${DEMO.className}</strong><p>${DEMO.coach} · ${DEMO.room}</p></div><span>9 / 12</span>${status("Attendance gap", "caution")}</li><li><time>7:30 PM</time><div><strong>Hyrox Night Engine</strong><p>Coach Luis · Conditioning floor</p></div><span>12 / 12</span>${status("Full", "caution")}</li></ol></section>${readinessDetails()}<details class="setup-evidence"><summary>First-run setup evidence · Complete</summary><div class="setup-evidence-body"><div class="section-heading compact"><div><p class="micro-label">First-run lens</p><h2>Setup evidence</h2></div>${status("Complete", "positive")}</div><dl><div><dt>Primary location</dt><dd>North Harbour · one location</dd></div><div><dt>Rooms</dt><dd>Main mat · Conditioning floor</dd></div><div><dt>Programs</dt><dd>Muay Thai · Conditioning · Youth</dd></div><div><dt>Staff</dt><dd>Owner + 3 coaches</dd></div></dl><button type="button" data-action="coach-today">Preview permission-safe Coach Today</button></div></details></div>`;
+    return ownerShell(surfaceFrame({ surface: "dashboard", eyebrow: "02 · Returning dashboard", title: "Today at North Harbour", description: `${DEMO.date} · ${DEMO.timezone}`, persona: "Owner", outcome: "see current risk and open the exact next task", content }));
   }
 
   function filterClasses() {
-    return CLASSES.filter((item) => item.date === runtime.filters.date && (runtime.filters.program === "All programs" || item.program === runtime.filters.program));
+    return CLASSES.filter((item) => item.date === runtime.filters.date && (runtime.filters.program === "All programs" || item.program === runtime.filters.program)).sort((a, b) => a.startTimeMinutes - b.startTimeMinutes || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
   }
 
   function filterBar() {
@@ -212,26 +271,32 @@
   function scheduleView() {
     const classes = filterClasses();
     const dateLabel = runtime.filters.date === DEMO.isoDate ? "Thursday, August 20" : runtime.filters.date === DEMO.nextDate ? "Friday, August 21" : runtime.filters.date;
-    return `<section class="schedule-board" aria-labelledby="schedule-heading"><div class="section-heading"><div><p class="micro-label">Template-derived dated view</p><h2 id="schedule-heading" tabindex="-1">${dateLabel} schedule</h2></div><p>${runtime.filters.program} · ${classes.length} ${classes.length === 1 ? "class" : "classes"}</p></div>${filterBar()}${classes.length ? `<ol class="class-list">${classes.map((item) => `<li id="class-row-${item.id}" class="${item.id === "fundamentals" ? "featured" : ""}"><time>${item.time}</time><div><strong>${item.title}</strong><p>${item.meta}</p></div><span>${item.capacity}</span>${status(item.capacity === "12 / 12" ? "Full" : "Open", item.capacity === "12 / 12" ? "caution" : "positive")}<button id="roster-origin-${item.id}" type="button" data-action="open-roster" data-class="${item.id}" data-origin-key="roster-origin-${item.id}" aria-label="Open ${item.title} roster for ${dateLabel}">Open roster</button></li>`).join("")}</ol>` : `<div class="empty-day" role="status"><strong>No classes match</strong><span>${runtime.filters.program} on ${dateLabel}. Clear filters to return to Aug 20.</span></div>`}</section>`;
+    return `<section class="schedule-board" aria-labelledby="schedule-heading"><div class="section-heading"><div><p class="micro-label">Template-derived dated view</p><h2 id="schedule-heading" tabindex="-1">${dateLabel} schedule</h2></div><p>${runtime.filters.program} · ${classes.length} ${classes.length === 1 ? "class" : "classes"}</p></div>${filterBar()}${classes.length ? `<ol class="class-list">${classes.map((item) => `<li id="class-row-${item.id}" data-start-minutes="${item.startTimeMinutes}" class="${item.id === "fundamentals" ? "featured" : ""}"><time>${item.time}</time><div><strong>${item.title}</strong><p>${item.meta}</p>${item.id === "fundamentals" ? '<span class="current-label">Current class</span>' : ""}</div><span>${item.capacity}</span>${status(item.capacity === "12 / 12" ? "Full" : "Open", item.capacity === "12 / 12" ? "caution" : "positive")}<button id="roster-origin-${item.id}" type="button" class="${item.id === "fundamentals" ? "primary-action" : "secondary-action"}" data-action="open-roster" data-class="${item.id}" data-origin-key="roster-origin-${item.id}" aria-label="Open ${item.title} roster for ${dateLabel}">Open roster</button></li>`).join("")}</ol>` : `<div class="empty-day" role="status"><strong>No classes match</strong><span>${runtime.filters.program} on ${dateLabel}. Clear filters to return to Aug 20.</span></div>`}</section>`;
   }
 
   function attendanceRow(id, name, meta, current) {
     const states = [["PRESENT", "Present"], ["LATE", "Late"], ["ABSENT", "Absent"], ["NO_SHOW", "No-show"]];
     const plain = { PRESENT: "Present", LATE: "Late", ABSENT: "Absent", NO_SHOW: "No-show" };
-    const rowState = current === "ERROR" ? `${status("Save error", "critical")}<p>Local save failed. Selection is preserved.</p><button type="button" data-action="attendance-retry" data-member="${id}">Retry ${name} attendance</button>` : current === "STALE" ? `${status("Current information changed", "caution")}<p>Coach Maya changed this record at 2:12 PM. Review the fresh value.</p><button type="button" data-action="attendance-latest" data-member="${id}">Load ${name} current attendance</button>` : current ? `${status("Local result", "positive")}<p>${plain[current]} · nothing saved</p>` : `${status("Not recorded", "neutral")}<p>Choose one state. No bulk action.</p>`;
+    const rowState = current === "ERROR" ? `${status("Preview error", "critical")}<p>The local preview failed. Selection is preserved; nothing was saved.</p><button type="button" data-action="attendance-retry" data-member="${id}">Retry ${name} preview</button>` : current === "STALE" ? `${status("Current information changed", "caution")}<p>Coach Maya changed this record at 2:12 PM. Review the fresh value before another local preview.</p><button type="button" data-action="attendance-latest" data-member="${id}">Load ${name} current attendance</button>` : current ? `${status("Preview only", "info")}<p>${plain[current]} · not saved</p>` : `${status("Not recorded", "neutral")}<p>Choose one preview state. No bulk action.</p>`;
     return `<li class="attendance-row" data-attendance-row="${id}" tabindex="-1"><div class="attendee"><strong>${name}</strong><p>${meta}</p></div><div class="attendance-options" role="group" aria-label="Attendance for ${name}">${states.map(([value, label]) => `<button type="button" data-action="attendance" data-member="${id}" data-value="${value}" aria-pressed="${current === value}">${label}</button>`).join("")}</div><div class="row-state" id="${id}-state">${rowState}</div></li>`;
   }
 
   function rosterView() {
     const selected = CLASSES.find((item) => item.id === runtime.selectedClass) || CLASSES[1];
-    return `<section class="roster-view" aria-labelledby="roster-heading"><button type="button" class="back-action" data-action="history-back">← Back to schedule</button><header class="roster-header"><div><p class="micro-label">Exact roster context</p><h2 id="roster-heading" tabindex="-1">${selected.title}</h2><p>${runtime.filters.date === DEMO.isoDate ? DEMO.date : "Friday, August 21, 2026"} · ${selected.time} · ${DEMO.timezone}</p></div><dl><div><dt>Booked</dt><dd>9 / 12</dd></div><div><dt>Trials</dt><dd>1</dd></div><div><dt>Waiting</dt><dd>2</dd></div></dl></header><div class="roster-warning" role="note"><strong>Save protection.</strong><span>Each attendance change must be saved once and rejected if the record changed. This prototype changes one local row only.</span><details><summary>Technical reference</summary><p>Production B6 requires one atomic AttendanceRecord + booking projection write with stale-conflict rejection.</p></details></div><ul class="attendance-list">${attendanceRow("avery", DEMO.member, "Membership · booked · no safety notes", runtime.attendance.avery)}${attendanceRow("jordan", "Jordan Okafor", "Punch card · booked · asthma inhaler noted", runtime.attendance.jordan)}${attendanceRow("sam", "Sam Rivera", "Trial · guardian Elena Rivera · signature needed", runtime.attendance.sam)}${attendanceRow("priya", "Priya Nanduri", "Membership · booked · coach note available", runtime.attendance.priya)}</ul><details class="waitlist-disclosure" open><summary>Waitlist · 2 people in FIFO order</summary><ol><li><div><strong>1 · Marcel Dubois</strong><p>Monthly membership access · promotion creates one confirmed class booking and consumes no punch.</p></div><button type="button" data-action="waitlist-promote">Review Marcel Dubois promotion</button></li><li><div><strong>2 · Hana Petrovic</strong><p>Access requires owner review; do not silently skip.</p></div>${status("Blocked at head", "critical")}</li></ol><p><strong>Assignment check:</strong> Before promotion, Flowstate must confirm the coach is still assigned.</p><details><summary>Technical reference</summary><p>Production B3 requires a server-side assigned-coach recheck before producing raw BOOKED state.</p></details><div id="promotion-receipt" role="status"></div></details>`;
+    const backLabel = { dashboard: "Back to Today", schedule: "Back to Schedule", coach: "Back to Coach Today" }[runtime.rosterOrigin] || "Back to Schedule";
+    return `<section class="roster-view" aria-labelledby="roster-heading"><button type="button" class="back-action" data-action="history-back">← ${backLabel}</button><header class="roster-header"><div><p class="micro-label">Exact roster context</p><h2 id="roster-heading" tabindex="-1">${selected.title}</h2><p>${runtime.filters.date === DEMO.isoDate ? DEMO.date : "Friday, August 21, 2026"} · ${selected.time} · ${DEMO.timezone}</p></div><dl><div><dt>Booked</dt><dd>9 / 12</dd></div><div><dt>Trials</dt><dd>1</dd></div><div><dt>Waiting</dt><dd>2</dd></div></dl></header><div class="roster-warning" role="note"><strong>Preview only.</strong><span>Selections update this browser tab only and are never saved. Choose one state per row; no bulk action.</span><details><summary>Technical reference</summary><p>Production B6 requires one atomic AttendanceRecord + booking projection write with stale-conflict rejection.</p></details></div><ul class="attendance-list">${attendanceRow("avery", DEMO.member, "Membership · booked · no safety notes", runtime.attendance.avery)}${attendanceRow("jordan", "Jordan Okafor", "Punch card · booked · asthma inhaler noted", runtime.attendance.jordan)}${attendanceRow("sam", "Sam Rivera", "Trial · guardian Elena Rivera · signature needed", runtime.attendance.sam)}${attendanceRow("priya", "Priya Nanduri", "Membership · booked · coach note available", runtime.attendance.priya)}</ul><details class="waitlist-disclosure" open><summary>Waitlist · 2 people in FIFO order</summary><ol><li><div><strong>1 · Marcel Dubois</strong><p>Monthly membership access · promotion creates one confirmed class booking and consumes no punch.</p></div><button type="button" data-action="waitlist-promote">Review Marcel Dubois promotion</button></li><li><div><strong>2 · Hana Petrovic</strong><p>Access review required if next; do not silently skip.</p></div>${status("Access review required if next", "caution")}</li></ol><p><strong>Assignment check:</strong> Before promotion, Flowstate must confirm the coach is still assigned.</p><details><summary>Technical reference</summary><p>Production B3 requires a server-side assigned-coach recheck before producing raw BOOKED state.</p></details><div id="promotion-receipt" role="status"></div></details>`;
   }
 
   function operationsSurface() {
     const content = runtime.view === "roster" ? rosterView() : scheduleView();
     const framed = surfaceFrame({ surface: "operations", eyebrow: "03 · Connected operational context", title: "Schedule, roster & attendance", description: `${DEMO.gym} · one location · date and program context preserved`, persona: runtime.role === "coach" ? "Assigned coach" : "Owner or assigned coach", outcome: "move from a filtered date into the exact roster and return with context intact", aside: status(runtime.view === "roster" ? "Roster view" : "Schedule view", "info"), content });
     if (runtime.state === "permission") return coachShell();
-    return runtime.role === "coach" && runtime.view !== "roster" ? coachShell() : ownerShell(framed);
+    if (runtime.role === "coach") {
+      if (runtime.view !== "roster") return coachShell();
+      const coachRoster = surfaceFrame({ surface: "operations", eyebrow: "Assigned work · exact class context", title: "Assigned class roster", description: `${DEMO.gym} · ${DEMO.date} · assigned class`, persona: "Assigned coach", outcome: "review the exact assigned roster and preview attendance without owner-only routes", aside: status("Roster view", "info"), content });
+      return coachShell(coachRoster);
+    }
+    return ownerShell(framed);
   }
 
   function ownerBookingsSurface() {
@@ -241,23 +306,26 @@
 
   function memberAccess(item) {
     const state = runtime.memberActions[item.id] || item.action;
-    if (item.id === "open-mat") return status(`Punch card · ${["punch-booked", "punch-late"].includes(state) ? 4 : 5} remaining`, "positive");
-    if (item.id === "drop-in") return status("$28.00 · Drop-in", state === "dropin-pending" ? "caution" : "info");
-    return status(item.capacity === "12 / 12" ? "Full" : "Open", item.capacity === "12 / 12" ? "caution" : "positive");
+    if (["booked", "punch-booked"].includes(state)) return `<span data-dominant-member-state>${status("Booked", "positive")}</span>`;
+    if (state === "waitlisted") return `<span data-dominant-member-state>${status("Waitlisted", "caution")}</span>`;
+    if (state === "full") return `<span data-dominant-member-state>${status("Waitlist available", "caution")}</span>`;
+    if (item.id === "open-mat") return `<span data-dominant-member-state>${status(`Use 1 punch · Punch card · ${state === "punch-late" ? 4 : 5} remaining`, "positive")}</span>`;
+    if (item.id === "drop-in") return `<span data-dominant-member-state>${status(state === "dropin-pending" ? "$28 drop-in · payment pending" : "$28 drop-in · payment required", state === "dropin-pending" ? "caution" : "info")}</span>`;
+    return `<span data-dominant-member-state>${status("Available with membership", "positive")}</span>`;
   }
 
   function memberAction(item) {
     const state = runtime.memberActions[item.id] || item.action;
-    if (state === "available" || state === "book") return `<button type="button" data-action="member-book" data-key="${item.id}">Book ${item.title}</button><p class="action-reason">Eligible monthly membership · local prototype only.</p>`;
+    if (state === "available" || state === "book") return `<button type="button" class="${item.id === "fundamentals" ? "primary-action" : "secondary-action"}" data-action="member-book" data-key="${item.id}">Book ${item.title}</button><p class="action-reason">Eligible monthly membership · local prototype only.</p>`;
     if (state === "booked") return `<button type="button" class="secondary-action" data-action="member-book" data-key="${item.id}">Booked · reset ${item.title}</button><p class="action-reason">Local result only; no production booking changed.</p>`;
-    if (state === "full") return `<button type="button" data-action="member-waitlist" data-key="${item.id}">Join ${item.title} simulated waitlist</button><p class="action-reason">Monthly membership access · no durable enrollment.</p>`;
+    if (state === "full") return `<button type="button" class="secondary-action" data-action="member-waitlist" data-key="${item.id}">Join ${item.title} simulated waitlist</button><p class="action-reason">Monthly membership access · no durable enrollment.</p>`;
     if (state === "waitlisted") return `<button type="button" class="secondary-action" data-action="member-waitlist" data-key="${item.id}">Waitlisted · reset ${item.title}</button><p class="action-reason">Local result only; no position or notice exists.</p>`;
-    if (state === "punch") return `<button type="button" data-action="member-punch" data-key="${item.id}">Use one punch for ${item.title}</button><p class="action-reason">Punch card · 5 remaining. Local prototype only.</p>`;
-    if (state === "punch-booked") return `<div class="booking-result" data-booking-type="PUNCH_CARD" data-booking-status="BOOKED"><strong>Booked</strong><p>Booking type · Punch card · Balance · 4. No payment or provider state exists.</p><div class="compact-actions"><button type="button" data-action="member-punch-timely" data-key="${item.id}">Timely cancel example</button><button type="button" class="secondary-action" data-action="member-punch-late" data-key="${item.id}">Late cancel example</button><button type="button" class="secondary-action" data-action="member-action-reset" data-key="${item.id}" data-reset-state="punch">Reset</button></div></div>`;
+    if (state === "punch") return `<button type="button" class="secondary-action" data-action="member-punch" data-key="${item.id}">Use one punch for ${item.title}</button><p class="action-reason">Punch card · 5 remaining. Local prototype only.</p>`;
+    if (state === "punch-booked") return `<div class="booking-result" data-booking-type="PUNCH_CARD" data-booking-status="BOOKED"><strong>Booked</strong><p>Booking type · Punch card · Balance · 4. No payment or provider state exists.</p><div class="compact-actions"><button type="button" class="secondary-action" data-action="member-punch-timely" data-key="${item.id}">Timely cancel example</button><button type="button" class="secondary-action" data-action="member-punch-late" data-key="${item.id}">Late cancel example</button><button type="button" class="secondary-action" data-action="member-action-reset" data-key="${item.id}" data-reset-state="punch">Reset</button></div></div>`;
     if (state === "punch-timely") return `<div class="booking-result" data-booking-type="PUNCH_CARD" data-booking-status="AVAILABLE"><strong>Available</strong><p>Timely cancel · punch returned · Balance · 5.</p><button type="button" class="secondary-action" data-action="member-action-reset" data-key="${item.id}" data-reset-state="punch">Reset</button></div>`;
     if (state === "punch-late") return `<div class="booking-result" data-booking-type="PUNCH_CARD" data-booking-status="CANCELLED"><strong>Cancelled</strong><p>Late cancel · punch remains used · Balance · 4.</p><button type="button" class="secondary-action" data-action="member-action-reset" data-key="${item.id}" data-reset-state="punch">Reset</button></div>`;
-    if (state === "drop-in") return `<button type="button" data-action="member-drop-in" data-key="${item.id}">Hold seat for $28 drop-in</button><p class="action-reason">Priced drop-in · payment completion is not simulated.</p>`;
-    if (state === "dropin-pending") return `<div class="booking-result" data-booking-type="DROP_IN" data-booking-status="PENDING_PAYMENT"><strong>Payment pending</strong><p>Booking type · Drop-in. Seat temporarily held until Aug 20, 5:25 PM PDT. Provider completion is unknown. This is not Booked.</p><div class="compact-actions"><button type="button" data-action="member-drop-in-expire" data-key="${item.id}">Expire local hold</button><button type="button" class="secondary-action" data-action="member-action-reset" data-key="${item.id}" data-reset-state="drop-in">Cancel hold</button></div></div>`;
+    if (state === "drop-in") return `<button type="button" class="secondary-action" data-action="member-drop-in" data-key="${item.id}">Hold seat for $28 drop-in</button><p class="action-reason">Priced drop-in · payment completion is not simulated.</p>`;
+    if (state === "dropin-pending") return `<div class="booking-result" data-booking-type="DROP_IN" data-booking-status="PENDING_PAYMENT"><strong>Payment pending</strong><p>Booking type · Drop-in. Seat temporarily held until Aug 20, 5:25 PM PDT. Provider completion is unknown. This is not Booked.</p><div class="compact-actions"><button type="button" class="secondary-action" data-action="member-drop-in-expire" data-key="${item.id}">Expire local hold</button><button type="button" class="secondary-action" data-action="member-action-reset" data-key="${item.id}" data-reset-state="drop-in">Cancel hold</button></div></div>`;
     if (state === "dropin-expired") return `<div class="booking-result" data-booking-type="DROP_IN" data-booking-status="AVAILABLE"><strong>Seat available</strong><p>The local payment hold expired and cleared. No provider result exists.</p><button type="button" class="secondary-action" data-action="member-action-reset" data-key="${item.id}" data-reset-state="drop-in">Reset</button></div>`;
     return `<button type="button" disabled aria-describedby="${item.id}-disabled">Booking unavailable</button><p class="action-reason" id="${item.id}-disabled">Cutoff passed. Choose another date.</p>`;
   }
@@ -265,7 +333,7 @@
   function memberSurface() {
     const classes = filterClasses().filter((item) => item.action !== "roster");
     const dateLabel = runtime.filters.date === DEMO.isoDate ? "Thursday · Aug 20" : runtime.filters.date === DEMO.nextDate ? "Friday · Aug 21" : runtime.filters.date;
-    const content = `<div class="member-page">${filterBar()}<section aria-labelledby="member-date"><div class="section-heading"><h2 id="member-date" tabindex="-1">${dateLabel}</h2><p>${runtime.filters.program} · ${classes.length} results</p></div>${classes.length ? `<ol class="member-class-list">${classes.map((item) => `<li class="member-class" data-member-class="${item.id}"><time>${item.time}</time><div class="member-class-info"><strong>${item.title}</strong><p>${item.meta}</p></div><div class="member-access">${memberAccess(item)}</div><div class="member-action">${memberAction(item)}</div></li>`).join("")}</ol>` : `<div class="empty-day" role="status"><strong>No classes match</strong><span>${runtime.filters.program} on ${dateLabel}. Clear filters to reset.</span></div>`}</section><aside class="guardian-boundary"><strong>Guardian boundary</strong><p>Guardian/child records and relevant signing context are supported. No guardian portal, child switcher, or booking/payment-on-behalf action exists here.</p></aside></div>`;
+    const content = `<div class="member-page">${filterBar()}<section aria-labelledby="member-date"><div class="section-heading"><h2 id="member-date" tabindex="-1">${dateLabel}</h2><p>${runtime.filters.program} · ${classes.length} results</p></div>${classes.length ? `<ol class="member-class-list">${classes.map((item) => { const state = runtime.memberActions[item.id] || item.action; return `<li class="member-class ${item.id === "fundamentals" ? "featured" : ""}" data-member-class="${item.id}" data-member-state="${state}" data-start-minutes="${item.startTimeMinutes}"><time>${item.time}</time><div class="member-class-info"><strong>${item.title}</strong><p>${item.meta}</p>${item.id === "fundamentals" ? '<span class="current-label">Current class</span>' : ""}<p class="capacity-context">Capacity · ${item.capacity}</p></div><div class="member-access">${memberAccess(item)}</div><div class="member-action">${memberAction(item)}</div></li>`; }).join("")}</ol>` : `<div class="empty-day" role="status"><strong>No classes match</strong><span>${runtime.filters.program} on ${dateLabel}. Clear filters to reset.</span></div>`}</section><aside class="guardian-boundary"><strong>Guardian boundary</strong><p>Guardian/child records and relevant signing context are supported. No guardian portal, child switcher, or booking/payment-on-behalf action exists here.</p></aside></div>`;
     const page = surfaceFrame({ surface: "member", eyebrow: "04 · Compressed member schedule", title: "Find your next class", description: `${runtime.memberContext ? `Named Member context · ${displayNameForSlug(runtime.memberContext)} · ` : ""}${DEMO.date} · gym time`, persona: "Member", outcome: "filter real dated classes, understand access, and take one bounded next action", aside: '<button type="button" class="secondary-action" data-action="member-reset">Reset class states</button>', content });
     return `<article class="surface member-surface"><header class="member-header"><div class="member-brand">Flowstate <span>for members</span></div><nav aria-label="Member navigation"><a href="?surface=member" aria-current="page">Schedule</a><a href="?surface=member">Bookings</a><details><summary>More</summary><div><a href="?surface=forms">Forms</a><a href="?surface=billing">Billing</a><button type="button" data-action="prototype-message" data-message="Local prototype only: no session ended.">Log out</button></div></details></nav></header>${page.replace(/^<article[^>]*>|<\/article>$/g, "")}</article>`;
   }
@@ -278,7 +346,7 @@
 
   function formsTable() {
     const attributes = (row) => `data-form-record data-current-version="${row.currentVersion}" data-compliance="${row.compliance}" data-request-status="${row.requestStatus}"`;
-    return `<table class="form-table"><thead><tr><th>Document</th><th>Current</th><th>Assigned to</th><th>Evidence</th></tr></thead><tbody>${FORM_ROWS.map((row) => `<tr ${attributes(row)}><th>${row.document}</th><td>${row.current}</td><td>${row.assigned}</td><td>${status(row.evidence, row.tone)}</td></tr>`).join("")}</tbody></table><div class="form-record-cards">${FORM_ROWS.map((row) => `<article ${attributes(row)}><h3>${row.document}</h3><dl><div><dt>Current</dt><dd>${row.current}</dd></div><div><dt>Assigned</dt><dd>${row.assigned}</dd></div><div><dt>Evidence</dt><dd>${row.evidence}</dd></div></dl></article>`).join("")}</div>`;
+    return `<table class="form-table"><thead><tr><th>Document</th><th>Current</th><th>Assigned to</th><th>Evidence</th></tr></thead><tbody>${FORM_ROWS.map((row) => `<tr ${attributes(row)} ${row.document === "Guardian waiver" ? 'data-matching-form tabindex="-1"' : ""}><th>${row.document}</th><td>${row.current}</td><td>${row.assigned}</td><td>${status(row.evidence, row.tone)}</td></tr>`).join("")}</tbody></table><div class="form-record-cards">${FORM_ROWS.map((row) => `<article ${attributes(row)} ${row.document === "Guardian waiver" ? 'data-matching-form tabindex="-1"' : ""}><dl><div><dt>Document</dt><dd><h3>${row.document}</h3></dd></div><div><dt>Current</dt><dd>${row.current}</dd></div><div><dt>Assigned</dt><dd>${row.assigned}</dd></div><div><dt>Evidence</dt><dd>${row.evidence}</dd></div></dl></article>`).join("")}</div>`;
   }
 
   function formVersionReview() {
@@ -296,7 +364,8 @@
   }
 
   function formsContent(forceValidation = false) {
-    return `<section class="form-library"><div class="section-heading compact"><div><p class="micro-label">Forms task · full-width library</p><h2>Form library</h2></div><button id="new-form-action" type="button" data-action="form-version-open">New form version</button></div>${runtime.formContext ? `<p class="context-callout"><strong>Opened from dashboard:</strong> Sam Rivera · Guardian waiver Version 2 · Signature needed · signing request is open.</p>` : ""}${formsTable()}<details><summary>Technical reference</summary><p>Participant waiver: FormVersion v3 current · compliance SIGNED · SignatureRequest COMPLETED. Guardian waiver: FormVersion v2 current · compliance PENDING · SignatureRequest OPEN. Membership agreement: FormVersion v4 current · compliance SUPERSEDED or MISSING · prior SignatureRequest EXPIRED or CANCELLED · no current request.</p></details></section>${formVersionReview()}`;
+    const focusedTask = runtime.formContext && runtime.memberContext ? `<section class="focused-task focused-form-task" aria-labelledby="focused-form-title" data-request-status="OPEN"><p class="micro-label">Current task · opened from dashboard</p><div><h2 id="focused-form-title">Sam Rivera</h2>${status("Signature needed", "caution")}</div><dl><div><dt>Document</dt><dd>Guardian waiver Version 2 · current</dd></div><div><dt>Participant</dt><dd>Sam Rivera</dd></div><div><dt>Guardian signer</dt><dd>Elena Rivera</dd></div><div><dt>Signer kind</dt><dd>Guardian</dd></div><div><dt>Compliance</dt><dd>Signature needed</dd></div><div><dt>Current request</dt><dd>Open signing request</dd></div><div><dt>Access method</dt><dd>Magic link</dd></div><div><dt>Expires</dt><dd>Aug 27, 2026, 11:59 PM PDT</dd></div><div><dt>Supported next step</dt><dd>Review the existing request. No new request, version, or email is created by this prototype.</dd></div></dl><button type="button" data-action="view-matching-form">View matching form record</button></section>` : "";
+    return `${focusedTask}<section class="form-library"><div class="section-heading compact"><div><p class="micro-label">Forms task · full-width library</p><h2>Form library</h2></div><button id="new-form-action" type="button" class="${runtime.formContext ? "secondary-action" : ""}" data-action="form-version-open">New form version</button></div>${formsTable()}<details><summary>Technical reference</summary><p>Participant waiver: FormVersion v3 current · compliance SIGNED · SignatureRequest COMPLETED. Guardian waiver: FormVersion v2 current · compliance PENDING · SignatureRequest OPEN. Membership agreement: FormVersion v4 current · compliance SUPERSEDED or MISSING · prior SignatureRequest EXPIRED or CANCELLED · no current request.</p></details></section>${formVersionReview()}`;
   }
 
   function formsSurface() {
@@ -315,7 +384,7 @@
   }
 
   function migrationReadiness() {
-    return `<section class="migration-readiness"><div class="section-heading"><div><p class="micro-label">Completed read-only evidence</p><h2>Operational readiness record</h2></div>${status("Derived gate · READY", "positive")}</div><dl><div><dt>Workspace status</dt><dd>ACTIVE</dd></div><div><dt>Persisted MigrationStage</dt><dd>COMPLETE</dd></div><div><dt>Owner-review tuple</dt><dd>Jordan Lee · Aug 19, 4:08 PM PDT</dd></div><div><dt>Operational-readiness tuple</dt><dd>Flowstate operator · Aug 19, 4:22 PM PDT</dd></div><div><dt>Derived gate</dt><dd>Ready for daily operations</dd></div></dl><p>Eligible fictional completed scenario: no unknown statuses are present.</p></section>`;
+    return `<details class="migration-readiness"><summary>Readiness review evidence · complete</summary><div class="migration-readiness-body"><div class="section-heading"><div><p class="micro-label">Completed read-only evidence</p><h2>Operational readiness record</h2></div>${status("Derived gate · READY", "positive")}</div><dl><div><dt>Workspace status</dt><dd>ACTIVE</dd></div><div><dt>Persisted MigrationStage</dt><dd>COMPLETE</dd></div><div><dt>Owner-review tuple</dt><dd>Jordan Lee · Aug 19, 4:08 PM PDT</dd></div><div><dt>Operational-readiness tuple</dt><dd>Flowstate operator · Aug 19, 4:22 PM PDT</dd></div><div><dt>Derived gate</dt><dd>Ready for daily operations</dd></div></dl><p>Eligible fictional completed scenario: no unknown statuses are present.</p></div></details>`;
   }
 
   function migrationConfirmation() {
@@ -323,7 +392,7 @@
   }
 
   function migrationSurface() {
-    const defaultContent = `<section class="migration-hero"><div><p class="micro-label">Persisted stage</p><h2>COMPLETE</h2><p>Completed handoff evidence is read-only in this default scenario.</p></div><div class="next-actor"><span>Next role</span><strong>Daily operations team</strong><p>The readiness gate is already complete.</p></div>${status("Read-only", "positive")}</section>${migrationReadiness()}<ol class="migration-timeline"><li class="done"><span>01</span><div><strong>Intake received</strong><p>One-location scope recorded.</p></div></li><li class="done"><span>02</span><div><strong>Exports reviewed</strong><p>Source files reviewed.</p></div></li><li class="done"><span>03</span><div><strong>Validation complete</strong><p>No unknown statuses are present in this eligible fictional scenario.</p></div></li><li class="done"><span>04</span><div><strong>Reconciled</strong><p>Added, updated, and excluded rows remain distinct.</p></div></li><li class="done"><span>05</span><div><strong>Owner acknowledgment recorded</strong><p>Audit tuple complete.</p></div></li><li class="done"><span>06</span><div><strong>Operational readiness recorded</strong><p>Flowstate audit tuple complete.</p></div></li></ol><section class="migration-results"><section><p class="micro-label">Reviewed result</p><h2>Snapshot evidence</h2><dl><div><dt>Added</dt><dd>184 members · 167 memberships</dd></div><div><dt>Updated</dt><dd>12 guardian links</dd></div><div><dt>Not imported</dt><dd>3 billing-history rows · review only</dd></div></dl><details><summary>Technical reference</summary><p>${runtime.state === "long" ? DEMO.importId : "Full import reference available in this collapsed section."}</p></details></section><section><p class="micro-label">Future import safeguard</p><h2>For future imports</h2><p>This fictional completed snapshot contains no unrecognized statuses. For future imports, Flowstate must stop and request review whenever it encounters a status it does not recognize.</p><button type="button" data-action="local-email-explainer">Explain future email action</button><div id="email-explainer" role="status"></div></section></section><details class="migration-technical"><summary><span>Prior incomplete attempts</span><span aria-hidden="true">＋</span></summary><p>Two earlier staging attempts are excluded from reviewed totals. Full technical values remain collapsed.</p></details>`;
+    const defaultContent = `<section class="migration-hero"><div><p class="micro-label">Persisted stage</p><h2>COMPLETE</h2><p>Completed handoff evidence is read-only in this default scenario.</p></div><div class="next-actor"><span>Next role</span><strong>Daily operations team</strong><p>The readiness gate is already complete.</p></div><span class="read-only-label">Read-only record</span></section>${migrationReadiness()}<details class="migration-stage-details"><summary>6 of 6 complete · view stage evidence</summary><ol class="migration-timeline"><li class="done"><span>01</span><div><strong>Intake received</strong><p>One-location scope recorded.</p></div></li><li class="done"><span>02</span><div><strong>Exports reviewed</strong><p>Source files reviewed.</p></div></li><li class="done"><span>03</span><div><strong>Validation complete</strong><p>No unknown statuses are present in this eligible fictional scenario.</p></div></li><li class="done"><span>04</span><div><strong>Reconciled</strong><p>Added, updated, and excluded rows remain distinct.</p></div></li><li class="done"><span>05</span><div><strong>Owner acknowledgment recorded</strong><p>Audit tuple complete.</p></div></li><li class="done"><span>06</span><div><strong>Operational readiness recorded</strong><p>Flowstate audit tuple complete.</p></div></li></ol></details><section class="migration-results"><section><p class="micro-label">Reviewed result</p><h2>Snapshot evidence</h2><dl><div><dt>Added</dt><dd>184 members · 167 memberships</dd></div><div><dt>Updated</dt><dd>12 guardian links</dd></div><div><dt>Not imported</dt><dd>3 billing-history rows · review only</dd></div></dl><details><summary>Technical reference</summary><p>${runtime.state === "long" ? DEMO.importId : "Full import reference available in this collapsed section."}</p></details></section><section><p class="micro-label">Future import safeguard</p><h2>For future imports</h2><p>This fictional completed snapshot contains no unrecognized statuses. For future imports, Flowstate must stop and request review whenever it encounters a status it does not recognize.</p><button type="button" data-action="local-email-explainer">Explain future email action</button><div id="email-explainer" role="status"></div></section></section><details class="migration-technical"><summary><span>Prior incomplete attempts</span><span aria-hidden="true">＋</span></summary><p>Two earlier staging attempts are excluded from reviewed totals. Full technical values remain collapsed.</p></details>`;
     let content = defaultContent;
     if (runtime.state === "confirmation") content = migrationConfirmation();
     else if (runtime.state !== "default" && runtime.state !== "long" && runtime.state !== "readonly") content = genericStateRegion("migration");
@@ -332,7 +401,7 @@
   }
 
   function migrationSurfacePlain() {
-    const defaultContent = `<section class="migration-hero"><div><p class="micro-label">Migration handoff</p><h2>Migration complete</h2><p>Completed handoff evidence is read-only in this fictional default scenario.</p></div><div class="next-actor"><span>Next role</span><strong>Daily operations team</strong><p>The gym is ready for daily operations.</p></div>${status("Read-only", "positive")}</section><section class="migration-readiness"><div class="section-heading"><div><p class="micro-label">Completed readiness review</p><h2>Gym status: Ready for daily operations</h2><p>Migration: Complete · Owner review: Recorded · Flowstate readiness review: Recorded.</p></div>${status("Ready", "positive")}</div><dl><div><dt>Gym status</dt><dd>Ready for daily operations</dd></div><div><dt>Migration</dt><dd>Complete</dd></div><div><dt>Owner review</dt><dd>Recorded · Jordan Lee · Aug 19, 4:08 PM PDT</dd></div><div><dt>Flowstate readiness review</dt><dd>Recorded · Aug 19, 4:22 PM PDT</dd></div></dl></section><ol class="migration-timeline"><li class="done"><span>01</span><div><strong>Intake received</strong><p>One-location scope recorded.</p></div></li><li class="done"><span>02</span><div><strong>Exports reviewed</strong><p>Source files reviewed.</p></div></li><li class="done"><span>03</span><div><strong>Validation complete</strong><p>No unknown statuses appear in this eligible fictional scenario.</p></div></li><li class="done"><span>04</span><div><strong>Reconciled</strong><p>Added, updated, and excluded rows remain distinct.</p></div></li><li class="done"><span>05</span><div><strong>Owner review recorded</strong><p>The reviewed snapshot is retained.</p></div></li><li class="done"><span>06</span><div><strong>Flowstate readiness review recorded</strong><p>Daily operations may begin.</p></div></li></ol><section class="migration-results"><section><p class="micro-label">Reviewed result</p><h2>Snapshot evidence</h2><dl><div><dt>Added</dt><dd>184 members · 167 memberships</dd></div><div><dt>Updated</dt><dd>12 guardian links</dd></div><div><dt>Not imported</dt><dd>3 billing-history rows · review only</dd></div></dl></section><section><p class="micro-label">Future import safeguard</p><h2>For future imports</h2><p>This fictional completed snapshot contains no unrecognized statuses. For future imports, Flowstate must stop and request review whenever it encounters a status it does not recognize.</p><button type="button" data-action="local-email-explainer">Explain future owner email locally</button><div id="email-explainer" role="status"></div></section></section><details class="migration-technical"><summary>Technical reference</summary><p>Workspace ACTIVE · persisted MigrationStage COMPLETE · owner-review tuple persisted · operational-readiness tuple persisted · derived gate READY · nonconcurrent with the pre-launch scenario.</p></details>`;
+    const defaultContent = `<section class="migration-hero"><div><p class="micro-label">Migration handoff</p><h2>Ready for daily operations</h2><p>Migration complete · reviewed snapshot ready for the daily operations team.</p></div><div class="next-actor"><span>Next role</span><strong>Daily operations team</strong><p>The gym is ready for daily operations.</p></div><span class="read-only-label">Read-only record</span></section><details class="migration-readiness"><summary>Readiness review evidence · complete</summary><div class="migration-readiness-body"><div class="section-heading"><div><p class="micro-label">Completed readiness review</p><h2>Gym status: Ready for daily operations</h2><p>Migration: Complete · Owner review: Recorded · Flowstate readiness review: Recorded.</p></div><strong class="readiness-answer">Ready</strong></div><dl><div><dt>Gym status</dt><dd>Ready for daily operations</dd></div><div><dt>Migration</dt><dd>Complete</dd></div><div><dt>Owner review</dt><dd>Recorded · Jordan Lee · Aug 19, 4:08 PM PDT</dd></div><div><dt>Flowstate readiness review</dt><dd>Recorded · Aug 19, 4:22 PM PDT</dd></div></dl></div></details><details class="migration-stage-details"><summary>6 of 6 complete · view stage evidence</summary><ol class="migration-timeline"><li class="done"><span>01</span><div><strong>Intake received</strong><p>One-location scope recorded.</p></div></li><li class="done"><span>02</span><div><strong>Exports reviewed</strong><p>Source files reviewed.</p></div></li><li class="done"><span>03</span><div><strong>Validation complete</strong><p>No unknown statuses appear in this eligible fictional scenario.</p></div></li><li class="done"><span>04</span><div><strong>Reconciled</strong><p>Added, updated, and excluded rows remain distinct.</p></div></li><li class="done"><span>05</span><div><strong>Owner review recorded</strong><p>The reviewed snapshot is retained.</p></div></li><li class="done"><span>06</span><div><strong>Flowstate readiness review recorded</strong><p>Daily operations may begin.</p></div></li></ol></details><section class="migration-results"><section><p class="micro-label">Reviewed result</p><h2>Snapshot evidence</h2><dl><div><dt>Added</dt><dd>184 members · 167 memberships</dd></div><div><dt>Updated</dt><dd>12 guardian links</dd></div><div><dt>Not imported</dt><dd>3 billing-history rows · review only</dd></div></dl></section><section><p class="micro-label">Future import safeguard</p><h2>For future imports</h2><p>This fictional completed snapshot contains no unrecognized statuses. For future imports, Flowstate must stop and request review whenever it encounters a status it does not recognize.</p><button type="button" data-action="local-email-explainer">Explain future owner email locally</button><div id="email-explainer" role="status"></div></section></section><details class="migration-technical"><summary>Technical reference</summary><p>Workspace ACTIVE · persisted MigrationStage COMPLETE · owner-review tuple persisted · operational-readiness tuple persisted · derived gate READY · nonconcurrent with the pre-launch scenario.</p></details>`;
     const confirmationContent = `<section class="prelaunch-scenario"><p class="micro-label">Separate pre-launch scenario</p><h2 id="migration-confirm-title" tabindex="-1">Pre-launch setup · daily operations blocked</h2>${status("Daily operations blocked", "critical")}<p>This scenario is separate from the completed default dataset.</p><dl><div><dt>Gym status</dt><dd>Pre-launch setup · daily operations blocked</dd></div><div><dt>Migration</dt><dd>Migration scheduled for launch</dd></div><div><dt>Owner review</dt><dd>Owner review not recorded</dd></div><div><dt>Flowstate readiness review</dt><dd>Not recorded</dd></div></dl><p>Acknowledgment locks the reviewed snapshot; it does not activate daily operations.</p><details><summary>Technical reference</summary><p>Workspace SETUP_INCOMPLETE · persisted MigrationStage GO_LIVE_SCHEDULED · owner-review tuple absent · operational-readiness tuple absent · derived gate BLOCKED · nonconcurrent scenario.</p></details><button type="button" data-action="migration-confirm">Confirm local acknowledgment</button><button type="button" class="secondary-action" data-action="clear-state">Cancel</button></section>`;
     let content = runtime.state === "confirmation" ? confirmationContent : defaultContent;
     if (runtime.state !== "default" && runtime.state !== "long" && runtime.state !== "readonly" && runtime.state !== "confirmation") content = genericStateRegion("migration");
@@ -342,7 +411,7 @@
   }
 
   function billingSurface() {
-    const namedContext = runtime.memberContext ? `<p class="context-callout"><strong>Named Member billing context:</strong> ${displayNameForSlug(runtime.memberContext)}. This recovery link did not route to a generic surface.</p>` : "";
+    const namedContext = runtime.memberContext === "avery-hernandez-lawson" ? `<section class="focused-task focused-billing-task" aria-labelledby="focused-billing-title"><p class="micro-label">Named Member billing context · current task</p><div><h2 id="focused-billing-title">${DEMO.member}</h2>${status("Payment failed", "critical")}</div><dl><div><dt>Amount</dt><dd>$145.00 USD</dd></div><div><dt>Failed</dt><dd>Aug 20 · 9:14 AM PDT</dd></div><div><dt>Grace ends</dt><dd>Aug 23</dd></div><div><dt>Known evidence</dt><dd>Local payment-failed record · latest invoice present · Stripe provider not connected</dd></div><div><dt>Next actor</dt><dd>Owner completes Stripe setup. Retry is unavailable because Stripe setup is missing; no charge or account change was attempted.</dd></div></dl></section>` : runtime.memberContext ? `<section class="focused-task focused-billing-task"><p class="micro-label">Named Member billing context · current task</p><h2>${displayNameForSlug(runtime.memberContext)}</h2><p>$92.00 USD · invoice unavailable · review the named member record. No Stripe retry is available.</p></section>` : "";
     const content = `${namedContext}<section class="provider-banner"><div class="provider-signal" aria-hidden="true">×</div><div><p class="micro-label">Stripe boundary</p><h2>Stripe setup missing</h2><p>Readable local records remain separate from Stripe-confirmed evidence. The owner completes setup next; no charge or account change was attempted.</p><details><summary>Technical reference</summary><p>${runtime.state === "long" ? DEMO.providerId : "Full provider reference hidden in normal reading order."}</p></details></div><div><button type="button" disabled aria-describedby="connect-reason">Connect Stripe</button><p id="connect-reason">Disabled in this local prototype. No external call can be made.</p></div></section><section class="billing-queue"><div class="section-heading"><div><p class="micro-label">Risk and age ordered</p><h2>Failed payment queue</h2></div><span>2 local records</span></div><ol><li><div class="amount"><strong>$145.00</strong><span>USD</span></div><div><strong>${runtime.state === "long" ? DEMO.longMember : DEMO.member}</strong><p>Monthly unlimited · failed Aug 20, 9:14 AM PDT</p></div>${status("Payment failed", "critical")}<div><button type="button" disabled aria-describedby="retry-avery" aria-label="Retry ${DEMO.member} $145 payment">Retry payment</button><p id="retry-avery">Action unavailable: Stripe setup is missing. Owner completes setup next.</p></div></li><li><div class="amount"><strong>$92.00</strong><span>USD</span></div><div><strong>Micah Thompson</strong><p>Youth membership · invoice unavailable</p></div>${status("Action required", "caution")}<div><button type="button" disabled aria-describedby="retry-micah" aria-label="Retry Micah Thompson $92 payment">Retry payment</button><p id="retry-micah">Action unavailable: no invoice exists. Review the named Member record.</p><a href="?surface=billing&route=billing&member=micah-thompson" data-route-link="billing" data-route-surface="billing" data-member-context="micah-thompson">Open Micah Thompson billing context</a></div></li></ol></section><div class="billing-facts"><section><p class="micro-label">Local Flowstate state</p><h2>Membership record</h2><dl><div><dt>Status</dt><dd>Past due</dd></div><div><dt>Grace end</dt><dd>Aug 23, 2026 · gym date</dd></div></dl></section><section><p class="micro-label">Stripe-confirmed state</p><h2>Stripe evidence</h2><dl><div><dt>Connection</dt><dd>Not connected</dd></div><div><dt>Charges</dt><dd>Not verified</dd></div></dl></section><section class="danger-zone"><p class="micro-label">Review before confirming</p><h2>Consequential actions</h2><p>Refund, credit, invoice, and cancellation controls remain absent.</p></section></div>`;
     return ownerShell(surfaceFrame({ surface: "billing", eyebrow: "07 · Billing and Stripe states", title: "Revenue exceptions", description: "Exact values, ordered work, and separate local versus Stripe evidence.", persona: "Owner", outcome: "recover a named Member’s billing context without implying a Stripe result", aside: status(runtime.state === "outage" ? "Stripe status unavailable" : "Stripe setup missing", "caution"), content }));
   }
@@ -360,10 +429,12 @@
     document.body.dataset.world = runtime.world;
     document.querySelectorAll('[data-action="world"]').forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.worldValue === runtime.world)));
     document.querySelectorAll("[data-world-name]").forEach((node) => { node.textContent = runtime.world === "a" ? "Field Ledger" : "Training Signal"; });
+    const summary = document.querySelector(".gallery-current-summary");
+    if (summary) summary.textContent = `${runtime.world === "a" ? "Field Ledger" : "Training Signal"} · ${SURFACE_LABELS[runtime.surface]}`;
   }
 
   function contextParams() {
-    return { world: runtime.world, surface: runtime.surface, route: runtime.route, state: runtime.state, date: runtime.filters.date, program: runtime.filters.program, view: runtime.view, class: runtime.selectedClass, member: runtime.memberContext, form: runtime.formContext, role: runtime.role };
+    return { world: runtime.world, surface: runtime.surface, route: runtime.route, state: runtime.state, date: runtime.filters.date, program: runtime.filters.program, view: runtime.view, class: runtime.selectedClass, member: runtime.memberContext, form: runtime.formContext, role: runtime.role, origin: runtime.rosterOrigin };
   }
 
   function syncUrl(mode = "replace", stateExtras = {}) {
@@ -385,10 +456,50 @@
     runtime.filters.program = safeChoice(params.get("program"), ["All programs", "Muay Thai", "Conditioning"], "All programs");
     runtime.view = safeChoice(params.get("view"), ["schedule", "roster"], "schedule");
     runtime.selectedClass = params.get("class") || "";
+    runtime.rosterOrigin = safeChoice(params.get("origin"), ["dashboard", "schedule", "coach"], "");
     runtime.memberContext = params.get("member") || "";
     runtime.formContext = params.get("form") || "";
     const fallbackRole = runtime.surface === "member" && !params.has("route") ? "member" : "owner";
     runtime.role = safeChoice(params.get("role"), ["owner", "coach", "member"], fallbackRole);
+  }
+
+  function applyRenderedRosterContext() {
+    const dashboardOrigin = app.querySelector('.dashboard-surface [data-view="roster"][data-class-context="fundamentals"]');
+    if (dashboardOrigin) {
+      dashboardOrigin.id = "dashboard-roster-fundamentals";
+      dashboardOrigin.dataset.originKey = dashboardOrigin.id;
+      dashboardOrigin.dataset.originContext = "dashboard";
+      const href = new URL(dashboardOrigin.getAttribute("href"), window.location.href);
+      href.searchParams.set("origin", "dashboard");
+      dashboardOrigin.setAttribute("href", `${href.pathname}${href.search}`);
+    }
+    const coachOrigin = app.querySelector('.coach-shell [data-action="open-roster"]');
+    if (coachOrigin) {
+      coachOrigin.id = "coach-roster-fundamentals";
+      coachOrigin.dataset.originKey = coachOrigin.id;
+      coachOrigin.dataset.originContext = "coach";
+    }
+    const roster = app.querySelector(".roster-view");
+    if (!roster) return;
+    const labels = { dashboard: "← Back to Today", schedule: "← Back to Schedule", coach: "← Back to Coach Today" };
+    const back = roster.querySelector('[data-action="history-back"]');
+    if (back) back.textContent = labels[runtime.rosterOrigin] || labels.schedule;
+    const headerCopy = roster.querySelector(".roster-header > div");
+    if (headerCopy && !headerCopy.querySelector(".roster-actor")) headerCopy.insertAdjacentHTML("beforeend", `<p class="roster-actor"><strong>Actor context</strong> · ${runtime.role === "coach" ? "Assigned coach · Coach Maya Chen" : "Owner"}</p>`);
+    const warning = roster.querySelector(".roster-warning");
+    if (warning) {
+      warning.querySelector("strong").textContent = "Preview only.";
+      warning.querySelector(":scope > span").textContent = "Selections update this browser tab only and are never saved. Choose one state per row; no bulk action.";
+    }
+    const hana = roster.querySelector(".waitlist-disclosure li:nth-child(2)");
+    if (hana) {
+      hana.querySelector("p").textContent = "Access review required if next; do not silently skip.";
+      const stamp = hana.querySelector(".status-stamp");
+      if (stamp) {
+        stamp.textContent = "Access review required if next";
+        stamp.className = "status-stamp status-caution";
+      }
+    }
   }
 
   function render({ focus = "" } = {}) {
@@ -397,6 +508,7 @@
     document.body.dataset.role = runtime.role;
     const renderer = runtime.route === "bookings" && runtime.role === "owner" ? ownerBookingsSurface : renderers[runtime.surface];
     app.innerHTML = renderer();
+    applyRenderedRosterContext();
     surfaceSelect.value = runtime.surface;
     stateSelect.value = runtime.state;
     applyWorld();
@@ -411,6 +523,7 @@
     runtime.selectedClass = options.selectedClass || "";
     runtime.memberContext = options.memberContext || "";
     runtime.formContext = options.formContext || "";
+    runtime.rosterOrigin = options.rosterOrigin || "";
     runtime.role = options.role || (surface === "member" && route === "member-schedule" ? "member" : "owner");
     syncUrl(options.replace ? "replace" : "push");
     render({ focus: options.focus || "#context-heading" });
@@ -451,7 +564,9 @@
     const routeLink = event.target.closest("[data-route-link]");
     if (routeLink) {
       event.preventDefault();
-      setRoute(routeLink.dataset.routeLink, routeLink.dataset.routeSurface, { view: routeLink.dataset.view || "schedule", selectedClass: routeLink.dataset.classContext || "", memberContext: routeLink.dataset.memberContext || "", formContext: routeLink.dataset.formContext || "", focus: routeLink.dataset.view === "roster" ? "#roster-heading" : "#context-heading" });
+      const rosterOrigin = routeLink.dataset.view === "roster" ? (routeLink.dataset.originContext || "schedule") : "";
+      if (rosterOrigin && routeLink.dataset.originKey) syncUrl("replace", { originKey: routeLink.dataset.originKey });
+      setRoute(routeLink.dataset.routeLink, routeLink.dataset.routeSurface, { view: routeLink.dataset.view || "schedule", selectedClass: routeLink.dataset.classContext || "", memberContext: routeLink.dataset.memberContext || "", formContext: routeLink.dataset.formContext || "", rosterOrigin, focus: routeLink.dataset.view === "roster" ? "#roster-heading" : "#context-heading" });
       return;
     }
     const button = event.target.closest("button");
@@ -469,11 +584,11 @@
     else if (action === "open-roster") {
       const originKey = button.dataset.originKey || "";
       if (originKey) syncUrl("replace", { originKey });
-      runtime.surface = "operations"; runtime.route = runtime.role === "coach" ? "coach-today" : "roster"; runtime.view = "roster"; runtime.selectedClass = button.dataset.class; syncUrl("push"); render({ focus: "#roster-heading" }); announce(`${CLASSES.find((item) => item.id === runtime.selectedClass)?.title || DEMO.className} roster opened.`);
+      runtime.rosterOrigin = button.dataset.originContext || (runtime.role === "coach" ? "coach" : "schedule"); runtime.surface = "operations"; runtime.route = runtime.role === "coach" ? "coach-today" : "roster"; runtime.view = "roster"; runtime.selectedClass = button.dataset.class; syncUrl("push"); render({ focus: "#roster-heading" }); announce(`${CLASSES.find((item) => item.id === runtime.selectedClass)?.title || DEMO.className} roster opened.`);
     } else if (action === "history-back") history.back();
     else if (action === "attendance") {
-      const id = button.dataset.member; runtime.attendance[id] = runtime.attendance[id] === button.dataset.value ? "" : button.dataset.value; render({ focus: `[data-attendance-row="${escapeSelector(id)}"]` }); announce(`${button.textContent.trim()} selected for ${button.closest("[data-attendance-row]")?.querySelector(".attendee strong")?.textContent}. Local prototype result; nothing saved.`);
-    } else if (action === "attendance-retry") { runtime.attendance[button.dataset.member] = "PRESENT"; render({ focus: `[data-attendance-row="${escapeSelector(button.dataset.member)}"]` }); announce("Local retry result shown. Nothing saved."); }
+      const id = button.dataset.member; runtime.attendance[id] = runtime.attendance[id] === button.dataset.value ? "" : button.dataset.value; render({ focus: `[data-attendance-row="${escapeSelector(id)}"]` }); announce(`${button.textContent.trim()} selected for ${button.closest("[data-attendance-row]")?.querySelector(".attendee strong")?.textContent}. Preview only; not saved.`);
+    } else if (action === "attendance-retry") { runtime.attendance[button.dataset.member] = "PRESENT"; render({ focus: `[data-attendance-row="${escapeSelector(button.dataset.member)}"]` }); announce("Local preview shown. Nothing was saved."); }
     else if (action === "attendance-latest") { runtime.attendance[button.dataset.member] = "LATE"; render({ focus: `[data-attendance-row="${escapeSelector(button.dataset.member)}"]` }); announce("Current attendance loaded: Late. Review before another change."); }
     else if (action === "waitlist-promote") { const receipt = app.querySelector("#promotion-receipt"); receipt.innerHTML = '<p class="inline-result"><strong>Local promotion receipt:</strong> Marcel Dubois · monthly membership access · one confirmed booking · no punch consumed · nothing saved.</p>'; receipt.focus?.(); announce("Local waitlist promotion receipt shown. Nothing saved."); }
     else if (action === "member-book") { const key = button.dataset.key; runtime.memberActions[key] = runtime.memberActions[key] === "booked" ? "available" : "booked"; render({ focus: `[data-member-class="${escapeSelector(key)}"] button` }); announce("Local booking state changed. Nothing saved."); }
@@ -486,6 +601,7 @@
     else if (action === "member-action-reset") { const key = button.dataset.key; runtime.memberActions[key] = button.dataset.resetState; render({ focus: `[data-member-class="${escapeSelector(key)}"] button` }); announce("Local class example reset."); }
     else if (action === "member-reset") { runtime.memberActions = { fundamentals: "available", pads: "booked", "night-engine": "full", "open-mat": "punch", "drop-in": "drop-in" }; render({ focus: '[data-action="member-reset"]' }); announce("Member class states reset."); }
     else if (action === "form-reset") { const form = app.querySelector("[data-prototype-form]"); form?.reset(); clearInvalid(form); const summary = app.querySelector("#form-errors"); if (summary) summary.hidden = true; button.focus(); announce("Form and validation state reset."); }
+    else if (action === "view-matching-form") { const matching = [...app.querySelectorAll("[data-matching-form]")].find((node) => node.getClientRects().length); matching?.focus(); matching?.scrollIntoView({ block: "center" }); announce("Matching Guardian waiver record focused."); }
     else if (action === "form-version-open") { runtime.formReview = true; runtime.formResult = false; render({ focus: "#form-version-title" }); announce("New form version consequences opened for review."); }
     else if (action === "form-version-cancel") { runtime.formReview = false; render({ focus: "#new-form-action" }); announce("New form version review closed. Nothing saved."); }
     else if (action === "form-version-confirm") { runtime.formReview = false; runtime.formResult = true; render({ focus: ".form-version-result" }); announce("Local form version result shown. Nothing saved and no email sent."); }
@@ -588,6 +704,10 @@
   });
 
   hydrateFromUrl();
+  if (window.matchMedia("(max-width: 640px)").matches) {
+    galleryControlsDisclosure.open = false;
+    simulationBoundary.open = false;
+  }
   render();
   syncUrl("replace");
 })();

@@ -20,57 +20,66 @@
       </div>
     </div>
 
-    <div class="gallery-controls">
-      <fieldset class="world-switch" aria-label="Visual world">
-        <legend>Visual world</legend>
-        <button type="button" data-action="world" data-world-value="a" aria-pressed="true">
-          <span>A</span> Field Ledger
-        </button>
-        <button type="button" data-action="world" data-world-value="b" aria-pressed="false">
-          <span>B</span> Training Signal
-        </button>
-      </fieldset>
+    <details class="gallery-controls-disclosure" open>
+      <summary>
+        <span>Explore prototype</span>
+        <span class="gallery-current-summary">Field Ledger · Shared foundation</span>
+      </summary>
+      <div class="gallery-controls">
+        <fieldset class="world-switch" aria-label="Visual world">
+          <legend>Visual world</legend>
+          <button type="button" data-action="world" data-world-value="a" aria-pressed="true">
+            <span>A</span> Field Ledger
+          </button>
+          <button type="button" data-action="world" data-world-value="b" aria-pressed="false">
+            <span>B</span> Training Signal
+          </button>
+        </fieldset>
 
-      <label class="control-label" for="surface-select">
-        <span>Surface</span>
-        <select id="surface-select" data-action="surface">
-          <option value="foundation">1 · Shared foundation</option>
-          <option value="dashboard">2 · Owner shell + dashboard</option>
-          <option value="operations">3 · Schedule + roster + attendance</option>
-          <option value="member">4 · Member schedule</option>
-          <option value="forms">5 · Forms + owner setup routes</option>
-          <option value="migration">6 · Migration</option>
-          <option value="billing">7 · Billing + provider</option>
-          <option value="landing">8 · Landing refinement</option>
-        </select>
-      </label>
+        <label class="control-label" for="surface-select">
+          <span>Surface</span>
+          <select id="surface-select" data-action="surface">
+            <option value="foundation">1 · Shared foundation</option>
+            <option value="dashboard">2 · Owner shell + dashboard</option>
+            <option value="operations">3 · Schedule + roster + attendance</option>
+            <option value="member">4 · Member schedule</option>
+            <option value="forms">5 · Forms + owner setup routes</option>
+            <option value="migration">6 · Migration</option>
+            <option value="billing">7 · Billing + provider</option>
+            <option value="landing">8 · Landing refinement</option>
+          </select>
+        </label>
 
-      <label class="control-label" for="state-select">
-        <span>State lens</span>
-        <select id="state-select" data-action="state">
-          <option value="default">Default / interactive</option>
-          <option value="loading">Loading</option>
-          <option value="empty">Empty</option>
-          <option value="working">Working</option>
-          <option value="success">Success</option>
-          <option value="validation">Validation error</option>
-          <option value="unavailable">Action unavailable</option>
-          <option value="stale">Stale conflict</option>
-          <option value="permission">Permission restricted</option>
-          <option value="provider-missing">Provider setup missing</option>
-          <option value="outage">Stripe status unavailable</option>
-          <option value="planned">Planned</option>
-          <option value="readonly">Read-only</option>
-          <option value="waiting">Waiting</option>
-          <option value="confirmation">Review before confirming</option>
-          <option value="long">Long-content stress</option>
-        </select>
-      </label>
-    </div>
+        <label class="control-label" for="state-select">
+          <span>State lens</span>
+          <select id="state-select" data-action="state">
+            <option value="default">Default / interactive</option>
+            <option value="loading">Loading</option>
+            <option value="empty">Empty</option>
+            <option value="working">Working</option>
+            <option value="success">Success</option>
+            <option value="validation">Validation error</option>
+            <option value="unavailable">Action unavailable</option>
+            <option value="stale">Stale conflict</option>
+            <option value="permission">Permission restricted</option>
+            <option value="provider-missing">Provider setup missing</option>
+            <option value="outage">Stripe status unavailable</option>
+            <option value="planned">Planned</option>
+            <option value="readonly">Read-only</option>
+            <option value="waiting">Waiting</option>
+            <option value="confirmation">Review before confirming</option>
+            <option value="long">Long-content stress</option>
+          </select>
+        </label>
+      </div>
+    </details>
 
     <div class="gallery-meta">
       <span class="status-stamp status-info">Design prototype</span>
-      <span>Simulated · local browser state · no backend or live provider</span>
+      <details class="simulation-boundary">
+        <summary>Simulation boundaries</summary>
+        <p>Simulated local browser state only. No backend, durable write, email, booking, payment, migration mutation, or live provider action occurs.</p>
+      </details>
       <button class="gallery-menu-button" type="button" data-action="menu-open" aria-expanded="false" aria-controls="prototype-menu">
         Explore menu
       </button>
