@@ -1,7 +1,100 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { prisma, type StripeConnectionStatus } from "@flowstate/db";
 import Stripe from "stripe";
 
 const checkoutExpirationSeconds = 15 * 60;
+const checkoutReturnMaxAgeMs = 15 * 60 * 1000;
+const checkoutReturnFutureToleranceMs = 60 * 1000;
+const localCheckoutReturnKeyEnv = "FLOWSTATE_LOCAL_CHECKOUT_RETURN_KEY";
+
+export type CheckoutReturnOutcome = "pending" | "success" | "failure";
+
+export type CheckoutReturnState =
+  | {
+      status: "unverified";
+    }
+  | {
+      status: "verified";
+      outcome: CheckoutReturnOutcome;
+      source: "local_fixture";
+      issuedAt: Date;
+    };
+
+function isCheckoutReturnOutcome(value: string): value is CheckoutReturnOutcome {
+  return value === "pending" || value === "success" || value === "failure";
+}
+
+export function verifyLocalCheckoutReturn(args: {
+  checkoutReturn: string | string[] | undefined;
+  workspaceId: string;
+  memberId: string;
+  now?: Date;
+  fixtureKey?: string;
+  environment?: string;
+}): CheckoutReturnState {
+  const fixtureKey = args.fixtureKey ?? process.env[localCheckoutReturnKeyEnv];
+  const environment = args.environment ?? process.env.NODE_ENV;
+
+  if (
+    environment === "production" ||
+    !fixtureKey ||
+    typeof args.checkoutReturn !== "string"
+  ) {
+    return { status: "unverified" };
+  }
+
+  const parts = args.checkoutReturn.split(".");
+  if (parts.length !== 4) {
+    return { status: "unverified" };
+  }
+
+  const [version, outcome, issuedAtInput, signature] = parts as [
+    string,
+    string,
+    string,
+    string,
+  ];
+  if (
+    version !== "v1" ||
+    !isCheckoutReturnOutcome(outcome) ||
+    !/^\d+$/.test(issuedAtInput) ||
+    !/^[A-Za-z0-9_-]{43}$/.test(signature)
+  ) {
+    return { status: "unverified" };
+  }
+
+  const issuedAtMs = Number(issuedAtInput);
+  const nowMs = (args.now ?? new Date()).getTime();
+  if (
+    !Number.isSafeInteger(issuedAtMs) ||
+    issuedAtMs <= 0 ||
+    nowMs - issuedAtMs > checkoutReturnMaxAgeMs ||
+    issuedAtMs - nowMs > checkoutReturnFutureToleranceMs
+  ) {
+    return { status: "unverified" };
+  }
+
+  const payload = `${version}.${outcome}.${issuedAtInput}`;
+  const expectedSignature = createHmac("sha256", fixtureKey)
+    .update(`${payload}.${args.workspaceId}.${args.memberId}`)
+    .digest("base64url");
+  const providedBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expectedSignature);
+
+  if (
+    providedBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(providedBuffer, expectedBuffer)
+  ) {
+    return { status: "unverified" };
+  }
+
+  return {
+    status: "verified",
+    outcome,
+    source: "local_fixture",
+    issuedAt: new Date(issuedAtMs),
+  };
+}
 
 interface WorkspaceStripeSettingsRecord {
   stripeAccountId: string | null;

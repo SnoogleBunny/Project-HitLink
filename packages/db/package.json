@@ -9,9 +9,10 @@
   "scripts": {
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit",
-    "test": "pnpm run test:workspace-readiness && pnpm run test:demo-safety && pnpm run test:migration-schema && pnpm run db:validate",
+    "test": "pnpm run test:workspace-readiness && pnpm run test:demo-safety && pnpm run test:demo-waiver-pdf && pnpm run test:migration-schema && pnpm run db:validate",
     "test:workspace-readiness": "vitest run src/workspace-readiness.test.ts",
     "test:demo-safety": "node --test prisma/demo-database-safety.test.mjs",
+    "test:demo-waiver-pdf": "node --test prisma/demo-waiver-pdf.test.mjs",
     "test:migration-schema": "node --test prisma/migration-operations-schema.test.mjs",
     "db:generate": "prisma generate --schema prisma/schema.prisma",
     "db:migrate": "dotenv -e ../../.env -- prisma migrate dev --schema prisma/schema.prisma",

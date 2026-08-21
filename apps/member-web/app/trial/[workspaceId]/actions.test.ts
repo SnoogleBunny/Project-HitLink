@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createTrialBookingMock, issueTrialMagicLinkRequestsMock } = vi.hoisted(() => ({
+const { createTrialBookingMock } = vi.hoisted(() => ({
   createTrialBookingMock: vi.fn(),
-  issueTrialMagicLinkRequestsMock: vi.fn(),
 }));
 
 vi.mock("../../../lib/trial-booking", () => ({
@@ -11,7 +10,6 @@ vi.mock("../../../lib/trial-booking", () => ({
 
 vi.mock("@flowstate/db", () => ({
   buildMagicLinkPath: (token: string) => `/sign/forms/${token}`,
-  issueTrialMagicLinkRequests: issueTrialMagicLinkRequestsMock,
 }));
 
 import { emptyTrialBookingFormState } from "../../form-states";
@@ -37,7 +35,6 @@ function buildFormData() {
 describe("trial booking action", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    issueTrialMagicLinkRequestsMock.mockResolvedValue([]);
   });
 
   it("returns a friendly helper error", async () => {
@@ -62,15 +59,15 @@ describe("trial booking action", () => {
       classTitle: "Muay Thai Fundamentals",
       scheduledForDate: "2026-04-07",
       startsAt: new Date("2026-04-08T01:00:00.000Z"),
+      forms: [
+        {
+          requestId: "request_1",
+          token: "request_1.token",
+          formName: "Adult Waiver",
+          guardianName: null,
+        },
+      ],
     });
-    issueTrialMagicLinkRequestsMock.mockResolvedValue([
-      {
-        requestId: "request_1",
-        token: "request_1.token",
-        formName: "Adult Waiver",
-        guardianName: null,
-      },
-    ]);
 
     await expect(
       createTrialBookingAction(emptyTrialBookingFormState, buildFormData()),
@@ -102,10 +99,6 @@ describe("trial booking action", () => {
         guardianPhone: "",
         relationshipLabel: "",
       },
-    });
-    expect(issueTrialMagicLinkRequestsMock).toHaveBeenCalledWith({
-      workspaceId: "workspace_1",
-      memberId: "member_1",
     });
   });
 });

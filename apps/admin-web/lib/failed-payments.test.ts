@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  formatBillingStateStatus,
   listFailedPaymentQueue,
   markPaymentUpdateRequested,
   retryFailedPaymentNow,
@@ -86,6 +87,28 @@ function createStripeMock(): StripeBillingGateway {
 }
 
 describe("failed payment helpers", () => {
+  it.each([
+    ["NOT_READY", "Billing not ready"],
+    ["ACTIVE", "Active"],
+    ["PENDING_PAYMENT_METHOD", "Payment method needed"],
+    ["PAST_DUE", "Past due"],
+    ["PAYMENT_FAILED", "Payment failed"],
+    ["ACTION_REQUIRED", "Member action needed"],
+    ["FROZEN", "Frozen"],
+    ["CANCELLED", "Cancelled"],
+    ["ENDED", "Ended"],
+  ])("maps owner billing state %s to %s", (source, display) => {
+    expect(formatBillingStateStatus(source, "failed-payment-queue")).toBe(
+      display,
+    );
+  });
+
+  it("keeps unknown returned queue states visible for owner review", () => {
+    expect(
+      formatBillingStateStatus("FUTURE_BILLING_STATE", "failed-payment-queue"),
+    ).toBe("Needs review");
+  });
+
   it("lists only actionable failed payment statuses", async () => {
     const db = createMockDb();
 
@@ -199,4 +222,3 @@ describe("failed payment helpers", () => {
     });
   });
 });
-

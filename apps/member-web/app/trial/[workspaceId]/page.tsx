@@ -18,18 +18,21 @@ export default async function TrialBookingPage({
     notFound();
   }
 
-  const templates = options.templates.map((template) => ({
-    id: template.id,
-    displayTitle: template.displayTitle,
-    programName: template.programName,
-    roomName: template.roomName,
-    coachDisplayName: template.coachDisplayName,
-    dateOptions: template.dateOptions.map((dateOption) => ({
-      classTemplateId: dateOption.classTemplateId,
-      scheduledForDate: dateOption.scheduledForDate,
-      label: dateOption.label,
-    })),
-  }));
+  const templates =
+    options.status === "available"
+      ? options.templates.map((template) => ({
+          id: template.id,
+          displayTitle: template.displayTitle,
+          programName: template.programName,
+          roomName: template.roomName,
+          coachDisplayName: template.coachDisplayName,
+          dateOptions: template.dateOptions.map((dateOption) => ({
+            classTemplateId: dateOption.classTemplateId,
+            scheduledForDate: dateOption.scheduledForDate,
+            label: dateOption.label,
+          })),
+        }))
+      : [];
 
   return (
     <main className="trial-page">
@@ -42,14 +45,17 @@ export default async function TrialBookingPage({
         </p>
       </section>
 
-      {templates.length === 0 ? (
+      {options.status === "no-eligible-dates" ? (
         <section className="trial-card">
           <p className="trial-eyebrow">No trial dates</p>
           <h2>Classes are not available right now</h2>
-          <p>Check back after the gym publishes active recurring classes.</p>
+          <p>Check back later for an available trial date.</p>
         </section>
       ) : (
-        <TrialBookingForm workspaceId={options.workspaceId} templates={templates} />
+        <TrialBookingForm
+          workspaceId={options.workspaceId}
+          templates={templates}
+        />
       )}
     </main>
   );

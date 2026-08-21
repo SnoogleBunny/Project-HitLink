@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { waitlistStyles } from "../lib/content";
 import type { WaitlistState } from "../lib/waitlist";
@@ -12,50 +12,111 @@ const initialState: WaitlistState = {
   errors: {},
 };
 
-function SubmitButton() {
+function SubmitButton({ terminal }: { terminal: boolean }) {
   const { pending } = useFormStatus();
 
   return (
-    <button className="button button-primary form-submit" disabled={pending} type="submit">
-      {pending ? "Saving your place" : "Join the Founding Gym waitlist"}
+    <button
+      className="button button-primary form-submit"
+      disabled={pending || terminal}
+      type="submit"
+    >
+      {pending
+        ? "Saving your request…"
+        : terminal
+          ? "Request saved locally"
+          : "Join the Founding Gym waitlist"}
     </button>
   );
 }
 
-function FieldError({ message }: { message?: string }) {
+function FieldError({ id, message }: { id: string; message?: string }) {
   if (!message) {
     return null;
   }
 
-  return <p className="field-error">{message}</p>;
+  return (
+    <span className="field-error" id={id}>
+      {message}
+    </span>
+  );
 }
+
+const fieldOrder = ["ownerName", "gymName", "email", "style", "note"] as const;
 
 export function WaitlistForm() {
   const [state, formAction] = useActionState(joinWaitlistAction, initialState);
   const hasMessage = Boolean(state.message);
+  const attemptIdRef = useRef<HTMLInputElement>(null);
+  const messageRef = useRef<HTMLDivElement>(null);
+  const submittingRef = useRef(false);
+  const terminal = state.status === "success" || state.status === "duplicate";
+  const firstInvalidField = fieldOrder.find((field) => state.errors[field]);
+
+  useEffect(() => {
+    submittingRef.current = false;
+
+    if (state.status === "error" && state.message) {
+      messageRef.current?.focus();
+    }
+  }, [state.message, state.status]);
 
   return (
-    <form action={formAction} className="waitlist-form" noValidate>
+    <form
+      action={formAction}
+      className="waitlist-form"
+      noValidate
+      onSubmit={(event) => {
+        if (terminal || submittingRef.current) {
+          event.preventDefault();
+          return;
+        }
+
+        submittingRef.current = true;
+        if (attemptIdRef.current && !attemptIdRef.current.value) {
+          attemptIdRef.current.value = crypto.randomUUID();
+        }
+      }}
+    >
+      <input
+        defaultValue={state.attemptId}
+        key={state.attemptId ?? "attempt-initial"}
+        name="attemptId"
+        ref={attemptIdRef}
+        type="hidden"
+      />
       <div className="form-intro">
         <p className="section-kicker">Founding Gym access</p>
         <h2>Join the first wave of Flowstate gyms.</h2>
         <p>
-          Founding gyms receive 15% off monthly pricing, grandfathered after
-          launch.
+          Qualifying gyms that join the Founding Gym waitlist and onboard during
+          the founding window receive 15% off monthly software pricing. The 15%
+          discount is grandfathered after launch.
         </p>
       </div>
 
       <div className="form-fields">
         {hasMessage ? (
           <div
+            aria-atomic="true"
             className={
-              state.status === "success"
+              state.status === "success" || state.status === "duplicate"
                 ? "form-message form-message-success"
                 : "form-message form-message-error"
             }
-            role={state.status === "success" ? "status" : "alert"}
+            ref={messageRef}
+            role={
+              state.status === "success" || state.status === "duplicate"
+                ? "status"
+                : "alert"
+            }
+            tabIndex={state.status === "error" ? -1 : undefined}
           >
-            {state.message}
+            {state.status === "error" && firstInvalidField ? (
+              <a href={`#${firstInvalidField}`}>{state.message}</a>
+            ) : (
+              state.message
+            )}
           </div>
         ) : null}
 
@@ -68,30 +129,30 @@ export function WaitlistForm() {
               }
               aria-invalid={Boolean(state.errors.ownerName)}
               autoComplete="name"
+              defaultValue={state.values?.ownerName}
               id="ownerName"
               name="ownerName"
               required
               type="text"
             />
-            <span id="ownerName-error">
-              <FieldError message={state.errors.ownerName} />
-            </span>
+            <FieldError id="ownerName-error" message={state.errors.ownerName} />
           </label>
 
           <label className="field">
             <span>Gym name</span>
             <input
-              aria-describedby={state.errors.gymName ? "gymName-error" : undefined}
+              aria-describedby={
+                state.errors.gymName ? "gymName-error" : undefined
+              }
               aria-invalid={Boolean(state.errors.gymName)}
               autoComplete="organization"
+              defaultValue={state.values?.gymName}
               id="gymName"
               name="gymName"
               required
               type="text"
             />
-            <span id="gymName-error">
-              <FieldError message={state.errors.gymName} />
-            </span>
+            <FieldError id="gymName-error" message={state.errors.gymName} />
           </label>
         </div>
 
@@ -102,14 +163,13 @@ export function WaitlistForm() {
               aria-describedby={state.errors.email ? "email-error" : undefined}
               aria-invalid={Boolean(state.errors.email)}
               autoComplete="email"
+              defaultValue={state.values?.email}
               id="email"
               name="email"
               required
               type="email"
             />
-            <span id="email-error">
-              <FieldError message={state.errors.email} />
-            </span>
+            <FieldError id="email-error" message={state.errors.email} />
           </label>
 
           <label className="field">
@@ -117,7 +177,9 @@ export function WaitlistForm() {
             <select
               aria-describedby={state.errors.style ? "style-error" : undefined}
               aria-invalid={Boolean(state.errors.style)}
+              defaultValue={state.values?.style}
               id="style"
+              key={state.values?.style ?? "style-initial"}
               name="style"
               required
             >
@@ -128,9 +190,7 @@ export function WaitlistForm() {
                 </option>
               ))}
             </select>
-            <span id="style-error">
-              <FieldError message={state.errors.style} />
-            </span>
+            <FieldError id="style-error" message={state.errors.style} />
           </label>
         </div>
 
@@ -139,17 +199,16 @@ export function WaitlistForm() {
           <textarea
             aria-describedby={state.errors.note ? "note-error" : undefined}
             aria-invalid={Boolean(state.errors.note)}
+            defaultValue={state.values?.note}
             id="note"
             maxLength={500}
             name="note"
             rows={4}
           />
-          <span id="note-error">
-            <FieldError message={state.errors.note} />
-          </span>
+          <FieldError id="note-error" message={state.errors.note} />
         </label>
 
-        <SubmitButton />
+        <SubmitButton terminal={terminal} />
       </div>
     </form>
   );

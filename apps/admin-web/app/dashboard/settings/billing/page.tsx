@@ -5,17 +5,52 @@ import {
   formatStripeConnectionStatus,
   getWorkspaceStripeSettings,
 } from "../../../../lib/stripe-settings";
+import { connectStripeAction, refreshStripeConnectionAction } from "./actions";
 import {
-  connectStripeAction,
-  refreshStripeConnectionAction,
-} from "./actions";
-import { GracePeriodForm } from "./grace-period-form";
+  BillingSettingsRecoveryAlert,
+  GracePeriodForm,
+} from "./grace-period-form";
 
-export default async function BillingSettingsPage() {
+type StripeProviderAvailability =
+  | {
+      status: "ready";
+    }
+  | {
+      status: "unavailable";
+      message: string;
+    };
+
+type BillingSettingsWithProviderAvailability = Awaited<
+  ReturnType<typeof getWorkspaceStripeSettings>
+> & {
+  providerAvailability?: StripeProviderAvailability;
+};
+
+const missingProviderAvailability: StripeProviderAvailability = {
+  status: "unavailable",
+  message:
+    "Stripe connection availability could not be verified. Connect and refresh are unavailable.",
+};
+
+interface BillingSettingsPageProps {
+  searchParams?: Promise<{
+    stripe?: string;
+  }>;
+}
+
+export default async function BillingSettingsPage({
+  searchParams,
+}: BillingSettingsPageProps = {}) {
   const { session, workspace } = await requireOwnerWorkspaceContext();
-  const settings = await getWorkspaceStripeSettings({
+  const settings = (await getWorkspaceStripeSettings({
     workspaceId: workspace.id,
-  });
+  })) as BillingSettingsWithProviderAvailability;
+  const params = await searchParams;
+  const providerAvailability =
+    settings.providerAvailability ?? missingProviderAvailability;
+  const providerUnavailable = providerAvailability.status === "unavailable";
+  const providerUnavailableReasonId = "stripe-provider-unavailable-reason";
+  const providerActionFailed = params?.stripe === "unavailable";
 
   return (
     <AdminShell
@@ -33,16 +68,29 @@ export default async function BillingSettingsPage() {
       <div className="management-grid">
         <section className="management-card">
           <p className="dashboard-card-label">Stripe Connect</p>
+          {providerActionFailed ? (
+            <BillingSettingsRecoveryAlert
+              message={
+                providerUnavailable
+                  ? providerAvailability.message
+                  : "Stripe did not start. Review the current connection status before trying again."
+              }
+            />
+          ) : null}
           <div className="stack-item-heading">
             <h3>{formatStripeConnectionStatus(settings.connectionStatus)}</h3>
             <span
               className={`status-pill ${
-                settings.connectionStatus === "ACTIVE"
+                !providerUnavailable && settings.connectionStatus === "ACTIVE"
                   ? "status-pill-success"
                   : ""
               }`}
             >
-              {settings.chargesEnabled ? "Charges enabled" : "Setup needed"}
+              {providerUnavailable
+                ? "Stripe unavailable"
+                : settings.chargesEnabled
+                  ? "Charges enabled"
+                  : "Setup needed"}
             </span>
           </div>
           <dl className="detail-list">
@@ -59,14 +107,33 @@ export default async function BillingSettingsPage() {
               <dd>{settings.payoutsEnabled ? "Yes" : "No"}</dd>
             </div>
           </dl>
+          {providerUnavailable ? (
+            <p className="management-copy" id={providerUnavailableReasonId}>
+              {providerAvailability.message}
+            </p>
+          ) : null}
           <div className="dashboard-actions">
             <form action={connectStripeAction}>
-              <button className="button" type="submit">
+              <button
+                aria-describedby={
+                  providerUnavailable ? providerUnavailableReasonId : undefined
+                }
+                className="button"
+                disabled={providerUnavailable}
+                type="submit"
+              >
                 {settings.stripeAccountId ? "Continue setup" : "Connect Stripe"}
               </button>
             </form>
             <form action={refreshStripeConnectionAction}>
-              <button className="button button-secondary" type="submit">
+              <button
+                aria-describedby={
+                  providerUnavailable ? providerUnavailableReasonId : undefined
+                }
+                className="button button-secondary"
+                disabled={providerUnavailable}
+                type="submit"
+              >
                 Refresh status
               </button>
             </form>
@@ -81,13 +148,10 @@ export default async function BillingSettingsPage() {
             stays deferred.
           </p>
           <GracePeriodForm
-            failedPaymentGracePeriodDays={
-              settings.failedPaymentGracePeriodDays
-            }
+            failedPaymentGracePeriodDays={settings.failedPaymentGracePeriodDays}
           />
         </section>
       </div>
     </AdminShell>
   );
 }
-

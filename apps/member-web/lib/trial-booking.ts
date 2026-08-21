@@ -1,9 +1,12 @@
 import {
   buildUpcomingOccurrenceDateOptions,
   dateOnlyStringToUtcDate,
+  issueTrialMagicLinkRequests,
   prisma,
   toDateOnlyString,
   type ClassBookingStatus,
+  type FormsDatabase,
+  type IssuedMagicLinkRequest,
   type Weekday,
 } from "@flowstate/db";
 
@@ -19,6 +22,8 @@ export interface TrialBookingTemplateForDates {
   startTimeMinutes: number;
   endTimeMinutes: number;
   bookingCutoffMinutes: number;
+  capacityOverride: number | null;
+  roomCapacity: number | null;
   programName: string;
   roomName: string;
   coachDisplayName: string;
@@ -31,8 +36,7 @@ export interface TrialBookingDateOption {
   label: string;
 }
 
-export interface TrialBookingTemplateOption
-  extends TrialBookingTemplateForDates {
+export interface TrialBookingTemplateOption extends TrialBookingTemplateForDates {
   dateOptions: TrialBookingDateOption[];
 }
 
@@ -66,11 +70,13 @@ interface TrialClassTemplateRecord {
   startTimeMinutes: number;
   endTimeMinutes: number;
   bookingCutoffMinutes: number;
+  capacityOverride: number | null;
   program: {
     name: string;
   };
   room: {
     name: string;
+    capacity: number | null;
   };
   coachWorkspaceUser: {
     user: {
@@ -81,6 +87,9 @@ interface TrialClassTemplateRecord {
 }
 
 interface TrialBookingTransactionDatabase {
+  classInstance: {
+    findFirst(args: Record<string, unknown>): Promise<{ id: string } | null>;
+  };
   member: {
     create(args: Record<string, unknown>): Promise<{ id: string }>;
     findFirst(args: Record<string, unknown>): Promise<{ id: string } | null>;
@@ -98,6 +107,7 @@ interface TrialBookingTransactionDatabase {
     findFirst(
       args: Record<string, unknown>,
     ): Promise<{ id: string; status: ClassBookingStatus } | null>;
+    count(args: Record<string, unknown>): Promise<number>;
     create(args: Record<string, unknown>): Promise<{ id: string }>;
     update(args: Record<string, unknown>): Promise<{ id: string }>;
   };
@@ -105,22 +115,38 @@ interface TrialBookingTransactionDatabase {
 
 interface TrialBookingDatabase extends TrialBookingTransactionDatabase {
   workspace: {
-    findFirst(args: Record<string, unknown>): Promise<TrialWorkspaceRecord | null>;
+    findFirst(
+      args: Record<string, unknown>,
+    ): Promise<TrialWorkspaceRecord | null>;
   };
   classTemplate: {
-    findMany(args: Record<string, unknown>): Promise<TrialClassTemplateRecord[]>;
+    findMany(
+      args: Record<string, unknown>,
+    ): Promise<TrialClassTemplateRecord[]>;
   };
   $transaction<T>(
     callback: (tx: TrialBookingTransactionDatabase) => Promise<T>,
+    options?: {
+      isolationLevel: "Serializable";
+    },
   ): Promise<T>;
 }
 
-export interface TrialBookingOptionsResult {
-  workspaceId: string;
-  workspaceName: string;
-  timezone: string;
-  templates: TrialBookingTemplateOption[];
-}
+export type TrialBookingOptionsResult =
+  | {
+      status: "available";
+      workspaceId: string;
+      workspaceName: string;
+      timezone: string;
+      templates: TrialBookingTemplateOption[];
+    }
+  | {
+      status: "no-eligible-dates";
+      workspaceId: string;
+      workspaceName: string;
+      timezone: string;
+      activeTemplateCount: number;
+    };
 
 type TrialBookingMutationResult =
   | {
@@ -130,6 +156,7 @@ type TrialBookingMutationResult =
       classTitle: string;
       scheduledForDate: string;
       startsAt: Date;
+      forms: IssuedMagicLinkRequest[];
     }
   | {
       status: "error";
@@ -174,7 +201,10 @@ function parseDateOnly(
 
   const parsed = new Date(`${dateString}T00:00:00.000Z`);
 
-  if (Number.isNaN(parsed.getTime()) || toDateOnlyString(parsed) !== dateString) {
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    toDateOnlyString(parsed) !== dateString
+  ) {
     return "invalid";
   }
 
@@ -197,6 +227,8 @@ function mapClassTemplate(
     startTimeMinutes: template.startTimeMinutes,
     endTimeMinutes: template.endTimeMinutes,
     bookingCutoffMinutes: template.bookingCutoffMinutes,
+    capacityOverride: template.capacityOverride,
+    roomCapacity: template.room.capacity,
     programName: template.program.name,
     roomName: template.room.name,
     coachDisplayName: coachName || template.coachWorkspaceUser.user.email,
@@ -220,11 +252,13 @@ export function buildTrialBookingDateOptions(args: {
   })
     .map(({ template, dateOptions }) => ({
       ...template,
-      dateOptions: dateOptions.filter(
-        (option) =>
-          args.now.getTime() <
-          option.startsAt.getTime() - template.bookingCutoffMinutes * 60_000,
-      ).slice(0, occurrenceCount),
+      dateOptions: dateOptions
+        .filter(
+          (option) =>
+            args.now.getTime() <
+            option.startsAt.getTime() - template.bookingCutoffMinutes * 60_000,
+        )
+        .slice(0, occurrenceCount),
     }))
     .filter((template) => template.dateOptions.length > 0);
 }
@@ -233,12 +267,10 @@ export function findTrialBookingDateOption(args: {
   options: TrialBookingTemplateOption[];
   classTemplateId: string;
   scheduledForDate: string;
-}):
-  | {
-      template: TrialBookingTemplateOption;
-      dateOption: TrialBookingDateOption;
-    }
-  | null {
+}): {
+  template: TrialBookingTemplateOption;
+  dateOption: TrialBookingDateOption;
+} | null {
   for (const template of args.options) {
     if (template.id !== args.classTemplateId) {
       continue;
@@ -262,15 +294,12 @@ export function findTrialBookingDateOption(args: {
 async function getTrialWorkspaceData(args: {
   workspaceId: string;
   db: TrialBookingDatabase;
-}): Promise<
-  | {
-      workspace: TrialWorkspaceRecord & {
-        location: NonNullable<TrialWorkspaceRecord["location"]>;
-      };
-      templates: TrialBookingTemplateForDates[];
-    }
-  | null
-> {
+}): Promise<{
+  workspace: TrialWorkspaceRecord & {
+    location: NonNullable<TrialWorkspaceRecord["location"]>;
+  };
+  templates: TrialBookingTemplateForDates[];
+} | null> {
   const workspace = await args.db.workspace.findFirst({
     where: {
       id: args.workspaceId,
@@ -312,6 +341,7 @@ async function getTrialWorkspaceData(args: {
       room: {
         select: {
           name: true,
+          capacity: true,
         },
       },
       coachWorkspaceUser: {
@@ -359,15 +389,28 @@ export async function listTrialBookingOptions(args: {
     return null;
   }
 
+  const templates = buildTrialBookingDateOptions({
+    templates: data.templates,
+    timezone: data.workspace.location.timezone,
+    now: args.now ?? new Date(),
+  });
+
+  if (templates.length === 0) {
+    return {
+      status: "no-eligible-dates",
+      workspaceId: data.workspace.id,
+      workspaceName: data.workspace.name,
+      timezone: data.workspace.location.timezone,
+      activeTemplateCount: data.templates.length,
+    };
+  }
+
   return {
+    status: "available",
     workspaceId: data.workspace.id,
     workspaceName: data.workspace.name,
     timezone: data.workspace.location.timezone,
-    templates: buildTrialBookingDateOptions({
-      templates: data.templates,
-      timezone: data.workspace.location.timezone,
-      now: args.now ?? new Date(),
-    }),
+    templates,
   };
 }
 
@@ -457,7 +500,8 @@ function validateTrialBookingInput(
   if (hasGuardianContact && !input.guardianFullName) {
     return {
       status: "error",
-      message: "Guardian full name is required when guardian details are provided.",
+      message:
+        "Guardian full name is required when guardian details are provided.",
     };
   }
 
@@ -623,9 +667,12 @@ export async function createTrialBooking(args: {
   input: TrialBookingFormInput;
   db?: TrialBookingDatabase;
   now?: Date;
+  issueFormRequests?: typeof issueTrialMagicLinkRequests;
 }): Promise<TrialBookingMutationResult> {
   const db = args.db ?? trialBookingDatabase;
   const now = args.now ?? new Date();
+  const issueFormRequests =
+    args.issueFormRequests ?? issueTrialMagicLinkRequests;
   const input = validateTrialBookingInput(
     sanitizeTrialBookingInput(args.input, now),
   );
@@ -664,84 +711,149 @@ export async function createTrialBooking(args: {
     };
   }
 
-  return db.$transaction(async (tx) => {
-    const member = await findOrCreateTrialMember({
-      workspaceId: args.workspaceId,
-      input,
-      tx,
-    });
-    const guardian = await findOrCreateGuardian({
-      workspaceId: args.workspaceId,
-      memberId: member.id,
-      input,
-      tx,
-    });
-
-    if (guardian === "too-many-guardians") {
-      return {
-        status: "error",
-        message: "This member already has two guardians linked.",
-      };
-    }
-
-    const scheduledForDate = dateOnlyStringToUtcDate(
-      selectedOption.dateOption.scheduledForDate,
-    );
-    const existingBooking = await tx.classBooking.findFirst({
-      where: {
-        workspaceId: args.workspaceId,
-        memberId: member.id,
-        classTemplateId: selectedOption.template.id,
-        scheduledForDate,
-      },
-      select: {
-        id: true,
-        status: true,
-      },
-    });
-
-    if (existingBooking && existingBooking.status !== "CANCELLED") {
-      return {
-        status: "error",
-        message: "This member already has a booking for that class date.",
-      };
-    }
-
-    const booking = existingBooking
-      ? await tx.classBooking.update({
+  try {
+    return await db.$transaction(
+      async (tx) => {
+        const scheduledForDate = dateOnlyStringToUtcDate(
+          selectedOption.dateOption.scheduledForDate,
+        );
+        const cancelledInstance = await tx.classInstance.findFirst({
           where: {
-            id: existingBooking.id,
-          },
-          data: {
-            status: "BOOKED",
-          },
-          select: {
-            id: true,
-          },
-        })
-      : await tx.classBooking.create({
-          data: {
             workspaceId: args.workspaceId,
-            memberId: member.id,
-            guardianId: guardian?.id ?? null,
             classTemplateId: selectedOption.template.id,
             scheduledForDate,
-            bookingType: "TRIAL",
-            status: "BOOKED",
-            source: "PUBLIC_TRIAL",
+            status: "CANCELLED",
           },
           select: {
             id: true,
           },
         });
 
+        if (cancelledInstance) {
+          return {
+            status: "error",
+            message: "Choose an available upcoming trial date.",
+          };
+        }
+
+        const effectiveCapacity =
+          selectedOption.template.capacityOverride ??
+          selectedOption.template.roomCapacity;
+
+        if (effectiveCapacity !== null) {
+          const activeBookingCount = await tx.classBooking.count({
+            where: {
+              workspaceId: args.workspaceId,
+              classTemplateId: selectedOption.template.id,
+              scheduledForDate,
+              status: {
+                in: ["BOOKED", "PENDING_PAYMENT"],
+              },
+            },
+          });
+
+          if (activeBookingCount >= effectiveCapacity) {
+            return {
+              status: "error",
+              message:
+                "This class is full. Choose another available trial date.",
+            };
+          }
+        }
+
+        const member = await findOrCreateTrialMember({
+          workspaceId: args.workspaceId,
+          input,
+          tx,
+        });
+        const guardian = await findOrCreateGuardian({
+          workspaceId: args.workspaceId,
+          memberId: member.id,
+          input,
+          tx,
+        });
+
+        if (guardian === "too-many-guardians") {
+          return {
+            status: "error",
+            message: "This member already has two guardians linked.",
+          };
+        }
+
+        const existingBooking = await tx.classBooking.findFirst({
+          where: {
+            workspaceId: args.workspaceId,
+            memberId: member.id,
+            classTemplateId: selectedOption.template.id,
+            scheduledForDate,
+          },
+          select: {
+            id: true,
+            status: true,
+          },
+        });
+
+        if (existingBooking && existingBooking.status !== "CANCELLED") {
+          return {
+            status: "error",
+            message: "This member already has a booking for that class date.",
+          };
+        }
+
+        const booking = existingBooking
+          ? await tx.classBooking.update({
+              where: {
+                id: existingBooking.id,
+              },
+              data: {
+                status: "BOOKED",
+              },
+              select: {
+                id: true,
+              },
+            })
+          : await tx.classBooking.create({
+              data: {
+                workspaceId: args.workspaceId,
+                memberId: member.id,
+                guardianId: guardian?.id ?? null,
+                classTemplateId: selectedOption.template.id,
+                scheduledForDate,
+                bookingType: "TRIAL",
+                status: "BOOKED",
+                source: "PUBLIC_TRIAL",
+              },
+              select: {
+                id: true,
+              },
+            });
+
+        const forms = await issueFormRequests({
+          workspaceId: args.workspaceId,
+          memberId: member.id,
+          db: tx as unknown as FormsDatabase,
+          now,
+        });
+
+        return {
+          status: "booked",
+          memberId: member.id,
+          classBookingId: booking.id,
+          classTitle: selectedOption.template.displayTitle,
+          scheduledForDate: selectedOption.dateOption.scheduledForDate,
+          startsAt: selectedOption.dateOption.startsAt,
+          forms,
+        };
+      },
+      {
+        isolationLevel: "Serializable",
+      },
+    );
+  } catch {
     return {
-      status: "booked",
-      memberId: member.id,
-      classBookingId: booking.id,
-      classTitle: selectedOption.template.displayTitle,
-      scheduledForDate: selectedOption.dateOption.scheduledForDate,
-      startsAt: selectedOption.dateOption.startsAt,
+      status: "error",
+      message:
+        "Trial booking could not be completed. No booking was saved. Try again.",
     };
-  });
+  }
 }
