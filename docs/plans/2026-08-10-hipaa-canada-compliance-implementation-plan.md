@@ -1,1044 +1,750 @@
-# Flowstate HIPAA and Canadian Health Privacy Implementation Plan
+# Flowstate Pro Clinical Platform Implementation Plan
 
-> **For Hermes:** Implement this plan as scoped work packets in isolated branches/worktrees. Load `subagent-driven-development` before execution. No implementation may begin past Gate 0 without the Phase 0 artifacts and named human approvals.
+> **For Hermes:** Execute this plan as gated work packets in isolated branches/worktrees. Load `subagent-driven-development` before implementation. Use synthetic data only. Do not deploy, use production credentials, contact customers, select legal values or vendors, or make compliance claims without the named human approvals.
 
-**Goal:** Determine which health-privacy regimes actually apply to Flowstate, then bring every in-scope creation, read, update, disclosure, export, retention, and deletion path for personal and health-related data under one tested, deny-by-default, auditable, encrypted, jurisdiction-aware control boundary.
+**Goal:** Build Flowstate Pro as a separately operated, white-label clinical-record product for approved Virginia healthcare organizations first and approved British Columbia private clinics second, while leaving Flowstate Standard technically, commercially, and operationally separate.
 
-**Architecture:** Preserve the existing Next.js/Prisma/PostgreSQL modular monolith. Add explicit privacy policy, data-access, audit, lifecycle, and outbound-flow boundaries inside the monorepo; do not add microservices, an event bus, multi-location behavior, or a public API. Migrate direct Prisma access incrementally by domain behind a fail-closed data-access layer, with each slice independently testable and reversible.
+**Architecture:** Add new Pro provider web, patient web, and dedicated workflow API applications to the existing monorepo, backed by a separate Pro Prisma schema and isolated US and Canadian GCP data planes. Keep Pro a Cloud Run modular monolith with central policy, tenant-scoped repositories, PostgreSQL row-level security, append-only audit, transactional outbox, controlled file storage, and fail-closed activation; share with Standard only reviewed data-free UI/configuration primitives and pure utilities.
 
-**Tech stack:** Next.js 16, React 19, TypeScript 5.9, Prisma 6, PostgreSQL 16, Vitest, Playwright, pnpm 10.33.0, Turborepo, Stripe. The managed key service, hosting controls, audit store, email provider, monitoring provider, and backup platform are unresolved dependencies and must not be invented by an implementor.
+**Tech stack:** Existing monorepo tooling (Next.js 16, React 19, TypeScript 5.9, Prisma 6, PostgreSQL, Vitest, Playwright, pnpm 10.33.0, Turborepo) plus approved GCP services: Cloud Run, regional external load balancing, Cloud Armor, Cloud SQL for PostgreSQL with HA/PITR/DR, Cloud Storage, Cloud KMS/CMEK, Secret Manager, Cloud Build, Artifact Registry, Artifact Analysis, and regional logging/immutable exports. Patient CIAM, email, malware scanning, eligibility, and all later clinical integration vendors remain blocked selections.
 
-**Status:** Planning artifact only. This document does not assert that Flowstate is currently HIPAA compliant, that Flowstate is a HIPAA Business Associate, that any Canadian health statute applies to a particular customer, or that the directive is legal advice.
+**Status:** APPROVED PLANNING BASELINE. Product and architecture decisions Q1–Q206 are approved; supporting specifications, legal values, vendor agreements, operating evidence, production activation, and public claims remain separately gated. This plan is not legal advice, certification, an executed agreement, or proof that Flowstate currently operates a compliant service.
 
----
-
-## 1. Executive outcome and the first blocking decision
-
-Flowstate's current committed product definition is a one-location gym-management platform for Muay Thai and Hyrox/HIIT studios. The compliance directive describes a materially different customer context: physiotherapists, counselors/therapists, life coaches, covered entities, and Health Information Custodians. The repository contains fitness/wellness-adjacent data that can be sensitive—member identity, date of birth, attendance, notes, forms, billing, family relationships, and migration exports—but the code and product docs do not establish that Flowstate currently creates or receives protected clinical records on behalf of a US covered entity or Canadian HIC.
-
-Therefore the shortest safe implementation path begins with an applicability and product-intent gate, not a blanket healthcare rewrite:
-
-1. Jacky/Product confirms whether regulated healthcare customers are an approved target for this product.
-2. Qualified US/Canadian privacy counsel determines the customer/entity and data contexts that trigger each regime.
-3. Security/operations identify the real hosting, database, backup, logging, monitoring, email, support, and Stripe data locations and agreements.
-4. Phase 0 classifies the actual schema and flows, including schema-only/dormant models and free-form migration blobs.
-5. Only then may an implementation packet introduce health-specific controls.
-
-Baseline PII security findings discovered in Phase 0 may be prioritized separately, but the directive expressly forbids proceeding to later compliance phases before the data classification report exists.
+**Detailed implementation authority:** This file controls implementation sequence and work-packet gates. It cannot override an approved decision or invent a legal, vendor, policy, production, or commercial value.
 
 ---
 
-## 2. Sources ingested and precedence
+## 1. Goals, scope, and success condition
 
-The plan is grounded in the following sources, in this order when they conflict:
+### 1.1 In scope
 
-1. Current source and tests.
-2. `packages/db/prisma/schema.prisma` for implemented database shape.
-3. `docs/HIPAA_Canada_Compliance_Agent_Directive.md` for requested compliance scope and acceptance criteria.
-4. `README.md` for the current implemented product surface.
-5. `docs/product_decisions_ledger.md` for approved product direction.
-6. `docs/mvp_ticket_board.md` for roadmap intent.
-7. `docs/domain_model.md` and `docs/03-technical/Data Model Brain.md` for domain interpretation.
-8. `docs/engineering_rules.md` and `CLAUDE.md` for implementation constraints.
-9. `docs/PROJECT_RECOVERY_AUDIT.md` and `docs/PROJECT_RECOVERY_WORKFLOW_MATRIX.md` for known safety and evidence gaps.
-10. `docs/04-demo/Working Demo State.md` for historical demo evidence only.
-11. `docs/Agents/Agent Operating Model.md`, role briefs, permission matrix, work-packet template, and UI toolkit for execution and review rules.
-12. `docs/smoke_test_checklist.md` for current workflow regression coverage.
+- A new Flowstate Pro product, not a healthcare mode inside Standard.
+- One Pro codebase deployed into independent Pro-US and Pro-Canada data planes.
+- Distinct provider web, patient web, and dedicated workflow API surfaces.
+- White-label configuration validated from a controlled registry.
+- Virginia-first activation for individually approved customer/applicability profiles.
+- British Columbia private-clinic activation as a separately reviewed fast follow.
+- Full production separation: projects, deployments, databases, storage, backups, keys, logs, monitoring, secrets, vendors, access groups, credentials, sessions, CI/CD promotion, billing configuration, and production access.
+- Pro-US v1's minimum safe clinical journey: organization activation, identities, patient/proxy access, scheduling, intake/consent/forms, longitudinal chart, finalized notes and amendments, controlled clinical files, medication/allergy/history, direct pay, eligibility, released-record sharing, rights workflows, retention/holds/offboarding, audit/incidents, and US operations.
+- A versioned control dossier that distinguishes specification, implementation, technical verification, operational exercise, evidence completeness, legal review, profile approval, blockers, supersession, and non-applicability.
 
-Important conflicts already identified:
+### 1.2 Explicit exclusions
 
-- `README.md` and older domain docs understate migration depth; current Prisma/source contain a substantial migration flow.
-- `docs/domain_model.md` labels several domains planned although the Prisma schema now contains their models. Schema presence still does not prove an operational workflow.
-- The May demo state predates migration-readiness changes and is historical, not current proof.
-- The July recovery audit refers to an older commit and test count; use it as risk context, then reproduce all evidence on the implementation candidate.
-- The compliance directive assumes healthcare/health-adjacent customers, while approved product docs target gyms/studios. Human product/legal resolution is mandatory.
+- No Standard-to-Pro migration or in-place Standard upgrade.
+- No shared identity, credentials, MFA, recovery, sessions, records, database, Stripe objects, webhook secrets, keys, logs, backups, or runtime configuration between products.
+- No reuse of Standard roles in Pro.
+- No routine Flowstate staff access to patient data and no Flowstate clinical break-glass.
+- No self-service regulated tenant activation.
+- No universal activation for every healthcare customer type, province, payer, public body, insurer, or government contractor.
+- No GKE, global active-active database, HSM, microservices, or event bus unless a measured requirement later defeats the approved simpler architecture.
+- No DICOM files in the ordinary upload pipeline; DICOM/PACS is a later separately gated integration.
+- No rebuilding PACS, LIS, pharmacy, clearinghouse, payer, or telehealth network cores.
+- No hard-coded universal pilot caps. Each activated customer receives an approved operating envelope based on seats, patient records, documents, storage, support, and tested capacity.
+- No hard-coded legal deadlines, retention periods, consent language, breach thresholds, public claims, pricing, service levels, credits, or insurance terms.
+- No production PHI in development, tests, previews, screenshots, traces, demos, or vendor sandboxes.
+- No confidential contracts, legal advice, personnel files, incident evidence, or production secrets in Git; store only templates, metadata, approval state, and protected evidence references.
 
----
+### 1.3 Program success condition
 
-## 3. Current application baseline
-
-### 3.1 Runtime and boundaries
-
-- `apps/admin-web`: owner/coach Next.js app. Signup, login, onboarding, migration, members, guardians, programs, rooms, schedules, bookings, rosters, attendance, forms, memberships, products, billing, Stripe settings, and the Stripe webhook route.
-- `apps/member-web`: customer portal and public trial/signing app. Login, schedule, booking/waitlist, membership, billing, checkout, forms, and magic-link signing.
-- `apps/landing-web`: public marketing site and a filesystem-backed JSONL waitlist containing owner name, gym name, email, style, note, and timestamp.
-- `apps/api`: health endpoint only. It is not the product's domain API and should not become a public API as a side effect of this program.
-- `packages/auth`: password hashing and database-backed cookie sessions.
-- `packages/db`: the shared Prisma client plus occurrence, booking/access, forms, migration-adjacent, readiness, and notification helpers.
-- `packages/ui`, `packages/types`, `packages/config`: thin shared packages; they do not currently enforce privacy behavior.
-
-Most business behavior uses Next server actions, route handlers, and app-local libraries—not `apps/api`. A compliance design that protects only `apps/api` would miss nearly the entire application.
-
-### 3.2 Database and query surface
-
-- Current schema: 65 models and 48 enums in `packages/db/prisma/schema.prisma`.
-- Current migration history contains 16 committed `migration.sql` files. None adds row-level security, field encryption, jurisdiction/consent/retention models, a general audit table, immutable audit permissions, or legal holds.
-- A static planning scan found 363 Prisma delegate calls across 39 production files; 299 calls in 36 files are outside `packages/db`. It found no application `$queryRaw`/`$executeRaw` calls. These regex counts are discovery evidence, not the final AST/static-enforcement proof.
-- The broadest direct-query hotspot is `apps/admin-web/lib/workspace-migration.ts` (74 calls across many operational and staging models), followed by access products and member memberships (21 each), Stripe billing (16), trial booking (14), forms (13), members/class templates (12 each), and member commerce (10). The implementor must regenerate counts rather than copying these numbers after source changes.
-- `packages/db/src/index.ts` publicly exports `prisma`, enabling bypass by any app module.
-- Workspace scoping is usually expressed in application query filters. Existing recovery evidence found no comprehensive same-workspace relational enforcement or adversarial PostgreSQL isolation proof.
-- Several scalar IDs lack declared Prisma relations, including the payment-method member, failed-case latest payment, migration import job/staging references, participant/sender workspace-user IDs, and creator/operator IDs. These require classification and integrity review rather than assumed referential protection.
-- The schema includes dormant/scaffolded domains. Classification must cover them because they can store data even if no UI is complete.
-
-### 3.3 Authentication and authorization
-
-- Session tokens are random and only their SHA-256 hashes are stored.
-- Cookies are HTTP-only, `SameSite=Lax`, and secure in production.
-- Sessions currently have a fixed seven-day expiry (`SESSION_DURATION_MS`) but no idle timeout, MFA assurance, device/session management, or step-up authentication.
-- Admin and member cookies are separate names.
-- `proxy.ts` files only check cookie presence; authoritative session/role/workspace checks occur in server helpers.
-- Useful role/workspace contexts exist in `apps/admin-web/lib/owner-workspace.ts`, `apps/admin-web/lib/operations-workspace.ts`, and `apps/member-web/lib/member-auth.ts`.
-- Authorization is explicit in many routes, but it is not a single deny-by-default policy matrix and is not coupled to every sensitive read/write.
-- Owner route resolution currently does not consistently require `Workspace.status === ACTIVE` or migration readiness; coach/member contexts are stricter. The member context selects member status but does not itself terminate portal access for cancelled/frozen members. These are policy decisions and regression-test targets, not assumptions to patch ad hoc.
-
-### 3.4 High-sensitivity paths already present
-
-- Member and guardian identity/contact data, DOB, notes, tags, status, family relationships.
-- Attendance state and free-form attendance notes.
-- Forms and signed PDFs stored as database bytes; signer snapshots, IP address, and user agent.
-- Magic-link signing token in a URL path; current token embeds a request ID plus HMAC.
-- Member search in `apps/admin-web/app/dashboard/members/page.tsx` accepts `q` in the query string, which may contain names, emails, or phone numbers.
-- Member, form, request, token, and billing identifiers appear in paths. Opaque identifiers are not plaintext PHI, but access-log treatment must be decided and tested.
-- Migration intake includes access instructions, raw uploaded CSV content, raw/mapped JSON, issues, and imported IDs. These blobs can contain any source data and must default to the highest expected classification until field-level review proves otherwise.
-- Billing and Stripe identifiers/status/failure messages flow to Stripe and local records.
-- Stripe payloads currently include member name/email/phone plus internal workspace/member/membership/booking/product IDs in metadata and product/plan/service context. Treat Stripe as a concrete PI/conditional-health-data destination during Phase 0.
-- Notification jobs can contain recipient identity and arbitrary body content; there is only a development adapter and no approved production email provider.
-- `StaffInvite.token` is stored in plaintext, unlike session and form-link token hashes.
-- PDF checks currently cover size, supplied MIME type, `%PDF-` header, and checksum—not malware scanning, sanitization, quarantine, active content, or safe filename/header construction.
-- Member checkout return URLs trust forwarded host/protocol headers without a configured-host allowlist.
-- Existing owner/migration warnings log identifiers/email or unsanitized domain messages through `console.warn`; there is no shared redaction boundary.
-- Landing waitlist PI is appended to local JSONL outside PostgreSQL lifecycle controls.
-- Static inspection found no current `localStorage`, `sessionStorage`, IndexedDB, browser analytics SDK, Sentry, Datadog, PostHog, or Segment integration. Preserve that useful absence, but do not treat it as proof about hosting/CDN logs, browser caches, future integrations, or rendered HTML/RSC payloads.
-
-### 3.5 Current outbound and secondary stores
-
-Known from code:
-
-- Stripe API and Stripe webhooks.
-- PostgreSQL primary database.
-- PostgreSQL/Docker volume in local development.
-- Form PDFs and migration raw data stored directly in PostgreSQL.
-- Landing waitlist JSONL on the application filesystem.
-- Notification outbox records; no approved production delivery service yet.
-- Browser-delivered HTML/PDF responses and cookies.
-- Playwright traces/reports and test artifacts.
-- Client-side migration correction uses a `mailto:` URL, creating an additional browser/email-system disclosure path.
-
-Unknown until infrastructure discovery:
-
-- Hosting/CDN/reverse proxy and request logs.
-- Managed PostgreSQL vendor, region, replicas, snapshots, backups, restore copies, and support access.
-- Error tracking, APM, analytics, product analytics, session replay, support/chat, and log aggregation.
-- Email provider and message routing.
-- Object storage, if any exists outside this repository.
-- CI/CD logs, preview deployments, artifacts, and secrets management.
-- DNS/TLS termination, WAF, rate limiting, incident alerts, and admin access.
-- Vendor subcontractors and signed BAA/DPA status.
-
-### 3.6 Preliminary model-level classification hypothesis
-
-This is a planning hypothesis, not the required Phase 0 field-level inventory.
-
-- **Candidate PI-Health / conditional PHI:** `Member`, `Guardian`, `FamilyLink`, `ClassBooking`, `WaitlistEntry`, `AttendanceRecord`, `SignatureRequest`, `SignedDocument`, `FormVersion` contents, `MemberMembership`, `MembershipBillingState`, `BillingRecord`, `Invoice`, `InvoiceLineItem`, `Payment`, `Refund`, `AccountCredit`, `PaymentMethodReference`, `FailedPaymentCase`, `MemberProgressState`, `PromotionRecord`, `ConversationParticipant`, `Message`, `NotificationJob` bodies, `EventBooking`, `PrivateLessonBooking`, and all migration source/staging/reconciliation payloads that can contain these values.
-- **PI-General, potentially PHI when combined with health context:** `User`, `WorkspaceUser`, `StaffInvite`, `AuthSession`, `Location`, `WorkspaceMigration`, signer network/device metadata, Stripe identifiers, and landing waitlist submissions.
-- **Mostly business/non-personal unless combined with a person:** `Workspace`, `Room`, `Program`, `ClassTemplate`, `ClassInstance`, product catalogs, policy/template definitions, events, and private-lesson slots.
-- **Secrets/security data, not normal application PI:** password hashes, session-token hashes, invite tokens, magic-link token hashes, webhook secrets, and encryption key references. These require stronger handling even where they are not PHI.
-
-Classification is contextual. A gym attendance record is not automatically HIPAA PHI; the same structure may become PHI if handled for a covered entity in the required relationship. Do not encode a legal conclusion from a field name alone.
+The program is not complete when code compiles. It is complete for one named customer profile only when the exact Pro build and exact regional configuration are technically verified, operationally exercised, supported by complete evidence, legally reviewed, approved for that profile, and passed through the final pre-production gates in section 15. Other profiles and modules remain disabled.
 
 ---
 
-## 4. Non-negotiable implementation principles
+## 2. Source precedence and conflict handling
 
-1. Preserve the modular monolith and one-location MVP.
-2. Do not add a fourth customer-facing role. Internal compliance/operator capabilities require an explicit identity and authorization decision.
-3. Do not expose a public API as part of this effort.
-4. Do not add generic base repositories, factories, an event bus, or a policy DSL. Add concrete boundaries only where repeated sensitive access requires them.
-5. Do not store PHI in audit records. Audit metadata identifies the accessed resource but excludes resource payloads and free-form sensitive values.
-6. Authorization and jurisdiction ambiguity fail closed.
-7. Use synthetic data only in development, test, screenshots, traces, fixtures, and provider sandboxes.
-8. Never rewrite applied migration history. Use additive migrations with rehearsed upgrade and rollback/forward-fix plans.
-9. No destructive backfill or encryption migration without verified backup/restore and row-count/hash reconciliation.
-10. No production key, credential, Stripe resource, customer communication, deployment, or live data action without Jacky's explicit approval.
-11. No compliance claim based on vendor marketing. Record actual configuration, regions, controls, and signed agreements.
-12. Every behavior-changing work packet leaves one focused regression check and runs the relevant existing gates.
-13. UI packets require desktop, tablet, and 390px mobile evidence plus accessibility checks under the approved UI toolkit rules.
-14. Legal interpretations, retention periods, breach thresholds, and notice language are approved inputs—not values invented by code.
+When sources disagree, stop the affected packet, record the conflict in the decision register, and obtain the required owner. Never silently select the easiest source.
 
----
+1. Approved entries in `docs/compliance/flowstate-pro/decision-register-and-open-items.md` for product decisions.
+2. Qualified-counsel-approved entries in the future legal applicability matrix and approved policy catalogs for legal values.
+3. Current code and `packages/db/prisma/schema.prisma` for claims about implemented Flowstate Standard.
+4. The future Pro product requirements document for required behavior.
+5. The future Pro system design and security/privacy architecture for approved implementation detail.
+6. The future roadmap and this plan for sequence.
+7. The future competitor-parity matrix for dated benchmark evidence only.
+8. `docs/HIPAA_Canada_Compliance_Agent_Directive.md` for execution protocol and acceptance themes; it cannot override approved Pro decisions or assert applicability.
 
-## 5. Target architecture
+At this revision, only the following Flowstate Pro source package files exist:
 
-### 5.1 Request/access context
+- `docs/compliance/flowstate-pro/README.md`
+- `docs/compliance/flowstate-pro/decision-register-and-open-items.md`
 
-Introduce one server-only `PrivacyAccessContext` created after authoritative authentication and before a sensitive operation. Minimum fields:
-
-- actor user ID and workspace-user/member identity;
-- workspace/tenant ID;
-- role and explicit permissions;
-- MFA assurance and session ID;
-- access purpose/legal-basis code from an approved finite set;
-- source IP and user agent captured at the server boundary;
-- request/correlation ID;
-- record jurisdiction/privacy profile reference.
-
-Do not allow caller-supplied actor, role, tenant, or MFA values. Public trial and magic-link flows use narrowly scoped system/public subjects rather than pretending to be a normal user.
-
-### 5.2 Deny-by-default policy
-
-Use a small concrete policy module keyed by action/resource. Every sensitive repository method must call it. Unknown action/resource/role/regime combinations return denied and emit a denied audit event. Preserve the approved roles (`OWNER`, `COACH`, `CUSTOMER`) and model row-level rules such as assigned-coach and own-member access.
-
-Initial permission matrix must explicitly cover:
-
-- owner versus coach member fields;
-- coach roster/attendance fields and assignment scope;
-- customer access to own data only;
-- guardian access only after the guardian identity model is approved;
-- public trial writes with no general reads;
-- magic-link access to one request/version only;
-- internal migration/compliance operations after an internal-actor decision;
-- Stripe webhook operations bound to verified workspace/account mapping.
-
-### 5.3 Sensitive data-access layer
-
-Create concrete domain repositories/functions under `packages/db/src/privacy/` or `packages/db/src/repositories/`; do not create a generic CRUD framework. Each method accepts a trusted access context, enforces policy, performs a tenant-scoped minimal select/write, and emits an audit outcome.
-
-Migration strategy:
-
-1. Inventory each production `prisma` call.
-2. Classify its models/fields.
-3. Migrate sensitive calls domain by domain.
-4. Keep non-personal catalog access direct only if Phase 0 explicitly exempts it.
-5. Add static enforcement that blocks direct sensitive-model Prisma access outside allowed package paths.
-6. Remove the public `prisma` export from `packages/db/src/index.ts` only after callers are migrated.
-
-### 5.4 Audit store
-
-Use a separate append-only audit store with separate credentials and no application update/delete permission. Keep it inside the monorepo as a package/client, not a microservice. Production deployment must use an approved managed destination and immutable/WORM retention configuration.
-
-Audit event fields:
-
-- event ID, occurred-at, request ID;
-- actor type/ID, session ID, workspace ID;
-- action, resource type, opaque resource ID;
-- purpose/legal-basis code and policy version;
-- outcome (`SUCCESS`, `DENIED`, `FAILURE`), reason code;
-- encrypted or otherwise approved source IP representation;
-- user-agent classification if retained;
-- destination ID for disclosures/exports;
-- previous-event hash/event integrity metadata if approved;
-- no request body, response body, member name, email, notes, PDF content, or free-form error details.
-
-Audit writes for denied/failed attempts must survive application transaction rollback. Audit-store outages must follow an approved fail-closed/fail-safe matrix: sensitive interactive reads/writes should normally fail closed; safety-critical/provider reconciliation paths need an explicit operational decision and alert.
-
-### 5.5 Privacy/jurisdiction configuration
-
-Add a workspace privacy profile without introducing multi-location behavior. Support multiple regimes per workspace and, where legally required, a record/member-level override. Unknown applicability remains `PENDING_LEGAL_REVIEW` and blocks regulated disclosure/export behavior.
-
-Configuration must drive:
-
-- applicable regime keys;
-- covered-entity/HIC/service-provider determination status;
-- default data origin and member/record override;
-- consent model and approved consent text version;
-- retention policy version;
-- permitted destinations and residency region;
-- PIA/transfer assessment approval references;
-- incident notification rule references;
-- policy effective dates and approver identities.
-
-### 5.6 Encryption
-
-Use provider-managed encryption at rest for all stores/backups and envelope encryption with a managed KMS/HSM for Phase 0-designated highest-sensitivity fields. Store ciphertext, algorithm/version, encrypted data key/key reference, and migration state; never store a plaintext key in `.env`, source, logs, tests, or database rows.
-
-Likely first candidates, subject to Phase 0 approval:
-
-- member/guardian/attendance/promotion free-form notes;
-- message and notification bodies containing personal/health content;
-- form PDF bytes and signed-document sensitive metadata;
-- migration access instructions, raw source content, raw/mapped JSON, and reconciliation payloads.
-
-Use dual-read/dual-write and verified backfill before removing plaintext. Do not encrypt fields needed for equality/search without a separate approved blind-index/tokenization design; first minimize/remove the search requirement.
-
-### 5.7 Lifecycle metadata
-
-Prefer one central `PrivacyRecordLifecycle` table keyed by workspace, resource type, and resource ID over adding repeated policy columns to dozens of domain models. It must track policy version, created/classified date, scheduled review/disposition, legal hold, disposition state, and last decision. Repository writes create/update lifecycle metadata in the same transaction; a reconciliation test/job detects missing metadata. This is acceptable only if Database and legal/security reviewers approve the polymorphic integrity trade-off.
-
-### 5.8 Outbound-flow gateway
-
-All transmissions of PI/PI-Health outside the primary application boundary use one concrete gateway that:
-
-- identifies destination/subprocessor;
-- resolves data origin and applicable regimes;
-- checks the destination allowlist, BAA/DPA status, and PIA/transfer approval;
-- minimizes/redacts payload fields;
-- records the disclosure and audit outcome;
-- rejects unknown or disallowed flows.
-
-Initial destinations include Stripe and any approved email/monitoring providers. Logging is handled at the logging boundary; it must never become a general-purpose outbound gateway that receives raw sensitive payloads.
-
-### 5.9 Rights and lifecycle workflows
-
-Implement access, correction/amendment, accounting/disclosure, export, offboarding, retention hold, archive, and deletion as auditable state machines—not immediate destructive buttons. Requests require identity verification, scope, deadlines, review, approval/denial reasons, and evidence. Deletion checks retention minimums and legal holds and may result in `RETENTION_BLOCKED` or `ARCHIVED` rather than deletion.
-
-### 5.10 Breach monitoring
-
-Generate security signals from audit metadata, not copied PHI. Start with deterministic rules: repeated denials, cross-workspace guesses, bulk reads/exports, unusual volume, disabled-account access, MFA downgrade, high-risk token use, and disallowed outbound attempts. Route signals into an incident record and approved notification channel. Human legal/privacy review determines reportability and notices.
+Every other Pro dossier path named in this plan is marked **PROPOSED — FUTURE** and must not be described as current evidence until created, reviewed, and assigned a status.
 
 ---
 
-## 6. Decision register: required before dependent code
+## 3. Current Flowstate Standard baseline
 
-Create `docs/compliance/legal-open-items.md` and track each item with owner, counsel status, decision date, source, affected tasks, and expiry/review date.
+This section preserves useful current-state evidence so implementers do not retrofit Standard or mistake roadmap models for Pro foundations. Re-run discovery on the implementation candidate; these facts are not future-state acceptance evidence.
 
-### Product/legal decisions
+### 3.1 Verified repository facts
 
-- Is healthcare an approved Flowstate market, or is this work a conditional future-control architecture?
-- For each customer class, is Flowstate a HIPAA Business Associate, Canadian service provider/agent to an HIC, neither, or unresolved?
-- Which US states and Canadian provinces are in launch/pilot scope?
-- What makes a record's jurisdiction: customer organization, service location, individual residence, treatment location, contractual choice, or a reviewed combination?
-- Which fields are PHI/PI-Health in each approved context?
-- Which uses/disclosures rely on consent versus another legal basis?
-- Approved access/correction/accounting timelines, verification standards, exceptions, and appeal path.
-- Approved retention minimum/maximum and legal-hold rules by record type/regime.
-- Approved breach risk assessment, escalation, regulator/individual notice responsibilities, and evidence retention.
-- Whether current form-signing evidence is legally sufficient.
-- Whether opaque IDs and magic-link bearer tokens may appear in access logs, and required log templating/redaction.
+- Standard is a one-location, web-only gym-management modular monolith for Muay Thai and Hyrox/HIIT studios.
+- Standard customer roles are `OWNER`, `COACH`, and `CUSTOMER`.
+- Current applications are `apps/admin-web`, `apps/member-web`, `apps/landing-web`, and a thin `apps/api` whose current domain surface is only a health endpoint.
+- Current shared packages include `packages/auth`, `packages/db`, `packages/ui`, `packages/types`, and `packages/config`.
+- `packages/db/prisma/schema.prisma` currently defines 65 models and 48 enums, with 16 committed Prisma migration SQL files.
+- The current schema is Standard-only. It has no Pro clinical aggregate model, Pro role model, Pro organization activation model, Pro policy registry, PostgreSQL RLS policy, general security audit model, legal-hold registry, or Pro residency boundary.
+- Standard already implements or represents auth/session, workspace onboarding, staff invites, programs, rooms, scheduling, bookings, rosters, attendance, members/guardians, forms/signing, memberships, punch cards/drop-ins, Stripe billing, failed payments, member portal, and migration staging/recovery models.
+- Several Standard roadmap documents lag the Prisma schema. Schema presence still does not prove an operational workflow.
 
-### Security/operations decisions
+### 3.2 Preserved audited discovery evidence to regenerate
 
-- Production hosting, database, audit store, KMS/HSM, backup, log, monitoring, email, CI, and support vendors and regions.
-- BAA/DPA/contract status for Stripe and every actual vendor.
-- Canadian/Quebec residency and transfer architecture.
-- MFA approach and account recovery policy.
-- Idle/absolute session timeouts and step-up duration.
-- Audit-store availability behavior and immutable retention.
-- Field-encryption algorithm/key rotation/recovery procedure.
-- Backup retention, restore testing, deletion propagation, and cryptographic erasure position.
-- Approved anomaly thresholds and on-call owners.
-- Internal operator/compliance identity model without adding a customer-facing role.
+The prior plan recorded a static snapshot of 363 Prisma delegate calls across 39 production files, including 299 calls in 36 files outside `packages/db`, with no application raw-SQL calls found. It also identified Standard sensitivity hotspots: member/guardian identity and notes, attendance, database-stored PDFs, signing evidence, migration raw data, Stripe metadata, notification bodies, plaintext staff invite tokens, URL/query exposure, forwarded-host return URLs, console logging, and a filesystem waitlist.
 
-No unresolved item defaults to the least restrictive option.
+This is useful Standard risk evidence, not a Pro implementation template. Milestone 0 must regenerate any count used in a dossier. Standard remediation, if approved, is a separate scoped program and must not delay or weaken Pro separation.
+
+### 3.3 Standard boundary rules for every Pro packet
+
+- Do not modify Standard schema to host Pro records.
+- Do not point Pro code at `packages/db` or Standard `DATABASE_URL`.
+- Do not import Standard authentication or role/session records.
+- Do not route Pro billing through Standard Stripe configuration.
+- Do not add Pro conditionals to Standard pages, routes, server actions, middleware, jobs, or webhooks.
+- Shared code must be data-free and reviewed before import. Default to copying a tiny pure primitive into Pro when review cost or coupling exceeds the duplication cost.
+- Add static boundary tests before any clinical feature work so accidental Standard/Pro imports fail in CI.
 
 ---
 
-## 7. Phased implementation roadmap
-
-Each work packet follows RED-GREEN-REFACTOR where code changes behavior. Run focused tests first, then affected workspace tests/lint/types/build, then the root gates. Database packets additionally require disposable PostgreSQL fresh-deploy and upgrade-path evidence. Do not commit, merge, deploy, or push unless separately authorized.
-
-### Phase 0 — Discovery, applicability, and classification
-
-**Exit gate:** Reviewed data inventory, flow diagram, applicability matrix, threat/risk analysis, vendor registry baseline, and legal-open-items register exist. Jacky, legal/privacy, Security/Operations, Database, Backend, and QA sign the gate. No later schema/control implementation starts before this gate.
-
-#### Task 0.1 — Freeze the evidence baseline
-
-**Objective:** Record the exact candidate and reproducible current behavior before compliance refactoring.
-
-**Create:**
-- `docs/compliance/baseline.md`
-- `docs/compliance/evidence/README.md`
-
-**Inspect/run:**
-- `git status --short --branch`
-- `pnpm db:generate`
-- `pnpm db:validate`
-- `pnpm run test`
-- `pnpm run lint`
-- `pnpm run check-types`
-- `pnpm run build`
-- `pnpm exec playwright test --list`
-
-**Acceptance:** Exact commit/tree state, environment class, command output, current failures, and pre-existing dirty files are recorded without secrets. Historical reports are not substituted for fresh output.
-
-#### Task 0.2 — Generate the complete schema inventory
-
-**Objective:** Enumerate every model and field from the Prisma source of truth with drift detection.
-
-**Create:**
-- `scripts/compliance/generate-data-inventory.mjs`
-- `docs/compliance/data-inventory.csv`
-- `docs/compliance/data-inventory.md`
-- `tests/tooling/compliance-data-inventory.test.mjs`
-
-**Modify:**
-- `package.json` with a deterministic `compliance:inventory`/check script only if the project approves the script.
-
-**Required columns:** model, field, database table/column, type, nullable, relation, candidate classification, approved classification, sensitivity rationale, encryption state, access roles/actors, write/read paths, destination IDs, retention policy ID, jurisdiction source, lifecycle state, reviewer, review date.
-
-**Acceptance:** All 65 models and every scalar field are represented; relations and enums are accounted for; the check fails if the schema changes without inventory review. Generated output contains no live data.
-
-#### Task 0.3 — Map all data-access paths
-
-**Objective:** Trace every sensitive read/write/delete/export from route/action to Prisma model.
-
-**Create:**
-- `docs/compliance/data-access-map.md`
-- `docs/compliance/data-access-map.json`
-- `scripts/compliance/scan-data-access.mjs`
-
-**Inspect:**
-- `packages/db/src/**`
-- `packages/auth/src/**`
-- `apps/admin-web/app/**`, `apps/admin-web/lib/**`
-- `apps/member-web/app/**`, `apps/member-web/lib/**`
-- `apps/landing-web/**`
-- `apps/api/**`
-
-**Acceptance:** Every production Prisma call and filesystem personal-data write is assigned an owner, input actor, model/fields, tenant filter, authorization check, URL exposure, output destination, and target migration phase. Type-only imports are distinguished from runtime DB access.
-
-The scanner must reproduce or explain drift from the discovery baseline of 39 production files / 363 delegate calls (36 files / 299 calls outside `packages/db`), report the highest-volume files, and prove separately that raw SQL is absent or inventoried. Use an AST-aware implementation for the enforcement gate; the initial regex counts are not sufficient to certify compliance.
-
-#### Task 0.4 — Classify fields and free-form containers
-
-**Objective:** Complete legal/privacy classification with conservative handling of unbounded content.
-
-**High-priority review:**
-- `Member.notes`, `Guardian.notes`, `AttendanceRecord.note`, `PromotionRecord.notes`, `Message.body`.
-- `FormVersion.fileData`, `SignedDocument.*` signer/network evidence.
-- `WorkspaceMigration.accessInstructions`.
-- `ImportSourceFile.rawContent`, `StagingRecord.rawData`, `StagingRecord.mappedData`, `ReconciliationReport.summary`.
-- Notification/email subject/body and provider errors.
-- Stripe failure messages and metadata.
-- Landing waitlist `note`.
-
-**Acceptance:** Every scalar field is approved as PHI/PI-Health, PI-General, Non-personal, Secret/Security, or prohibited/unbounded. Context-dependent classifications identify the controlling condition. Unknown free-form containers default high sensitivity.
-
-#### Task 0.5 — Map outbound, cross-border, cache, log, and backup flows
-
-**Objective:** Produce the real deployment data-flow diagram and destination inventory.
-
-**Create:**
-- `docs/compliance/data-flow-diagram.md` (Mermaid source plus plain-text table)
-- `docs/compliance/destinations.yml`
-- `docs/compliance/subprocessors.yml`
-- `docs/compliance/backup-and-replica-inventory.md`
-
-**Known starting points:** Stripe, PostgreSQL, filesystem waitlist, notification outbox, browser/PDF responses, CI/test artifacts. Add actual infrastructure only from verified configuration/vendor evidence.
-
-**Acceptance:** Every destination has provider, service, data classes, purpose, origin/destination region, transfer direction, encryption, retention, deletion behavior, support access, BAA/DPA status, and PIA/transfer approval status. Unknown destination/region is blocking, not allowed.
-
-#### Task 0.6 — Determine customer and record jurisdiction inputs
-
-**Objective:** Establish which facts the application can know and which require human/legal input.
-
-**Create:**
-- `docs/compliance/jurisdiction-applicability-matrix.md`
-- `docs/compliance/legal-open-items.md`
-
-**Inspect:** workspace/location country/region fields, customer contracts/onboarding outside the repo, prospective customer list under authorized access.
-
-**Acceptance:** At least US and Canadian examples are evaluated without inventing conclusions. Multi-regime and unknown cases are explicit. One-location product scope remains unchanged.
-
-The reviewed matrix must explicitly address the directive's named regimes: HIPAA; PIPEDA; Alberta PIPA; British Columbia PIPA; Quebec's private-sector law as modernized by Law 25; Ontario PHIPA; New Brunswick PHIPAA; Nova Scotia PHIA; and Newfoundland and Labrador PHIA. It must also record whether the FTC Health Breach Notification Rule or any approved US state medical-record, breach, or consumer-health law is relevant. Inclusion in the matrix is not a conclusion that a law applies.
-
-#### Task 0.7 — Complete security risk analysis and threat model
-
-**Objective:** Establish administrative, physical/vendor, and technical risks before designing controls.
-
-**Create:**
-- `docs/compliance/security-risk-analysis.md`
-- `docs/compliance/threat-model.md`
-- `docs/compliance/risk-register.md`
-
-**Include:** auth/session takeover, tenant-ID guessing, coach overreach, magic-link leakage, public trial abuse, file upload/malware, migration blobs, Stripe callback trust, backups, logs, CI artifacts, insider/support access, data export, key loss, audit outage, and incident response.
-
-**Acceptance:** Risks have likelihood/impact, existing control, gap, owner, mitigation task, residual risk, and approval. This is reviewed by a qualified security owner; a code agent does not self-certify it.
-
-#### Task 0.8 — Gate 0 review
-
-**Objective:** Prevent implementation from outrunning legal/product facts.
-
-**Reviewers:** Jacky/Product, qualified counsel, Security/Operations, `hitlink-db`, `hitlink-backend`, `hitlink-qa`, BA/Sales, CEO.
-
-**Acceptance:** Inventory and diagrams are complete; legal unknowns are linked to blocked tasks; approved first-pilot jurisdictions and vendors are named; healthcare product intent is recorded; Phase 1 work packets are narrowed to approved scope.
-
-### Phase 1 — Logging, access context, authorization, audit, and data-access boundary
-
-**Exit gate:** A minimal fail-closed jurisdiction/privacy profile exists; sensitive operations in the selected first domain use trusted access context, deny-by-default policy, append-only audit, and the designated data-access layer. Static checks prevent bypass in the migrated domain.
-
-#### Task 1.0 — Establish the minimal jurisdiction prerequisite
-
-**Objective:** Resolve the directive's sequencing defect: consent, transfer, retention, and disclosure policy cannot be enforced before a tenant/record jurisdiction foundation exists.
-
-**Modify:**
-- `packages/db/prisma/schema.prisma` plus an additive migration.
-- Create the smallest concrete privacy-profile and jurisdiction resolver under `packages/db/src/privacy/`.
-- Add focused database and resolver tests.
-
-**Acceptance:** Existing workspaces backfill to `PENDING_LEGAL_REVIEW`, never to an inferred permissive regime. The model supports multiple approved regime keys and a reviewed member/record override without adding locations. Unknown/conflicting context denies regulated operations. Phase 3 later adds the full consent, destination, and transfer policy around this foundation rather than creating a competing model.
-
-#### Task 1.1 — Add safe structured logging
-
-**Objective:** Ensure application logs cannot receive raw sensitive payloads.
-
-**Create:**
-- `packages/config/src/safe-log.ts`
-- `packages/config/src/safe-log.test.ts`
-- `docs/compliance/logging-standard.md`
-
-**Modify:**
-- `packages/config/src/index.ts`
-- Existing `console.warn` call sites in onboarding/migration.
-- Seed/demo scripts if Phase 0 finds PI output.
-
-**Design:** Allowlist event keys and typed metadata; recursively replace prohibited keys/values; reject arbitrary Error/request/form payload serialization. Keep operational error codes, never raw provider/body details.
-
-**Test:** Canary names/emails/phones/notes/tokens/PDF text never appear in captured output; nested objects, arrays, errors, and provider payloads are covered.
-
-#### Task 1.2 — Create trusted privacy access context
-
-**Objective:** Resolve actor, tenant, session assurance, source metadata, purpose, and record privacy context once at server boundaries.
-
-**Create:**
-- `packages/auth/src/access-context.ts`
-- `packages/auth/src/access-context.test.ts`
-
-**Modify:**
-- `packages/auth/src/index.ts`
-- Admin/member context helpers.
-- Public trial, magic-link, and webhook boundary adapters.
-
-**Acceptance:** Caller form/query values cannot set actor/tenant/role/MFA. Public/system/webhook contexts are narrowly typed. Missing required context fails closed.
-
-#### Task 1.3 — Implement explicit authorization policy
-
-**Objective:** Replace implicit data visibility with a tested action/resource permission matrix.
-
-**Create:**
-- `packages/auth/src/privacy-policy.ts`
-- `packages/auth/src/privacy-policy.test.ts`
-- `docs/compliance/authorization-matrix.md`
-
-**Test matrix:** positive and negative owner/coach/customer/public/system cases, own-versus-other member, assigned-versus-unassigned coach, cross-workspace, inactive user, migration-not-ready, MFA missing, unknown action/resource.
-
-**Acceptance:** Unknowns deny. Policy returns stable reason codes for audit, not sensitive messages. Tests explicitly settle disabled/pre-ready owner access and cancelled/frozen member portal behavior from approved product/legal policy rather than preserving the current inconsistency accidentally.
-
-#### Task 1.4 — Provision append-only audit storage
-
-**Objective:** Store complete access metadata separately from mutable app records.
-
-**Proposed create (final path depends on approved store):**
-- `packages/audit-db/package.json`
-- `packages/audit-db/prisma/schema.prisma`
-- `packages/audit-db/src/client.ts`
-- `packages/audit-db/src/write-audit-event.ts`
-- `packages/audit-db/src/write-audit-event.test.ts`
-- additive SQL enforcing insert-only application permissions
-- `docs/compliance/audit-log-standard.md`
-
-**Infrastructure:** add local synthetic-only audit database support; production destination/immutability comes from the approved provider, not Docker configuration.
-
-**Acceptance:** App credential cannot update/delete; required fields are validated; no PHI payload fields exist; tamper/retention configuration is evidenced; denied and failed attempts are persistable independently of the business transaction.
-
-#### Task 1.5 — Add the sensitive-operation wrapper
-
-**Objective:** Make policy check, minimal query/mutation, and success/denied/failure audit one unavoidable flow.
-
-**Create:**
-- `packages/db/src/privacy/access.ts`
-- `packages/db/src/privacy/access.test.ts`
-
-**Acceptance:** One wrapper records exactly one terminal outcome; denial occurs before query; thrown DB/provider errors are sanitized; audit failure behavior follows approved matrix; resource payload is never passed to audit.
-
-#### Task 1.6 — Migrate the first vertical slice: members/guardians
-
-**Objective:** Prove the architecture on the broadest current personal-data domain before mass migration.
-
-**Create/modify:**
-- concrete member/guardian repository functions under `packages/db/src/privacy/` or `packages/db/src/repositories/`.
-- `apps/admin-web/lib/members.ts`
-- `apps/admin-web/app/dashboard/members/**`
-- `apps/admin-web/lib/rosters.ts` only for member field reads.
-- member/guardian unit and PostgreSQL integration tests.
-
-**Acceptance:** List/search/create/update/link/detail operations use the sensitive DAL; coach receives only approved fields; cross-workspace IDs deny and audit; member search no longer places names/email/phone in URL query strings; existing member workflows remain functional.
-
-#### Task 1.7 — Migrate remaining sensitive domains
-
-Execute as separate, reviewable packets in this order:
-
-1. Attendance, rosters, booking, waitlist, trial.
-2. Forms, PDFs, signatures, magic links.
-3. Memberships, billing, Stripe mapping/webhook.
-4. Migration intake/files/staging/reconciliation.
-5. Messaging/notifications (including schema-only paths before activation).
-6. Progress, events, and private lessons (schema-only restrictions if workflows remain deferred).
-7. Landing waitlist filesystem PI.
-8. Auth/session repositories.
-
-For each packet: enumerate old Prisma calls, write failing policy/audit/isolation tests, add concrete DAL functions, migrate callers, verify no sensitive over-select, run regression gates, and update the data-access map.
-
-#### Task 1.8 — Enforce no direct sensitive Prisma access
-
-**Objective:** Turn the architectural rule into a build-time gate.
-
-**Create:**
-- `scripts/compliance/check-sensitive-data-access.mjs`
-- `tests/tooling/sensitive-data-access.test.mjs`
-
-**Modify after migration:**
-- `packages/db/src/index.ts` to stop exporting raw `prisma` to app code.
-- app imports to use approved repository exports.
-- `package.json`/CI scripts to run the check.
-
-**Acceptance:** A fixture/direct query against a sensitive model outside allowlisted server-only DAL paths fails. Type-only imports and approved non-personal models are handled explicitly; no broad path wildcard permits bypass.
-
-### Phase 2 — Authentication hardening and session controls
-
-**Exit gate:** Every account that can access classified PI-Health has unique identity, approved MFA assurance, idle and absolute session expiry, secure recovery, session revocation, and negative tests.
-
-#### Task 2.1 — Record session activity and assurance
-
-**Modify:**
-- `packages/db/prisma/schema.prisma`
-- additive migration
-- `packages/auth/src/session.ts`
-- `packages/auth/src/session.test.ts`
-
-**Add conceptually:** absolute expiry, idle expiry/last activity, MFA assurance time/method, revoked time/reason, session/device label only if approved.
-
-**Acceptance:** Idle and absolute boundaries are server-enforced; expired/revoked sessions are deleted or denied; rolling activity is throttled to avoid a write on every request; clock-boundary tests pass.
-
-#### Task 2.2 — Implement approved MFA
-
-**Dependency gate:** Select managed IdP or concrete TOTP/WebAuthn approach only after BAA/DPA, recovery, browser, and operations review. Do not invent a provider.
-
-**Affected:** `packages/auth/**`, Prisma schema/migration, admin/member login and account-security UI, protected contexts.
-
-**Acceptance:** Enrollment, challenge, recovery, reset, lockout/rate limit, backup code handling, and admin/support reset authorization are tested. Secrets are encrypted using managed keys. PI-Health policy denies missing/stale assurance.
-
-#### Task 2.3 — Add session management and step-up UI
-
-**Create/modify:** account-security and re-auth routes in admin/member apps under approved paths.
-
-**Acceptance:** Users can view/revoke their sessions without exposing raw tokens; sensitive exports/rights/bulk operations require recent MFA; timeout and re-auth states are accessible and do not lose unsafe form state silently.
-
-#### Task 2.4 — Add recovery and invite/token lifecycle
-
-**Scope:** password recovery, staff invite acceptance, guardian/magic-link token rotation/revocation/rate limits, and single-use semantics. Coordinate with existing unresolved guardian and internal operator decisions.
-
-**Acceptance:** Tokens are random, hashed at rest, short-lived, single-use, purpose-bound, rate-limited, revocable, and never logged. The existing plaintext `StaffInvite.token` is migrated with expand/backfill/contract sequencing. Enumeration-safe responses and adversarial tests pass.
-
-### Phase 3 — Jurisdiction, consent, disclosure, and outbound controls
-
-**Exit gate:** A US-context and a Canadian-context synthetic tenant demonstrate different approved consent/retention/flow behavior; multi-regime and unknown cases fail closed.
-
-#### Task 3.1 — Add privacy profile and policy version models
-
-**Objective:** Extend and stabilize the minimal Task 1.0 profile with counsel-approved policy versioning; do not create a second jurisdiction model.
-
-**Modify:** `packages/db/prisma/schema.prisma` plus additive migration only where Task 1.0's reviewed tracer slice needs expansion.
-
-**Proposed minimal models:** workspace privacy profile, applicable regime entries or validated regime keys, member/record origin override, policy version references, and legal-review state. Avoid duplicating location or adding multi-location support.
-
-**Acceptance:** Multiple regimes can apply; unknown status is explicit; no default to permissive; existing workspaces are backfilled as `PENDING_LEGAL_REVIEW`, not guessed.
-
-#### Task 3.2 — Implement jurisdiction policy resolution
-
-**Create:**
-- Extend `packages/db/src/privacy/jurisdiction.ts` from Task 1.0.
-- focused unit/property-boundary tests.
-
-**Acceptance:** Workspace default plus approved record override produces a deterministic policy set; conflicting/unknown inputs block restricted operations and create a legal-review item/audit event.
-
-#### Task 3.3 — Add versioned consent/evidence records
-
-**Modify:** schema/migration, privacy DAL, trial/member creation and forms UI only after counsel-approved text/purpose catalog exists.
-
-**Capture:** subject, scope/purpose, legal basis/model, text/version, language, granted/withdrawn times, collector/actor, channel, jurisdiction policy, evidence reference.
-
-**Acceptance:** Consent is not conflated with existing migration acknowledgment or PDF-sign checkbox. Withdrawal affects future uses/disclosures but does not silently erase records subject to retention.
-
-#### Task 3.4 — Create destination and agreement registry enforcement
-
-**Create:**
-- `docs/compliance/destinations.yml`
-- `docs/compliance/subprocessors.yml`
-- JSON schema or small validator under `scripts/compliance/`
-- tooling tests.
-
-**Acceptance:** A destination touching classified data cannot be enabled without region, purpose, data classes, agreement status/evidence, retention/deletion, and transfer approval. Do not commit contract documents or confidential vendor terms; store references and approval metadata.
-
-#### Task 3.5 — Implement outbound-flow gateway
-
-**Create:** `packages/db/src/privacy/outbound-flow.ts` or a narrowly named package if provider boundaries require it.
-
-**Migrate:** Stripe payload construction, approved email delivery, exports, monitoring/error payload adapters.
-
-**Acceptance:** Quebec-origin and Canada-US/US-Canada synthetic cases follow approved allowlist/PIA rules; unknown origin/destination denies; every disclosure is auditable; fields are minimized. Stripe metadata is reduced to approved opaque references, and all checkout/return URLs use configured allowed origins rather than untrusted forwarded host values.
-
-#### Task 3.6 — Eliminate sensitive URL/query leakage
-
-**Modify:**
-- member search route/form.
-- magic-link token design/routes.
-- any URL carrying names/emails/phones or provider-sensitive values.
-- client-side migration-correction `mailto:` payloads.
-- reverse-proxy/access-log configuration once identified.
-
-**Acceptance:** Automated route/network scan finds no classified values in URLs, query strings, Referer headers, redirects, or log captures. Opaque IDs/tokens follow the legal/security decision and access logs store route templates or approved redacted forms.
-
-### Phase 4 — Encryption, storage, backups, and data migration
-
-**Exit gate:** Approved high-sensitivity fields and all stores/backups are encrypted with tested key operations; plaintext backfill is reconciled and removed; restore/rollback evidence exists.
-
-#### Task 4.1 — Verify managed encryption at rest and TLS
-
-**Create:** `docs/compliance/encryption-and-transport-evidence.md`.
-
-**Verify:** database, audit store, backups/snapshots, replicas, filesystem/object storage, CI artifacts, provider transport, internal connections, certificate/TLS policy, and administrative channels.
-
-**Acceptance:** Evidence is configuration/API output from the real provider with secrets redacted. Local Docker is explicitly non-production. Unknowns block release.
-
-#### Task 4.2 — Implement KMS envelope encryption
-
-**Create after provider selection:** a small server-only encryption module with encrypt/decrypt/rewrap, key-version metadata, authenticated encryption, and strict plaintext buffer disposal where practical.
-
-**Acceptance:** Managed key calls are mocked for unit tests and exercised in an authorized non-production provider environment. Tampering, wrong context/tenant, disabled key, rotation, and outage cases are tested. No application-embedded master key exists.
-
-#### Task 4.3 — Encrypt one highest-sensitivity field slice
-
-Start with a low-query, high-sensitivity field selected in Phase 0 (for example notes or migration access instructions), not all fields at once.
-
-**Steps:** additive ciphertext columns/model, dual-write, read-old/read-new compatibility, synthetic backfill, row/hash reconciliation, switch reads, stop plaintext writes, verified backup, remove plaintext in a later migration.
-
-**Acceptance:** Raw database/storage inspection finds canary plaintext nowhere in primary, logs, audit, backup sample, or artifacts. Rollback/forward-fix behavior is rehearsed.
-
-#### Task 4.4 — Continue field encryption by domain
-
-Separate packets for notes/messages, forms/PDFs, migration blobs, notification bodies, and any counsel-approved identifiers. Each repeats Task 4.3; no bulk one-shot migration.
-
-The forms/PDF packet also defines an approved quarantine and malware/active-content scanning path, safe filename/header construction, and failure handling. A `%PDF-` prefix and checksum remain useful validation/integrity checks but are not security scanning or encryption.
-
-#### Task 4.5 — Move unmanaged filesystem PI
-
-**Scope:** `apps/landing-web/lib/waitlist.ts` and deployment storage.
-
-**Acceptance:** Either remove waitlist persistence if no longer needed (preferred) or move it to an approved encrypted/lifecycle-managed store with consent, abuse controls, access policy, and retention. No ephemeral production filesystem is treated as a durable compliant store.
-
-#### Task 4.6 — Backup/restore and deletion propagation
-
-**Create:** backup/restore runbook and synthetic rehearsal evidence.
-
-**Acceptance:** Backup encryption, access, region, retention, legal hold, restore isolation, deletion/expiry behavior, key-loss recovery, and audit logging are proven. A restored copy cannot bypass current policy unnoticed.
-
-### Phase 5 — Retention, legal hold, deletion, and offboarding
-
-**Exit gate:** Every classified record has lifecycle metadata or a documented exemption; jobs enforce approved policy with dry-run, hold, audit, reconciliation, and rollback controls.
-
-#### Task 5.1 — Add versioned retention policy catalog
-
-**Create:**
-- `docs/compliance/retention-policy-catalog.yml`
-- validator and tooling test.
-
-**Acceptance:** Policies are keyed by regime and record type, with minimum, maximum, trigger, action, legal basis/source, approver, effective date, and review date. Unknown values block scheduling.
-
-#### Task 5.2 — Add lifecycle/hold/disposition schema
-
-**Modify:** Prisma schema/migration and privacy DAL.
-
-**Acceptance:** Every new classified record gets lifecycle metadata transactionally; legal hold blocks disposition; duplicate metadata is constrained; a reconciliation query detects missing/orphaned metadata.
-
-#### Task 5.3 — Implement dry-run lifecycle planner
-
-**Create:** server-only lifecycle module and synthetic tests.
-
-**Acceptance:** Planner returns retain/archive/delete/blocked/review without mutating; rules handle multiple regimes by applying the most restrictive approved requirement; unknown policy returns review/blocked.
-
-The planner and integration tests must enumerate existing Prisma cascade paths from workspace/member deletion. No direct `delete`/cascade may bypass hold, export, retention review, disposition audit, or backup policy.
-
-#### Task 5.4 — Implement automated disposition worker
-
-Use a platform-scheduled command/job inside the monolith, not a new service. Deployment scheduler remains provider-specific.
-
-**Acceptance:** Claim/idempotency, batch limits, retries, hold race, audit, archive verification, delete transaction, and failure recovery are tested. First production mode is report-only until approved.
-
-#### Task 5.5 — Build tenant offboarding workflow
-
-**Acceptance:** Offboarding inventories data, freezes new writes as approved, exports through the outbound gateway, applies holds/retention, schedules disposition, handles backups, and records approvals. Workspace closure never cascades blindly through regulated records.
-
-### Phase 6 — Individual rights and disclosure accounting
-
-**Exit gate:** Authenticated, identity-verified, auditable access/correction/accounting requests complete end to end with approved timelines and exceptions.
-
-#### Task 6.1 — Add rights-request state machine
-
-**Modify:** schema/migration and privacy DAL.
-
-**Request types:** access, correction/amendment, disclosure accounting, export, and deletion/restriction only where approved. Include identity verification, scope, status, due date, assignee/internal actor, decision reason code, delivery destination, completion evidence, and appeal/review.
-
-**Acceptance:** Invalid transitions are constrained; request payloads are classified/encrypted; no automatic legal decision.
-
-#### Task 6.2 — Build member-facing request routes/UI
-
-**Create:** authenticated member privacy center in `apps/member-web`; route handlers/server actions remain internal product surfaces.
-
-**Acceptance:** Customer sees own requests/data only; recent MFA/identity verification is required where approved; accessible loading/error/empty/success states and desktop/tablet/mobile evidence exist.
-
-#### Task 6.3 — Build owner/compliance review routes/UI
-
-**Dependency:** internal reviewer/processor identity must be approved. Do not make a gym owner the platform privacy officer by default.
-
-**Acceptance:** Scoped queues, least-privilege data, approved denial/correction flows, deadlines, and immutable audit are present. Free-form legal reasoning is not exposed to logs.
-
-#### Task 6.4 — Generate access/export packages
-
-**Acceptance:** Export is assembled from the DAL, minimized to approved scope, encrypted in transit/at rest, time-limited, delivered through an approved destination, checksum/retrieval audited, and automatically expired. Synthetic tests cover cross-workspace and omitted-data failures.
-
-#### Task 6.5 — Accounting of disclosures
-
-**Acceptance:** Approved disclosures derive from immutable audit/outbound records, exclude internal accesses where law/policy says so, are human-readable, and do not reveal another person's data. Legal rules remain versioned inputs.
-
-### Phase 7 — Frontend privacy controls
-
-**Exit gate:** Browser storage, telemetry, third-party scripts, rendering, caching, downloads, and session UX are verified not to expose classified values.
-
-#### Task 7.1 — Add frontend no-storage/no-telemetry guard tests
-
-**Create:** Playwright privacy audit using synthetic canaries.
-
-**Inspect:** localStorage, sessionStorage, IndexedDB, Cache API, service workers, cookies, console, network, Referer, error payloads, traces, screenshots, and downloaded filenames.
-
-**Acceptance:** Canaries exist only in intended authenticated responses/rendering; no third-party request receives them; test artifacts are securely handled and synthetic.
-
-#### Task 7.2 — Minimize server-to-client field projections
-
-**Modify:** sensitive pages/components and DAL selects by domain.
-
-**Acceptance:** Components receive only fields they render; coach/member projections differ; hidden CSS/conditional rendering is not used as authorization; React serialization/RSC payload inspection confirms minimization.
-
-#### Task 7.3 — Add timeout and re-auth UX
-
-**Acceptance:** Server remains authoritative; client warning is advisory; expired sessions cannot continue with stale cached content; sensitive screen content is cleared on logout/expiry as feasible; accessibility and recovery are tested.
-
-#### Task 7.4 — Harden PDF/download behavior
-
-**Modify:** owner/member/magic-link document routes.
-
-**Acceptance:** `Cache-Control: no-store` or counsel/security-approved equivalent, safe content disposition/filename, anti-sniffing/CSP/frame policy, authorization/audit on each access, token expiry/single-use behavior, and access-log redaction are tested.
-
-#### Task 7.5 — Consent and rights UX content
-
-**Dependency:** Counsel-approved language and Localization/UX review.
-
-**Acceptance:** Correct version/regime/language shown; user can review purpose/consequences; no pre-checked consent; evidence is recorded; withdrawal/request paths are discoverable; 390px/tablet/desktop and keyboard/screen-reader checks pass.
-
-### Phase 8 — Breach detection, incident response, and recurring controls
-
-**Exit gate:** Deterministic detection feeds a tested incident workflow; human reportability decisions, notification clocks, evidence, and recurring review ownership are documented and rehearsed.
-
-#### Task 8.1 — Create security-signal rules
-
-**Create:** audit-metadata detector module and tests.
-
-**Signals:** repeated denied/cross-workspace access, bulk reads/exports, disabled-user attempts, unusual actor/time/geo where lawful, token abuse, outbound deny, audit integrity failure, KMS failure, and provider reconciliation anomalies.
-
-**Acceptance:** Thresholds/config are approved and versioned; no PHI is copied into signals; false-positive handling and suppression expiry are documented.
-
-#### Task 8.2 — Add incident state and response trigger
-
-**Acceptance:** Incident records capture signal references, severity, owner, containment, evidence preservation, jurisdiction assessment, counsel/privacy review, notice deadlines, decisions, and closure. The system never auto-declares a legally reportable breach.
-
-#### Task 8.3 — Build incident runbooks and tabletop tests
-
-**Create:**
-- `docs/compliance/runbooks/incident-response.md`
-- `docs/compliance/runbooks/breach-assessment.md`
-- `docs/compliance/runbooks/key-compromise.md`
-- `docs/compliance/runbooks/audit-outage.md`
-
-**Acceptance:** Synthetic scenarios cover US, Canada, Ontario/Quebec where in scope, cross-border, vendor breach, lost export, and insider access. Roles, clocks, evidence, and communication approval are explicit.
-
-#### Task 8.4 — Add recurring review process
-
-Use the approved project scheduler/issue system; do not rely solely on application cron. Minimum annual security risk analysis and data-inventory review, plus schema/integration drift checks on each change.
-
-**Acceptance:** Named owner, due dates, escalation, completion evidence, and missed-review handling exist. Build checks fail when a new sensitive model/integration lacks inventory/registry review.
-
-### Phase 9 — Release, migration, and assurance
-
-**Exit gate:** Synthetic staging, security review, provider evidence, restore rehearsal, legal review, and all directive acceptance criteria are met for a narrowly named jurisdiction/customer cohort. Compliance claims remain scoped to that cohort/configuration.
-
-#### Task 9.1 — Synthetic fixture and environment isolation
-
-**Acceptance:** Synthetic data generator covers every classified field and edge case; production exports cannot be imported into non-production; environment credentials/databases/buckets/keys are isolated; screenshots/traces cannot contain real data.
-
-#### Task 9.2 — Migration rehearsal
-
-For every schema/encryption/lifecycle change: backup, fresh deploy, upgrade deploy, backfill dry run, backfill, reconciliation, application compatibility, rollback/forward fix, restore sample, and performance/batch evidence on synthetic scale.
-
-#### Task 9.3 — Full verification matrix
-
-Run and retain real output for:
-
-- `pnpm db:generate`
-- `pnpm db:validate`
-- `pnpm run test`
-- `pnpm run lint`
-- `pnpm run check-types`
-- `pnpm run build`
-- compliance inventory/access/subprocessor validators
-- PostgreSQL fresh and upgrade migration tests
-- authorization matrix and cross-workspace adversarial tests
-- audit completeness tests
-- log/telemetry canary tests
-- MFA/session tests
-- encryption raw-storage/backup tests
-- retention/hold/disposition tests
-- cross-border/PIA gating tests
-- rights request E2E
-- frontend storage/network/console audit
-- existing connected Flowstate E2E and smoke checklist
-
-#### Task 9.4 — Independent reviews
-
-Required at minimum: Backend, Database, Frontend/UX/Design/Localization for affected UI/copy, QA, Security/Operations, BA/Sales, qualified privacy counsel, and CEO/Jacky. Provider penetration/security assessment scope is a human decision.
-
-#### Task 9.5 — Controlled rollout
-
-Start with no regulated production data. Then an approved synthetic staging environment, then a specifically approved pilot cohort with named jurisdictions and vendors. Use feature/config gates that fail closed for unresolved privacy profiles. Document rollback, support, incident owner, and on-call coverage before enabling.
+## 4. Target Flowstate Pro architecture
+
+### 4.1 Product applications
+
+The following paths are **PROPOSED — FUTURE**; exact names may be changed once in Milestone 1, then frozen in the architecture record:
+
+- `apps/pro-provider-web/` — organization administration and workforce clinical workflows.
+- `apps/pro-patient-web/` — invitation-only patient and guardian/proxy self-service.
+- `apps/pro-api/` — dedicated REST workflow API and modular-monolith backend.
+- `packages/pro-db/` — separate Prisma client, schema, migrations, tenant repositories, RLS transaction context, and outbox persistence.
+- `apps/pro-api/src/modules/auth/` — Pro-only identity/session/MFA/step-up adapters and authorization context.
+- `apps/pro-api/src/modules/policy/` — versioned profile, purpose, authority, access, consent, retention, hold, destination, and activation resolution.
+- `apps/pro-api/src/modules/audit/` — PHI-free security audit event contract and regional append-only writer.
+- `apps/pro-api/src/modules/files/` — controlled Cloud Storage metadata, upload, quarantine, scan, release, immutable versions, and amendment linkage.
+- `apps/pro-api/src/modules/integrations/` — destination gateway and separately enabled provider adapters.
+- `tests/pro/fixtures/` — synthetic-only tenant/profile/clinical fixtures and canaries.
+- `infra/pro/` — provider-approved IaC, project/environment manifests, regional topology, policy tests, and read-back verification. The IaC tool is an owner decision; do not scaffold one before approval.
+
+Provider and patient web applications may call only the dedicated Pro API. They may not import Prisma, vendor SDKs, KMS internals, policy internals, or direct storage clients. The API owns orchestration; concrete domain modules remain in one deployable modular monolith until measured scale or isolation requirements justify a split.
+
+The following packet ownership paths are also **PROPOSED — FUTURE**. Keep each module in `apps/pro-api` unless a second real server consumer proves a package is necessary:
+
+| Work | API implementation | API test | Provider route | Patient route |
+|---|---|---|---|---|
+| Activation | `apps/pro-api/src/modules/activation/index.ts` | `apps/pro-api/src/modules/activation/index.test.ts` | `apps/pro-provider-web/app/(public)/apply/page.tsx` | Not applicable |
+| Patients/proxies | `apps/pro-api/src/modules/patients/index.ts` | `apps/pro-api/src/modules/patients/index.test.ts` | `apps/pro-provider-web/app/(protected)/patients/page.tsx` | `apps/pro-patient-web/app/(protected)/profile/page.tsx` |
+| Scheduling/intake | `apps/pro-api/src/modules/encounters/index.ts` | `apps/pro-api/src/modules/encounters/index.test.ts` | `apps/pro-provider-web/app/(protected)/schedule/page.tsx` | `apps/pro-patient-web/app/(protected)/appointments/page.tsx` |
+| Chart/notes | `apps/pro-api/src/modules/chart/index.ts` | `apps/pro-api/src/modules/chart/index.test.ts` | `apps/pro-provider-web/app/(protected)/patients/[patientId]/chart/page.tsx` | `apps/pro-patient-web/app/(protected)/records/page.tsx` |
+| Files | `apps/pro-api/src/modules/files/index.ts` | `apps/pro-api/src/modules/files/index.test.ts` | `apps/pro-provider-web/app/(protected)/patients/[patientId]/files/page.tsx` | `apps/pro-patient-web/app/(protected)/records/files/page.tsx` |
+| Billing/eligibility | `apps/pro-api/src/modules/billing/index.ts` | `apps/pro-api/src/modules/billing/index.test.ts` | `apps/pro-provider-web/app/(protected)/billing/page.tsx` | `apps/pro-patient-web/app/(protected)/billing/page.tsx` |
+| Rights/lifecycle | `apps/pro-api/src/modules/rights/index.ts` | `apps/pro-api/src/modules/rights/index.test.ts` | `apps/pro-provider-web/app/(protected)/privacy/requests/page.tsx` | `apps/pro-patient-web/app/(protected)/privacy/page.tsx` |
+| Incidents | `apps/pro-api/src/modules/incidents/index.ts` | `apps/pro-api/src/modules/incidents/index.test.ts` | `apps/pro-provider-web/app/(protected)/security/incidents/page.tsx` | Not applicable |
+
+These are ownership anchors, not permission to scaffold every file in Milestone 1. Create a path only when its packet begins with a failing test.
+
+### 4.2 Identity, tenancy, and authorization
+
+- Pro roles are `ORGANIZATION_ADMIN`, `PROVIDER`, `CLINICAL_SUPPORT`, `ADMINISTRATIVE_STAFF`, `BILLING_STAFF`, `PRIVACY_OFFICER`, `PATIENT`, and `GUARDIAN_OR_PROXY`.
+- The same email may exist in Standard and Pro only as unrelated identities.
+- Organization admins are manually verified. Workforce and patient accounts are invitation-controlled.
+- Workforce and patients require approved MFA. Workforce clinical actions and high-risk patient identity/security changes use step-up.
+- Initial security-owned ceilings are workforce idle/absolute 15 minutes/12 hours, patient 30 minutes/24 hours, and privileged step-up 5 minutes; the security-owned configuration is versioned and bounded so tenants cannot weaken it.
+- Flowstate workforce uses managed Cloud Identity, device controls, and just-in-time privileged access. No routine patient-data access is granted.
+- Tenant-clinician break-glass is narrow, time-limited, MFA-protected, justified, audited, notified, and reviewed. It does not grant Flowstate staff clinical access.
+- Every request enters with trusted actor, tenant, patient/record scope, session assurance, purpose, operation ID, correlation ID, and approved profile context. Caller-supplied tenant, role, purpose, or assurance is rejected.
+- Authorization denies unknown roles, actions, resources, profiles, relationships, authority, or assurance.
+
+### 4.3 Database and regulated aggregate rules
+
+- Pro uses its own PostgreSQL database and Prisma schema.
+- Default tenancy is a shared regional database with mandatory tenant IDs, composite tenant integrity, PostgreSQL RLS, trusted transaction context, tenant repositories, and adversarial cross-tenant tests.
+- Dedicated tenant projects/databases are separately priced and approved profiles, not the default architecture.
+- Regulated aggregate roots carry lifecycle and policy references.
+- Central versioned policy, legal-hold, and lifecycle-event registries govern disposition.
+- No uncontrolled destructive cascades cross regulated aggregate roots.
+- Draft clinical content may be edited. Finalized records are immutable; corrections are linked amendments or late entries with author, time, reason, prior version, signatures, and audit.
+- Patient-reported information remains distinct from clinician-verified information.
+- High-risk operations use durable intent and outcome records, idempotency keys, optimistic concurrency/version checks, and a transactional outbox.
+- Audit outage fails closed for regulated operations except a separately approved, time-bound emergency mode with reconciliation and review.
+
+### 4.4 Policy and lifecycle
+
+Policy resolution uses verified organization status, customer type, service location, patient residence where legally relevant, record origin, care relationship, payer/public-body involvement, contract, destination, and approved overrides. Tenant admins cannot author legal rules.
+
+Distinct versioned records represent:
+
+- consent;
+- HIPAA authorization;
+- acknowledgement;
+- contract acceptance;
+- non-consent legal authority;
+- representative/proxy authority;
+- retention policy;
+- legal hold;
+- disclosure;
+- rights request and fulfilment;
+- tenant responsibility matrix;
+- activation and profile approval.
+
+Unknown policy blocks the dependent use, disclosure, export, destruction, or activation and creates a review item. Withdrawal is prospective and does not erase lawful history. Backups expire and reconcile truthfully; the product does not promise immediate mutation of immutable backup media.
+
+### 4.5 Files and encryption
+
+- File bodies live in governed regional Cloud Storage, never PostgreSQL blobs.
+- PostgreSQL stores metadata, hashes, classification, provenance, patient/encounter linkage, immutable version lineage, quarantine/scan state, lifecycle, and storage references.
+- File types are allowlisted; uploads enter quarantine, are scanned by an approved service, and fail closed before release.
+- DICOM is rejected from the ordinary pipeline until the separate PACS/DICOM profile is approved.
+- Cloud SQL, Storage, backups, audit exports, and supported services use provider encryption plus approved CMEK boundaries.
+- Highest-risk values use envelope encryption with tenant/record-bound authenticated context and key-version metadata where the approved threat model requires it.
+- No plaintext key, secret, token, or production identifier enters source, logs, tests, fixtures, screenshots, or database metadata.
+
+### 4.6 Audit, disclosure, and incidents
+
+Security audit events are append-only, regionally retained, request/operation-correlated, and contain no PHI payload or free-form clinical text. Record actor, tenant, action, opaque resource reference, purpose/authority reference, policy version, time, outcome/reason code, assurance, destination reference, and integrity metadata.
+
+Disclosure accounting is a distinct legally scoped record derived from approved disclosure events; it is not the raw security audit. Automated signals can open incidents, but Legal/Privacy makes reportability and notice decisions. Preserve distinct discovery, containment, assessment, and notice clocks plus minimal chain-of-custody evidence.
+
+### 4.7 White-label configuration
+
+Use a validated registry for branding, origins, languages, enabled modules, profile approvals, operating envelope, support contacts, and integration destinations. Branding cannot change security headers, identity boundaries, policy behavior, approved legal text, audit, retention, or tenant isolation. Each brand has explicit allowed origins and browser/session boundaries.
 
 ---
 
-## 8. Model inventory coverage checklist
+## 5. GCP US and Canada topology
 
-Phase 0 must cover every model below, including schema-only/dormant models:
+### 5.1 Pro-US data plane
 
-`User`, `Workspace`, `WorkspaceMigration`, `Location`, `Room`, `Program`, `WorkspaceUser`, `ClassTemplate`, `Member`, `Guardian`, `FamilyLink`, `ClassBooking`, `AttendanceRecord`, `ClassInstance`, `MembershipPlan`, `MembershipPlanProgramRestriction`, `PunchCardProduct`, `PunchCardProductProgramRestriction`, `MemberPunchCard`, `DropInProduct`, `DropInProductProgramRestriction`, `WaitlistEntry`, `FormDocument`, `FormVersion`, `RequiredFormAssignment`, `SignatureRequest`, `SignedDocument`, `MemberMembership`, `WorkspaceStripeSettings`, `MembershipBillingState`, `BillingRecord`, `Invoice`, `InvoiceLineItem`, `Payment`, `Refund`, `AccountCredit`, `CreditRule`, `BillingPolicy`, `PaymentMethodReference`, `FailedPaymentCase`, `StripeWebhookEvent`, `ImportJob`, `ImportSourceFile`, `ImportFieldMapping`, `StagingRecord`, `ValidationIssue`, `ReconciliationReport`, `MigrationImportedRecord`, `ProgressModuleSetting`, `BeltDefinition`, `MemberProgressState`, `PromotionRecord`, `ConversationThread`, `ConversationParticipant`, `Message`, `Announcement`, `NotificationJob`, `EmailTemplate`, `Event`, `EventBooking`, `PrivateLessonSlot`, `PrivateLessonBooking`, `AuthSession`, `StaffInvite`, and `WorkspaceSetting`.
+- Primary region: `us-east4`.
+- Manual whole-region DR region: `us-east1`.
+- Separate workload project(s) and recovery/archive project(s).
+- Regional Cloud Run services for provider web, patient web, and API.
+- Regional external load balancer and Cloud Armor.
+- Cloud SQL PostgreSQL HA, PITR, regional backups, and approved cross-region DR replication/recovery design.
+- Regional Cloud Storage for clinical files and quarantine, with separate immutable backup/audit destinations after retention policy approval.
+- Regional KMS/CMEK, Secret Manager, logs, metrics, and audit export.
+- Artifact Registry and Cloud Build promotion isolated from Canada and Standard.
 
-Also inventory non-Prisma stores and artifacts:
+### 5.2 Pro-Canada data plane
 
-- landing waitlist JSONL;
-- environment/config secrets and URLs;
-- cookies and browser caches/storage;
-- form/PDF responses and downloads;
-- request/access/proxy/CDN logs;
-- application/error/APM/analytics/support payloads;
-- Stripe objects/webhooks/metadata;
-- email bodies and provider records;
-- CI logs, build artifacts, Playwright traces/screenshots/reports;
-- database replicas, snapshots, backups, restored copies;
-- local Docker volumes and developer machines;
-- audit and incident stores introduced by this plan.
+- Primary region: `northamerica-northeast2` (Toronto).
+- Manual whole-region DR region: `northamerica-northeast1` (Montréal).
+- Separate workload project(s) and recovery/archive project(s) from Pro-US and Standard.
+- The same service pattern as Pro-US, deployed from the same reviewed Pro source but with Canada-specific configuration, resources, credentials, keys, logs, and vendors.
+- Do not claim BC-only hosting: GCP has no Vancouver region in the approved topology.
+- Canadian target boundary includes configurable application data, files, database, backups, keys, and logs. Identity control plane, CI control plane, support access, vendor subprocessors, and any US transfer remain explicit transfer-review items.
 
----
+### 5.3 Topology invariants
 
-## 9. Directive acceptance-criteria traceability
-
-| Directive criterion | Primary tasks | Release evidence |
-|---|---|---|
-| Complete field inventory | 0.2–0.4 | Schema drift check + reviewed inventory |
-| No sensitive query outside DAL | 1.6–1.8 | Static gate + repository integration tests |
-| Immutable audit for every sensitive request | 1.2–1.7 | Audit completeness matrix + DB permission proof |
-| Deny-by-default authorization | 1.3, 1.6–1.7 | Role/resource positive and negative tests |
-| MFA and session timeout | 2.1–2.4 | Idle/absolute/MFA/recovery E2E |
-| No sensitive logs/telemetry/URLs | 1.1, 3.6, 7.1 | Canary scanning of logs/network/browser |
-| Encryption at rest and field-level | 4.1–4.4 | Provider config + raw storage/backup inspection |
-| Retention metadata and jobs | 5.1–5.4 | Lifecycle reconciliation + disposition tests |
-| Rights endpoints/workflows | 6.1–6.5 | Authenticated E2E + audit proof |
-| Tenant jurisdiction changes behavior | 3.1–3.3 | US/Canada/multi-regime/unknown fixtures |
-| Cross-border/Quebec controls | 3.4–3.5 | Destination allowlist/PIA deny tests |
-| Subprocessor BAA/DPA registry | 0.5, 3.4 | Build validator + human agreement review |
-| Frontend exclusion | 7.1–7.5 | Browser storage/network/console audit |
-| Versioned safeguards docs | all phases | `docs/compliance/**` review manifest |
-| Legal unknowns explicitly tracked | 0.6, Gate 0, all phases | Open-items register with blocking links |
+- No cross-plane database connection, bucket replication, log sink, key access, secret access, support credential, session, queue, or fallback exists unless a named transfer profile is approved and tested.
+- DNS/origins, service accounts, workload identity, IAM groups, KMS keys, secrets, billing, monitoring, and promotion approvals are plane-specific.
+- DR activation is manual, documented, rehearsed, and region-contained. Failover never silently moves US data to Canada or Canadian data to the US.
+- Logs, metrics, traces, alerts, and build outputs are PHI-free by design and canary-tested.
+- Non-production projects contain synthetic data only and cannot reach production data resources.
 
 ---
 
-## 10. Test architecture
+## 6. Execution protocol for every work packet
 
-### Unit tests
+Each packet must declare:
 
-- Policy decisions, context construction, redaction, jurisdiction resolution, retention planning, encryption envelope/tamper behavior, token lifecycle, disclosure decisions, and incident thresholds.
+1. Objective and patient/customer safety outcome.
+2. Approved decision IDs and dossier sources.
+3. Allowed and forbidden paths.
+4. **PROPOSED — FUTURE** paths versus existing paths.
+5. Data classes, aggregate roots, actors, regions, and profiles affected.
+6. Human/legal/vendor dependencies and explicit blocker state.
+7. Failing test or verification added first.
+8. Minimal implementation needed to pass it; no speculative module or abstraction.
+9. Migration, backfill, idempotency, concurrency, failure, audit, and rollback behavior.
+10. Synthetic fixtures and evidence destinations.
+11. Focused test commands, affected workspace gates, and full candidate gates.
+12. Required code, database, security, privacy/legal, product, UX/accessibility, operations, and independent review.
+13. Dossier artifacts/status transitions updated after verification.
+14. Confirmation that no production deployment, credential, live data, customer contact, contract decision, vendor selection, or public claim is included.
 
-### PostgreSQL integration tests
-
-- Tenant isolation and guessed-ID/swap attacks.
-- Repository + lifecycle atomicity.
-- Business transaction versus independent audit outcome.
-- Append-only audit permissions.
-- Migration fresh/upgrade/backfill/constraint behavior.
-- Retention claim/hold/delete races.
-- Stripe/event idempotency with audit writes.
-
-Use `TEST_DATABASE_URL` and a separate synthetic audit-test URL. Tests must fail—not silently skip—in the dedicated compliance CI job when prerequisites are absent.
-
-### Route/action integration tests
-
-For every sensitive route/action: unauthenticated, wrong role, wrong workspace, wrong member, missing MFA, unknown jurisdiction, allowed case, denied audit, success audit, sanitized failure audit, and minimal response projection.
-
-### Playwright privacy tests
-
-Use unique synthetic canaries in each data category. Inspect page content, browser storage, cookies, console, requests, responses, redirects, Referer, downloads, and artifacts. Cover admin owner, assigned/unassigned coach, member own/other, public trial, magic-link signing, rights request, timeout, and export.
-
-### Infrastructure/manual evidence
-
-TLS scan, managed encryption configuration, KMS policy/rotation, database/audit credentials, immutable retention, backup/restore, destination regions, BAA/DPA registry review, PIA references, incident tabletop, and human legal review cannot be replaced by unit tests.
+Use RED-GREEN-REFACTOR for behavior. Database packets must prove fresh install and upgrade from the prior released Pro schema against disposable PostgreSQL. Infrastructure packets must test policy before apply and read back the real non-production configuration after apply. A green unit suite cannot replace restore, failover, incident, access-review, or legal evidence.
 
 ---
 
-## 11. Work-packet and review routing
+## 7. Milestone 0 — Complete and approve the Pro specification dossier
 
-Every implementation packet must state:
+**Entry:** Binding README and Q1–Q206 register exist.
 
-- goal and human outcome;
-- allowed and forbidden paths;
-- exact source-of-truth docs and approved legal/policy inputs;
-- data classes/models/fields affected;
-- actor/authorization/jurisdiction impact;
-- migration/backfill/rollback and audit behavior;
-- synthetic fixture requirements;
-- focused RED/GREEN evidence and full regression commands;
-- infrastructure/provider assumptions;
-- required reviewers and release blocker status;
-- no deploy/push/live credentials/production data/customer contact boundaries.
+**Exit gate G0:** The complete supporting dossier exists, conflicts are resolved, legal/vendor unknowns are represented as blockers, and Product, Security/Privacy, Database, Backend, Operations, QA, and the executive risk owner approve implementation scope. Counsel approves only legal values within its remit. No production resources or clinical code are authorized by G0.
 
-Routing:
+### WP0.1 — Freeze evidence and boundaries
 
-- Prisma/migration/retention/encryption metadata: `hitlink-db` + Backend + QA + CEO.
-- Auth/policy/DAL/audit/outbound/rights: `hitlink-backend` + Database + Security/Legal + QA.
-- User-visible privacy/MFA/consent/rights UI: Frontend + UX + Design/Localization as material + QA + BA/Sales + CEO.
-- Gym workflow visibility changes: Gym Workflow review.
-- Legal text, classification, retention, breach, agreement status: qualified human legal/privacy review; no AI approval substitute.
+**Existing files read-only:** Standard source, tests, `packages/db/prisma/schema.prisma`, root/project-required docs.
 
----
+**PROPOSED — FUTURE:** `docs/compliance/flowstate-pro/current-standard-baseline.md`, `docs/compliance/flowstate-pro/evidence/README.md`.
 
-## 12. Rollback and failure policy
+- Record commit, tree status, toolchain, current test/build state, 65-model/48-enum/16-migration facts, and pre-existing dirty/untracked files.
+- Regenerate Standard direct-database-access and sensitive-store counts used as boundary evidence.
+- Document what is implemented, schema-only, historical, or unknown.
+- Acceptance: reproducible commands and redacted outputs exist; no current failure is hidden and no Pro model is represented as implemented.
 
-- Phase 0 is documentation-only and reversible by normal document review.
-- DAL migrations retain old implementations only behind test-only or short-lived compatibility paths; no permanent bypass flag.
-- New policy defaults deny for unknown; rollback must not re-enable broad access silently.
-- Audit schema/store changes are additive. Never delete audit history to roll back application code.
-- Encryption uses expand/migrate/contract. A rollback can read old/new during the compatibility window; once plaintext is removed, rollback is a forward fix or restore under approved incident procedure.
-- Retention workers start report-only, then archive-only where approved, then deletion only after restore rehearsal and sign-off.
-- Outbound destinations start disabled and are enabled per tenant/policy after agreement/transfer approval.
-- MFA rollout requires enrollment/recovery support and staged enforcement; emergency bypass is time-limited, named, audited, and human-approved.
-- Rights and incident deadlines remain operational obligations even if a deployment is rolled back; runbooks must cover manual continuity.
+### WP0.2 — Author the product and architecture specifications
 
----
+**PROPOSED — FUTURE:** `product-spec.md`, `product-requirements-document.md`, `roadmap.md`, `system-design.md`, `security-privacy-architecture.md` under `docs/compliance/flowstate-pro/`.
 
-## 13. Definition of done
+- Convert approved decisions into testable requirements without filling blocked values.
+- Define exact v1 journeys, aggregate boundaries, API contracts, state machines, threat model, tenancy/RLS model, file pipeline, failure matrix, and module activation semantics.
+- Acceptance: every requirement links to decision IDs and acceptance evidence; Standard/Pro boundaries are consistent across all documents.
 
-This roadmap is complete only when:
+### WP0.3 — Author legal, data, control, and operations specifications
 
-1. Gate 0 legal/product/applicability decisions are recorded.
-2. Every schema field and non-database store is inventoried and reviewed.
-3. Every classified operation routes through the approved DAL/policy/audit boundary with static bypass prevention.
-4. Unique identity, MFA, session timeout, recovery, and revocation are proven.
-5. Highest-sensitivity data and all stores/backups are encrypted with managed keys and tested restoration.
-6. Jurisdiction, consent, destination, retention, and legal-hold policy changes behavior and fails closed on unknowns.
-7. Access/correction/accounting requests and offboarding complete end to end.
-8. Browser/log/telemetry/URL canaries show no unintended disclosure.
-9. Breach detection and incident runbooks are rehearsed without auto-making legal conclusions.
-10. BAA/DPA/PIA and legal-open-item reviews are complete for the exact pilot vendors/jurisdictions.
-11. Existing Flowstate workflows and full quality gates pass on the exact candidate.
-12. Qualified human reviewers approve the exact deployment configuration and narrowly scoped compliance claims.
+**PROPOSED — FUTURE:** `legal-applicability-matrix.md`, `data-classification-and-flows.md`, `control-and-evidence-matrix.md`, `operations-and-governance.md`, `competitor-parity-matrix.md`.
+
+- Counsel-owned values remain `COUNSEL_REVIEW_REQUIRED` until approved.
+- Map purpose/authority, customer profile, record origin, rights, retention, legal hold, disclosure, transfer, incident, vendor, and responsibility decisions.
+- Define accountable humans, access reviews, screening, training, sanctions, incident command, vendor review, risk analysis, penetration testing, insurance review, and protected evidence handling.
+- Acceptance: every applicable control has owner, implementation target, test, exercise, evidence reference, review cadence, and release gate.
+
+### WP0.4 — Establish change control and dossier validators
+
+**PROPOSED — FUTURE:** `docs/compliance/flowstate-pro/schemas/`, `scripts/pro-compliance/validate-dossier.mjs`, `tests/tooling/pro-compliance-dossier.test.mjs`.
+
+- Validate required status vocabulary, owner, reason, source, affected profiles, effective date, superseded text, required review, and evidence reference.
+- Reject approved legal values without named approval metadata and reject plaintext contracts/secrets.
+- Acceptance: a deliberately incomplete fixture fails; current approved documents pass; status cannot jump from `SPECIFIED` to `APPROVED_FOR_PROFILE` without intermediate evidence.
+
+### WP0.5 — G0 review
+
+- Resolve all product/architecture contradictions.
+- Keep CIAM, vendors, legal values, exact first specialty/profile, claims, pricing, SLAs, and insurance as blockers if unanswered.
+- Authorize only Milestone 1 packets whose dependencies are satisfied.
 
 ---
 
-## 14. Immediate next handoff
+## 8. Milestone 1 — Product separation and synthetic non-production foundation
 
-Do not begin with repository refactors or encryption. Hand the next AI implementor only **Phase 0, Tasks 0.1–0.3** in an isolated documentation/tooling worktree. Their deliverable is a generated field inventory and code-grounded data-access map—not a compliance claim and not production code. Then route Tasks 0.4–0.8 to human legal/privacy/security review before authorizing Phase 1.
+**Dependency:** G0.
 
-Ponytail boundary: this plan deliberately skips microservices, a public API, a policy DSL, a generic CRUD repository framework, multi-location jurisdiction modeling, speculative analytics, and provider selection. Add any of them only when an approved requirement cannot be met by the concrete modular-monolith boundaries above.
+**Exit gate G1:** Pro applications and packages are structurally isolated from Standard; US synthetic development/CI environments can build and run; no clinical journey or production activation is implied.
+
+### WP1.1 — Add architectural boundary tests first
+
+**PROPOSED — FUTURE:** `tests/tooling/pro-product-boundaries.test.mjs`, `docs/compliance/flowstate-pro/architecture-boundaries.md`.
+
+Fail when:
+
+- a Pro app imports Standard `packages/db`, `packages/auth`, role/session/domain modules, Stripe configuration, or app-local libraries;
+- a Standard app imports Pro clinical packages;
+- provider/patient web imports Prisma, policy internals, KMS/storage/vendor SDKs, or a repository;
+- a shared package exposes data-bearing types, product policy, credentials, or runtime clients to both products.
+
+Then add only the minimum package/app manifests required to make the approved graph pass.
+
+### WP1.2 — Create Pro application shells and separate configuration
+
+**PROPOSED — FUTURE:** paths in section 4.1 plus plane-specific, schema-validated environment manifests under `infra/pro/`.
+
+- Health/readiness endpoints contain no tenant or dependency secrets.
+- Origins, cookies, session names, database URLs, Stripe configuration, and keys are Pro-only.
+- White-label host lookup rejects unknown brands/origins.
+- Acceptance: each app builds independently; browser cookies do not cross Standard/Pro or provider/patient origins; Standard smoke checks remain unchanged.
+
+### WP1.3 — Create the separate Pro schema baseline
+
+**PROPOSED — FUTURE:** `packages/pro-db/prisma/schema.prisma`, first additive migration, migration tests.
+
+Initial schema includes only foundations needed by the next packets: organization/tenant, site/service location facts (without speculative multi-location workflow), workforce/patient identities as references to the approved identity boundary, role assignment, invitation, patient, representative authority, profile/activation references, operation/idempotency record, outbox, audit/disclosure references, policy/lifecycle references, and version metadata.
+
+- Add tenant ID to every tenant-owned root and composite tenant constraints to relationships.
+- Add RLS policies and a trusted transaction-context contract.
+- Avoid clinical module tables until their failing tests/work packets.
+- Acceptance: app credentials cannot query without tenant context; guessed/swapped tenant IDs fail at repository and PostgreSQL layers; fresh and upgrade migrations pass.
+
+### WP1.4 — Establish synthetic data and artifact controls
+
+**PROPOSED — FUTURE:** `tests/pro/fixtures/`, CI canary tests, non-production data policy.
+
+- Generate adults, minors, proxies, providers, clinical drafts/finals, files, billing, rights, holds, and cross-region cases using unmistakably synthetic canaries.
+- Block production export imports and production credentials in non-production.
+- Scan logs, screenshots, traces, reports, and build artifacts for canaries outside intended test assertions.
+- Acceptance: synthetic dataset covers every current classified field; preview/CI resources cannot reach production resources.
+
+### WP1.5 — Provision Pro-US non-production platform
+
+**PROPOSED — FUTURE:** `infra/pro/` manifests/IaC after tool approval, `docs/compliance/flowstate-pro/runbooks/us-nonprod.md`.
+
+- Create isolated US non-production workload/recovery projects and the approved regional services.
+- Apply least-privilege service accounts, Cloud Armor baseline, secrets, CMEK, PHI-free logging, regional sinks, budget/alerting, artifact scanning, and promotion separation.
+- Acceptance: policy tests pass before apply; read-back proves project/region/IAM/key/log/storage/database boundaries; destroy/recreate is rehearsed with synthetic data.
+
+### WP1.6 — G1 review
+
+Evidence must prove import graph, database/RLS isolation, origin/session isolation, CI isolation, and GCP non-production topology. Do not authorize clinical UI until failed cross-tenant and boundary tests are retained in CI.
+
+---
+
+## 9. Milestone 2 — Identity, activation, policy, audit, files, and operational control plane
+
+**Dependency:** G1 plus approved patient CIAM and required agreements for any external identity service. If CIAM remains blocked, implement only provider-independent interfaces/tests and do not activate accounts.
+
+**Exit gate G2:** A synthetic organization can move through reviewed activation, invitation, MFA, authorization, audit, lifecycle, and controlled-file foundations; unknown profiles and missing agreements fail closed.
+
+### WP2.1 — Identity, invitations, MFA, recovery, and sessions
+
+**PROPOSED — FUTURE:** `apps/pro-api/src/modules/auth/`, provider/patient security routes, Pro schema migrations.
+
+- Separate workforce and patient credentials/sessions; invitations are random, hashed, short-lived, single-use, purpose-bound, rate-limited, and revocable.
+- Enforce configured idle/absolute/step-up ceilings server-side.
+- Implement secure enrollment, recovery, reset, session listing/revocation, lockout/rate limiting, and enumeration-safe responses.
+- Acceptance: positive/negative tests for every Pro role, stale/missing MFA, expired/revoked sessions, recovery abuse, identity change review, and Standard/Pro cookie/credential separation.
+
+### WP2.2 — Organization verification and fail-closed activation
+
+**PROPOSED — FUTURE:** organization application, classification, agreement registry, responsibility matrix, operating envelope, and activation state machine.
+
+Activation sequence:
+
+1. Minimal business-contact application with no PHI.
+2. Manual organization/admin verification.
+3. Customer/entity/applicability classification.
+4. Data-flow and destination review.
+5. Required customer and downstream agreement evidence.
+6. Approved profile, specialty, purpose/authority, policy versions, region, and operating envelope.
+7. Security/Privacy and independent second approval.
+8. Invitation enablement.
+
+Unresolved classification or missing required BAA/DPA blocks activation. Registry entries store metadata/evidence references, not contracts.
+
+### WP2.3 — Central policy resolution and authorization
+
+**PROPOSED — FUTURE:** `apps/pro-api/src/modules/policy/` and policy matrix artifacts.
+
+- Resolve verified organization/customer/profile/location/residence/origin/care/payer/contract/destination inputs.
+- Enforce explicit actor/resource/action/field/relationship/purpose/authority/assurance rules.
+- Support scoped representative authority, effective/expiry/revocation dates, evidence, and age-of-majority transitions.
+- Acceptance: unknown/conflicting inputs deny; patient, proxy, provider, support, billing, admin, and privacy-officer projections are field-minimal; tenant admins cannot author legal rules.
+
+### WP2.4 — Append-only audit and durable operation outcomes
+
+**PROPOSED — FUTURE:** `apps/pro-api/src/modules/audit/`, regional audit persistence and immutable export configuration.
+
+- Write security-significant attempts and one terminal outcome per operation.
+- Persist high-risk intent before execution and reconcile provider/DB outcomes through idempotent operation IDs.
+- Test audit outage fail-closed behavior and approved emergency mode separately.
+- Acceptance: app credentials cannot update/delete audit; PHI canaries never enter audit; business rollback cannot erase denied/failed audit evidence; integrity/export/retention read-back exists.
+
+### WP2.5 — Transactional outbox and destination gateway
+
+**PROPOSED — FUTURE:** outbox worker inside the modular monolith and `apps/pro-api/src/modules/integrations/`.
+
+- Claim rows with bounded retries, idempotency, leases, dead-letter/review state, and outcome reconciliation.
+- Every destination requires approved purpose, data classes, region, agreement, retention/deletion behavior, transfer approval, and enabled profile.
+- Start with no destinations enabled. Add email, Stripe Pro, eligibility, or monitoring adapters only in their dependent packets.
+- Acceptance: unknown/disallowed destination never transmits; payload is minimized; disclosure/audit records reconcile to each attempt and outcome.
+
+### WP2.6 — Controlled clinical file pipeline
+
+**PROPOSED — FUTURE:** `apps/pro-api/src/modules/files/`, regional quarantine/released buckets, metadata schema, scanner adapter.
+
+- Presigned/upload authorization is tenant/patient/encounter scoped and size/type bounded.
+- Verify checksum, quarantine, scanner result, classification, provenance, immutable version, and release state.
+- Reject DICOM and unknown types.
+- Acceptance: malware/timeout/scan outage fails closed; quarantine objects cannot be served; released downloads require fresh authorization/audit and safe headers; delete/hold/backup behavior is tested.
+
+### WP2.7 — Human safeguards and operations baseline
+
+**PROPOSED — FUTURE:** policy templates, training/access/vendor registers, incident and privileged-access runbooks, evidence references.
+
+Name at minimum: Security/Privacy lead and Security Official, incident owner, executive signatory/risk owner, independent second approver, Virginia counsel, BC counsel, and independent assessor. Missing screening, training, sanctions, device rules, on-call, vendor review, risk analysis, penetration testing, insurance review, or protected evidence storage remains a launch blocker.
+
+### WP2.8 — G2 review
+
+Run activation, identity, authorization, RLS, audit, outbox, file, and privileged-access adversarial scenarios. Approve only the v1 clinical packets whose policy/vendor dependencies are complete.
+
+---
+
+## 10. Milestone 3 — Pro-US clinical v1
+
+**Dependency:** G2, Virginia customer/applicability profile approval, US legal-policy inputs, and approved vendors for each enabled integration.
+
+**Exit gate G3:** The complete minimum safe clinical journey works in US synthetic staging. Finalized records are immutable, patient/proxy authority is explicit, every classified operation is tenant/policy/audit controlled, and deferred modules remain disabled.
+
+Each packet adds only its own schema, repository, API, provider UI, patient UI, policy entries, lifecycle hooks, audit/disclosure events, synthetic fixtures, and tests. All listed paths are **PROPOSED — FUTURE** under the Pro applications/packages.
+
+### WP3.1 — Patients, demographics, contacts, and representatives
+
+- Patient identity and approved demographics/contact fields.
+- Adults, minors, guardians, proxies, substitute decision-makers, evidence, scope, dates, expiry/revocation, and age transition.
+- High-risk identity fields remain disabled by default and require separate purpose/security/retention approval.
+- Tests: duplicate/match policy, wrong tenant, wrong proxy scope, expired/revoked authority, patient-reported versus verified status, and field-level projections.
+
+### WP3.2 — Scheduling, intake, consent, and forms
+
+- Provider availability and appointment/encounter scheduling required for v1; do not add generalized multi-location behavior.
+- Versioned intake, consent, HIPAA authorization, acknowledgement, contract acceptance, and non-consent authority remain distinct.
+- Withdrawal affects future dependent operations without deleting lawful history.
+- Tests: version/language/purpose evidence, no pre-checked consent, unknown authority denial, cutoff/concurrency, proxy signing scope, and accessible patient/provider journeys.
+
+### WP3.3 — Longitudinal chart and encounter timeline
+
+- Minimal clinical chart organizes encounters, problems/diagnoses where profile-enabled, treatment/history, allergies, medications, documents, tasks, and released items.
+- High-risk categories (SSN/government ID, biometrics, genetics, unrestricted narratives) stay disabled unless separately approved.
+- Tests: tenant/patient integrity, provenance, patient-reported distinction, field minimization, concurrency, and profile feature gates.
+
+### WP3.4 — Clinical notes, finalization, amendments, and late entries
+
+- Editable drafts with ownership/version checks.
+- Finalization creates immutable content, author/time/signature/evidence and lifecycle references.
+- Corrections create linked amendments/late entries with reason and prior version; never overwrite final history.
+- Tests: finalize race, stale edit, amendment lineage, unauthorized co-sign, audit outage, restoration, and raw-store immutability.
+
+### WP3.5 — Controlled clinical files
+
+- Link released files to patient and encounter with classification/provenance/version lineage.
+- Enforce quarantine pipeline from WP2.6 and append-only amendment/version semantics.
+- Tests include safe downloads, cache headers, filenames, malware, wrong patient/tenant, expired links, holds, and DICOM rejection.
+
+### WP3.6 — Medication, allergy, and clinical history minimum
+
+- Structured v1 records sufficient for the approved specialties; do not build e-prescribing, medication administration, interaction engines, or external pharmacy networks.
+- Preserve status, source, verification, effective dates, recorder, and amendment history.
+- Tests: patient-reported/verified separation, contraindication display integrity, archival versus deletion, and profile-specific required fields.
+
+### WP3.7 — Direct pay, Pro Stripe boundary, and eligibility
+
+- Separate Pro Stripe account/configuration, keys, products/prices, customers, webhook secrets, access, and reconciliation.
+- Nonpayment enters controlled suspension/offboarding and never deletes records or blocks legally/emergency-required access.
+- Eligibility is enabled only after vendor/agreement/profile approval; it is not claims or full revenue cycle.
+- Tests: idempotent webhook lifecycle, opaque/minimized metadata, tenant/account mapping, failed provider calls, reconciliation, suspension safety, and no Standard Stripe resource use.
+
+### WP3.8 — Patient portal, release, and secure sharing
+
+- Invitation-only patient login, approved profile maintenance, scheduling, intake/consent/forms, released records, payment, account security, proxy management, and rights submission.
+- Records are visible only after explicit release policy; patient amendment requests do not mutate finalized clinical content directly.
+- Tests: own/other patient, proxy scopes, release/revoke timing, high-risk identity change review, session expiry, no browser persistence/telemetry leakage, and WCAG 2.2 AA.
+
+### WP3.9 — Rights, disclosure accounting, retention, holds, and offboarding
+
+- Authenticated rights requests with risk-based verification, policy deadlines, customer-authority decisions, amendment/appeal states, secure fulfilment, and evidence.
+- Versioned retention catalog and lifecycle planner; unknown policy blocks destruction.
+- Independently controlled legal holds and dry-run/report-only disposition worker before any deletion mode.
+- Offboarding separates cancellation from custody, access, retention, export, holds, integration shutdown, staging destruction, and final disposition.
+- Export includes human-readable and structured formats, manifest, hashes, reconciliation, secure transfer, expiry, and staging destruction.
+- Tests: state transitions, due-date policy versions, hold races, multiple regimes, no destructive cascades, backup truth, manual continuity, and nonpayment.
+
+### WP3.10 — Audit review, incident workflow, and operational dashboards
+
+- Deterministic signals: repeated denials, cross-tenant guesses, bulk reads/exports, disabled-account access, MFA downgrade, high-risk token use, disallowed destination, KMS/audit/file failures, and reconciliation anomalies.
+- Human incident command owns severity, containment, evidence, legal/privacy assessment, notice decisions, and closure.
+- Operational dashboards use PHI-free metrics/metadata.
+- Tests: no auto-declaration of legal breach, independent clocks, evidence references, suppression expiry, and regional alert routing.
+
+### WP3.11 — US synthetic staging journey and G3 review
+
+Exercise organization application through offboarding, including adult/minor/proxy variants, record finalization/amendment, malicious file, payment failure, rights request, legal hold, export, incident, restore, and support-access denial. Confirm every deferred module and unapproved high-risk field remains disabled.
+
+---
+
+## 11. Milestone 4 — Pro-Canada platform and BC private-clinic profile
+
+**Dependency:** G3 architecture stability; BC counsel decisions; approved Canadian customer profile, vendors, agreements, identity/control-plane/support transfer analysis, and Canada operating staff.
+
+**Exit gate G4:** The Pro-Canada plane passes topology read-back, synthetic BC profile tests, Canada-contained backup/DR exercises, and legal/operational review. This does not approve public bodies, health authorities, E-Health Act participants, insurers, or government contractors.
+
+### WP4.1 — Provision Canada non-production and staging
+
+- Apply the section 5 Canada topology with independent resources, identities, keys, logs, secrets, build promotion, and monitoring.
+- Prove no implicit US fallback or cross-plane replication.
+- Acceptance: configuration/API read-back, network/IAM/KMS tests, synthetic deploy, destroy/recreate, and region assertions pass.
+
+### WP4.2 — Implement the approved BC private-clinic profile
+
+- Add only counsel-approved purpose/authority, consent, rights, representative, retention, transfer, incident, and responsibility values.
+- Keep unresolved customer classes blocked.
+- Acceptance: profile fixtures demonstrably change policy behavior from US; unknown/mixed-origin cases deny and route to review.
+
+### WP4.3 — Validate Canadian identity, support, and vendor transfers
+
+- Record residency and subprocessors for CIAM, support, CI/CD, monitoring, email, Stripe/eligibility, malware scanning, and any administrative control plane.
+- Enforce approved destinations in the gateway.
+- Acceptance: a Canada-to-US or unapproved interprovincial transfer is blocked; approved transfer has profile, purpose, assessment, agreement, disclosure, and audit evidence.
+
+### WP4.4 — Canada DR, backup, rights, and incident exercises
+
+- Restore within Canada, activate manual regional DR, rotate/recover keys, process a synthetic rights request, apply a legal hold, and run vendor/insider/transfer incident tabletops.
+- Acceptance: RTO/RPO evidence is labeled internal until commercial approval; logs and evidence remain regionally controlled; no claim of BC-only hosting appears.
+
+### WP4.5 — G4 review
+
+Qualified BC counsel, Security/Privacy, Operations, Database, Backend, QA, independent assessor, and executive risk owner review the exact BC profile and configuration. Canada production remains disabled until section 15 is separately satisfied.
+
+---
+
+## 12. Later competitor-parity modules — disabled until separately gated
+
+Parity is a dated roadmap, not a v1 launch gate. Benchmark verified Jane.app and Epic clinic journeys, not Epic's full enterprise catalog. Every module starts with updated competitor evidence, profile need, legal/data-flow analysis, vendor decision, capacity/security impact, and a new approval gate.
+
+1. Secure messaging and notifications.
+2. Telehealth.
+3. Medication/e-prescribing and pharmacy integration.
+4. Laboratory orders/results and referrals.
+5. Imaging/PACS/RIS and DICOM gateway.
+6. Claims, clearinghouse, payer automation, and broader revenue cycle.
+7. Standards APIs through a separate standards gateway.
+8. Governed migration from external clinical systems.
+9. Multi-location organizations.
+10. Native mobile applications.
+11. Clinical AI with provenance, evaluation, human review, and separately approved data use.
+12. Additional specialty, public-sector, insurer, health-authority, government-contract, or dedicated-tenant profiles.
+
+Do not scaffold disabled modules "for later." Add the smallest module boundary only when its gate is approved. Prefer integration with established networks and systems over rebuilding their cores.
+
+---
+
+## 13. TDD and verification architecture
+
+### 13.1 Required layers
+
+- **Unit:** policy resolution, authorization, state transitions, redaction, validation, encryption envelopes, token/session boundaries, retention planning, incident thresholds.
+- **PostgreSQL integration:** RLS, trusted transaction context, composite tenant integrity, cross-tenant ID swaps, immutable finalization/amendment, outbox claims, audit permissions, lifecycle atomicity, hold/disposition races, idempotency/concurrency, fresh/upgrade migrations.
+- **API contract/integration:** unauthenticated, wrong role, wrong tenant/patient, wrong proxy scope, missing/stale MFA, unknown profile, allowed case, denied/success/failure audit, minimal projection, idempotent retry.
+- **Browser/E2E:** provider and patient journeys, invitations, MFA/re-auth, accessibility, responsive layouts, storage/network/console/Referer/download canaries, timeout, rights/export, safe files.
+- **Static/supply chain:** Standard/Pro import boundaries, web-to-backend boundaries, no direct Prisma/vendor SDK use, dossier/destination/policy schema checks, lockfile/license/vulnerability/secrets/artifact scans.
+- **Synthetic performance/capacity:** per-customer operating-envelope workload for seats, patients, concurrent sessions, chart size, files, jobs, exports, and support load. No universal cap is inferred.
+- **Infrastructure:** IaC policy tests, actual GCP read-back, IAM negative tests, region assertions, CMEK/secret/log/bucket/database configuration, blocked cross-plane paths.
+- **Operational:** backup restore, regional failover, key compromise/rotation, audit outage, scanner outage, incident tabletop, privileged access/JIT revocation, rights/offboarding manual continuity.
+- **Human:** legal applicability and values, agreements, policy approval, workforce safeguards, risk acceptance, penetration test review, public claims, and profile approval.
+
+### 13.2 RED-GREEN packet sequence
+
+1. Add one focused test that fails for the missing invariant.
+2. Run it and retain the expected failure.
+3. Implement the minimum behavior.
+4. Run the focused test and affected package suite.
+5. Run migration/integration or browser checks required by the packet.
+6. Run root lint, type, test, and build gates.
+7. Update dossier status/evidence only after real verification.
+8. Obtain required reviews before merge or next-gate authorization.
+
+### 13.3 Candidate commands
+
+Use the exact scripts that exist on the implementation revision. The current Standard root baseline is:
+
+```bash
+pnpm db:generate
+pnpm db:validate
+pnpm test
+pnpm lint
+pnpm check-types
+pnpm build
+pnpm exec playwright test --list
+```
+
+Milestone 1 must add Pro-specific scripts without changing the meaning of Standard commands, including focused Pro unit/integration/E2E, fresh/upgrade migration, boundary, dossier, destination, and infrastructure checks. CI must fail rather than silently skip dedicated database, browser, or infrastructure gates when their prerequisites are expected.
+
+### 13.4 UI acceptance
+
+Every user-facing packet includes loading, empty, error, denied, expired, conflict, and success states; keyboard and screen-reader paths; WCAG 2.2 AA checks; and desktop, tablet, and 390px evidence. Hidden rendering is not authorization. Inspect React/RSC payloads, browser storage, requests, logs, traces, screenshots, and downloads for synthetic canaries.
+
+---
+
+## 14. Dependencies, blockers, rollback, and dossier maintenance
+
+### 14.1 Hard blockers owned outside code
+
+- Exact customer/entity classification for each Virginia and BC applicant.
+- Approved retention schedules, consent/authorization text, rights deadlines, breach rules, purpose/legal-authority catalogs, and representative-authority rules.
+- Patient CIAM provider and residency, passkey/MFA, recovery, support, and BAA/DPA commitments.
+- Email, calendar, clearinghouse, lab, pharmacy, PACS/RIS, telehealth, eligibility, malware, and future integration vendors.
+- Executed Google/customer/subprocessor agreements and precise covered configurations.
+- BC public-sector, health-authority, E-Health Act, insurer, and government-contract requirements.
+- Cyber/E&O insurance limits/exclusions.
+- Pricing, contractual SLAs, support promises, credits, and exact operating envelopes.
+- First activated specialty/customer profiles.
+- Exact public privacy/HIPAA/PIPEDA language.
+- Named Security/Privacy, Security Official, incident, executive risk, second-approver, counsel, assessor, operations, and support/on-call owners.
+
+A missing blocker never defaults to the least restrictive behavior. Implement independent packets where possible; keep the dependent feature disabled.
+
+### 14.2 Rollback and failure policy
+
+- Documentation changes use explicit supersession; never erase approved history.
+- Schema changes are additive, rehearsed from the prior release, and never rewrite applied migrations.
+- Feature/profile flags default disabled and cannot bypass core authorization, RLS, audit, or region boundaries.
+- Policy rollback restores a previously approved version with reason/effective time; it never silently broadens access or legal authority.
+- Audit and disclosure history is append-only and is not deleted to roll back application code.
+- Clinical finalization is irreversible; correction uses amendments, not rollback mutation.
+- Encryption uses expand/migrate/contract and forward-fix after plaintext removal; key loss/compromise follows an exercised runbook.
+- File versions and quarantine evidence remain immutable; bad releases are revoked and superseded.
+- Outbox/destination enablement rolls back to disabled without losing durable intents/outcomes; retries remain idempotent.
+- Retention workers progress report-only → approved archive → approved destruction. Unknown policy or hold returns blocked.
+- Infrastructure rollback preserves region, keys, logs, audit, backups, and evidence. Never fail over across countries as a convenience.
+- Identity/MFA rollout requires enrollment/recovery support. Any emergency mechanism is named, time-limited, MFA/device protected, audited, reconciled, and reviewed.
+- Rights, retention, custody, and incident clocks continue operationally during deployment rollback or outage.
+- If tenant isolation, audit completeness, record immutability, key access, file quarantine, or destination controls regress, disable the affected module/profile and preserve evidence before restoration.
+
+### 14.3 Dossier update rule
+
+After every packet, update the future control/evidence matrix and affected specifications with:
+
+- decision/control/requirement IDs;
+- exact implementation revision and configuration version;
+- affected region/profile/module;
+- test and exercise evidence references;
+- owner/reviewer and date;
+- status transition using the approved vocabulary;
+- known gaps, residual risk, expiry/review date;
+- rollback evidence;
+- superseded artifact references.
+
+Code completion can reach `IMPLEMENTED` or `TECHNICALLY_VERIFIED`; it cannot self-award `OPERATIONALLY_EXERCISED`, `EVIDENCE_COMPLETE`, `LEGALLY_REVIEWED`, or `APPROVED_FOR_PROFILE`.
+
+---
+
+## 15. Final pre-production gates
+
+Run these gates separately for Pro-US Virginia and Pro-Canada BC. A pass in one region/profile does not transfer to another.
+
+### Gate P1 — Scope and applicability
+
+- Named customer, entity/customer classification, specialty, jurisdiction, data flows, profile, modules, vendors, operating envelope, responsibility matrix, and contracts are approved.
+- All unresolved inputs are linked blockers; no universal compliance claim is implied.
+
+### Gate P2 — Technical candidate
+
+- Exact commit, image digests, SBOM, dependency/artifact scan, migrations, configuration, IaC revision, and feature/profile flags are frozen.
+- Unit, integration, API, browser, boundary, cross-tenant, clinical integrity, migration, capacity, accessibility, and canary suites pass.
+- Deferred modules and high-risk data classes are demonstrably disabled.
+
+### Gate P3 — Infrastructure and data plane
+
+- Actual project/region/IAM/network/Cloud Armor/Cloud SQL/Storage/KMS/Secret Manager/log/audit/backup configuration is read back and matches the approved topology.
+- No Standard or cross-country resource path exists.
+- Fresh deploy, upgrade, backup restore, regional failover, key rotation/recovery, and rollback/forward-fix are exercised with synthetic data.
+
+### Gate P4 — Security and privacy assurance
+
+- Current risk analysis and threat model are reviewed.
+- Independent penetration/security assessment is complete and remediation accepted.
+- RLS/authorization/audit/file/outbound/identity negative evidence is complete.
+- Legal/privacy approves exact policy values, agreements, transfers, rights/retention/hold/offboarding behavior, and incident responsibilities.
+
+### Gate P5 — Operational readiness
+
+- Named workforce roles, screening, training, sanctions, device/access rules, JIT process, on-call, incident command, support boundaries, vendor reviews, access reviews, evidence protection, insurance review, and manual continuity are operationally exercised.
+- Incident, audit outage, scanner outage, vendor breach, lost export, insider access, and regional outage tabletops have findings closed or explicitly accepted by the risk owner.
+- RTO/RPO remain internal unless commercial terms are approved.
+
+### Gate P6 — Customer and release readiness
+
+- Organization/admin verification and activation checklist are complete.
+- Synthetic staging acceptance passes for the exact profile and white-label origins.
+- Export/offboarding and emergency/legal access obligations are supportable even during suspension or outage.
+- Support, rollback, communications, incident, and escalation owners are on duty for the controlled rollout.
+
+### Gate P7 — Claims and production approval
+
+- Qualified counsel, Security/Privacy, independent assessor, executive risk owner, Product, Operations, Database, Backend, Frontend/UX, QA, and required commercial owners approve the exact candidate/configuration/profile within their remit.
+- Public and contractual wording is separately approved and precisely scoped; no guarantee of universal compliance is made.
+- Production credentials, deployment, and activation receive explicit human authorization.
+
+**Fail behavior:** Any failed or expired gate leaves production/profile/module activation disabled. There is no provisional production launch with missing legal, contractual, human, evidence, tenant-isolation, audit, identity, file, backup, or incident controls.
+
+---
+
+## 16. Immediate implementation handoff
+
+Authorize only Milestone 0 first. Its deliverable is the complete, internally consistent Pro dossier and reproducible Standard boundary baseline—not clinical code, vendor selection, production infrastructure, or a compliance claim. After G0, execute Milestone 1 in isolated packets beginning with the failing Standard/Pro architectural boundary tests. Do not begin by modifying `packages/db/prisma/schema.prisma`, Standard apps, or Standard authentication.

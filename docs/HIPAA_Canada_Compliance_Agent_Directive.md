@@ -1,159 +1,164 @@
-# Implementation Directive: HIPAA & Canadian Health Privacy Compliance Remediation
+# Flowstate Pro HIPAA and Canadian Health Privacy Agent Directive
 
-**Document type:** Agent-ingestible implementation prompt
-**Scope:** Backend services, APIs, databases/data stores, frontend, data retention and lifecycle management
-**Jurisdictions:** United States (HIPAA) and Canada (PIPEDA + applicable provincial health privacy statutes)
-**Intended consumer:** An AI coding/architecture agent tasked with reviewing the current codebase, producing a remediation plan, and executing a full end-to-end implementation
+**Status:** AI IMPLEMENTOR MANDATE — not legal advice, a compliance certification, production approval, or an executed agreement
+**Scope:** Flowstate Pro only
+**Detailed execution authority:** [`plans/2026-08-10-hipaa-canada-compliance-implementation-plan.md`](plans/2026-08-10-hipaa-canada-compliance-implementation-plan.md)
+**Approved decision baseline:** [`compliance/flowstate-pro/README.md`](compliance/flowstate-pro/README.md) and [`compliance/flowstate-pro/decision-register-and-open-items.md`](compliance/flowstate-pro/decision-register-and-open-items.md)
 
----
+## 1. Mandate and precedence
 
-## GOAL
+Implement Flowstate Pro only through small, reviewable work packets. Preserve the approved product, legal, security, privacy, operational, and release gates. Do not claim that Flowstate, Flowstate Pro, a vendor, a configuration, or a customer is compliant unless the exact claim and profile have received every required named human approval.
 
-Bring the web application's backend services, API layer, data stores, and frontend into compliance with:
+When sources disagree, stop the affected work, record the conflict in `docs/compliance/flowstate-pro/decision-register-and-open-items.md`, and obtain resolution. Never choose the easiest or least restrictive source. Apply this precedence:
 
-1. **HIPAA** (Privacy Rule, Security Rule, Breach Notification Rule) for all US-based covered-entity customers and their patient data, given this application operates as a **HIPAA Business Associate**.
-2. **Canadian federal and provincial health privacy law**, specifically:
-   - **PIPEDA** (Personal Information Protection and Electronic Documents Act) — federal baseline for private-sector organizations handling personal information, including health information, in the course of commercial activity.
-   - **Provincial "substantially similar" private-sector laws** that displace PIPEDA intra-provincially: Alberta PIPA, British Columbia PIPA, and Quebec's private-sector law (as modernized by **Law 25**).
-   - **Provincial health-specific statutes** governing "Health Information Custodians" (HICs) and their service providers: Ontario's **PHIPA**, New Brunswick's **PHIPAA**, Nova Scotia's **PHIA**, and Newfoundland and Labrador's **PHIA**. Other provinces without a dedicated health-privacy statute default to PIPEDA for private-sector health data.
+1. Approved entries in the decision register for product decisions.
+2. Qualified-counsel-approved legal-matrix entries and approved policy catalogs for legal values.
+3. Current code and `packages/db/prisma/schema.prisma` for claims about implemented Flowstate Standard behavior.
+4. The Flowstate Pro PRD for required Pro behavior.
+5. The approved Pro system and security/privacy designs.
+6. The Pro roadmap and detailed implementation plan for sequencing.
+7. Competitor materials as benchmark evidence only.
+8. This directive for agent execution protocol only.
 
-**Important framing for the agent:** Canada has no single nationwide equivalent to HIPAA. Compliance is a layered determination based on (a) which province(s) the app's covered users/custodians operate in, (b) whether data crosses provincial or national borders, and (c) whether the organization is acting as a service provider to a Health Information Custodian (analogous to, but not legally identical to, a HIPAA Business Associate). Where jurisdiction-specific legal interpretation is required and cannot be resolved from code/config alone, the agent must flag it for human legal review rather than assume an answer.
+This directive cannot create or override a product decision, legal determination, policy value, vendor selection, agreement status, human approval, or production authorization.
 
-The end state: every process that creates, stores, transmits, or deletes health-related personal data does so through a common, auditable, access-controlled, encrypted pathway, with jurisdiction-appropriate consent, retention, and breach-response mechanisms in place.
+## 2. Product boundary: Standard is not Pro
 
----
+Flowstate Standard remains the existing MMA/fitness product. Flowstate Pro is a separate regulated clinical-record product.
 
-## CONTEXT
+- Do not modify Standard code, schema, roadmap, data, deployment, or customer behavior under a Pro work packet.
+- Do not create a Standard-to-Pro upgrade or migration path.
+- Pro must have separate applications, Prisma schema/database, identity, credentials, MFA/recovery, sessions, origins, infrastructure, projects, storage, backups, keys, secrets, logs, monitoring, vendors, billing configuration, access groups, CI/CD promotion, and production access.
+- The same email may exist in both products only as unrelated identities.
+- Share only reviewed data-free UI/configuration primitives and pure utilities. If a proposed shared component could receive regulated data, credentials, tenant context, policy state, or audit content, keep it Pro-only.
+- Do not represent planned Pro models or controls as already implemented.
 
-This application is used by healthcare and health-adjacent professionals (e.g., physiotherapists, counselors/therapists, and potentially non-clinical roles such as life coaches) to manage and transmit patient/client data. Prior internal review established:
+## 3. Agent authority and prohibitions
 
-- The application likely qualifies as a **HIPAA Business Associate** for any US covered-entity customer, carrying direct HIPAA liability independent of the customer (per the HITECH Omnibus Rule).
-- In Canada, the application likely qualifies as a **service provider/agent to a Health Information Custodian** for customers who are HICs (physicians, clinics, regulated health professionals), and separately must meet PIPEDA/provincial private-sector obligations for personal information generally.
-- Not all customer types are necessarily covered under HIPAA or provincial health-privacy statutes (e.g., non-licensed life coaches) — but may still be subject to PIPEDA (broad definition of "personal information," applies regardless of "health" framing) and, in the US, FTC Health Breach Notification Rule and state consumer health data laws.
-- The current architecture has **not yet been audited** for: PHI/personal-information data classification, field-level encryption, audit logging coverage, access control granularity, retention/deletion automation, or cross-border data flow controls.
-- The codebase spans backend API services, one or more relational/document data stores, and a frontend client application.
+The agent may perform only work expressly authorized by the current packet and gate.
 
-The agent is expected to treat this document as the source of truth for scope and sequencing, but must perform its own codebase discovery — this document does not assume specific file paths, frameworks, or schema names, since those are not yet known to the author of this directive.
+The agent must not:
 
----
+- invent legal applicability, customer/entity classification, consent or authorization language, legal authority, retention periods, rights deadlines, breach/reportability rules, representative authority, agreement status, residency/transfer approval, public claims, or risk acceptance;
+- select or enable vendors, identity providers, hosting, regions, KMS, audit stores, monitoring, email, clinical integrations, or production configurations;
+- sign, accept, represent, or infer BAAs, DPAs, PIAs, contracts, attestations, or vendor assurances;
+- use production or customer data, contact customers/vendors/regulators, obtain or use live credentials/secrets, create live vendor resources, deploy, push, merge, release, or activate a production feature;
+- make a legal or incident-reportability decision, approve its own work, or substitute tests for counsel, operational, assessor, or executive review;
+- weaken a safeguard, add an unapproved bypass, silently broaden scope, or silently default an unknown to a permissive value.
 
-## INSTRUCTIONS
+Use synthetic data only in development, tests, screenshots, traces, fixtures, demos, and provider sandboxes. Confidential contracts, legal advice, personnel files, incident evidence, and production secrets stay outside the repository; repository artifacts may contain only approved templates, metadata, redacted evidence, and external evidence references.
 
-### Phase 0 — Discovery and Data Classification (must complete before any code changes)
+## 4. Phase 0 authority and Gate 0
 
-1. Enumerate every data model/table/collection/schema in the codebase.
-2. For each field, classify as:
-   - **PHI/PI-Health** (identifies a person and relates to health, treatment, or payment — triggers HIPAA if a US covered entity is involved, and triggers provincial health-privacy statutes if a Canadian HIC is involved)
-   - **PI-General** (personal information not health-specific — still in scope for PIPEDA/provincial private-sector law, and for HIPAA if it is one of the 18 HIPAA identifiers combined with health context)
-   - **Non-personal** (de-identified, aggregate, or genuinely non-identifying)
-3. Produce a **data inventory document** (data map) listing: field name, classification, storage location, encryption status, who/what can access it, retention period, and every downstream system it flows to (third-party APIs, logging, analytics, backups).
-4. Identify every outbound data flow: third-party services, subprocessors, cross-border transfers (explicitly flag any data that crosses the Canada–US border, or leaves Quebec, since Quebec's Law 25 requires a privacy impact assessment before personal information is sent outside Quebec).
-5. Identify the jurisdiction(s) of the application's actual and prospective customers (US states, Canadian provinces) — this determines which statutory regime(s) apply per customer/tenant.
-6. Output: a written data classification report and outbound-flow diagram, reviewed against this directive before Phase 1 begins.
+Before Gate 0, the agent may perform repository discovery, documentation, and read-only/non-production verification tooling in an isolated worktree. This includes the detailed plan's Phase 0 inventory, access-map, flow, applicability-input, risk, and evidence-baseline work. Tooling must be deterministic, synthetic-data-only, non-deploying, and unable to mutate production or external systems.
 
-### Phase 1 — Backend Services and API Layer
+Phase 0 may classify technical facts and expose unresolved questions. It may not decide which law applies, approve a field classification with legal effect, choose a vendor, set a policy value, or declare a control compliant.
 
-1. **Establish a single data-access layer (repository pattern)** through which all PHI/PI-Health reads, writes, and deletes must pass. No route handler, controller, or service should query the PHI-containing data store directly.
-2. **Implement audit logging middleware** that automatically fires on every request passing through the PHI data-access layer, capturing: actor identity, action, resource type/ID, timestamp, outcome (success/denied/failure), source IP, and (where feasible) the legal basis/purpose of access. Logs must be append-only/immutable and stored separately from mutable application data.
-3. **Implement deny-by-default authorization** (RBAC or ABAC) at the API layer, enforced before any handler executes business logic. Every permission grant should be explicit; nothing should be implicitly readable.
-4. **Enforce authentication requirements**: unique credentials per user (no shared/service accounts for human users), session timeout on inactivity, and multi-factor authentication for any account with access to PHI/PI-Health.
-5. **Sanitize all logging, error-tracking, and monitoring pipelines** to strip PHI/PI-Health fields before they reach third-party tools (error trackers, APM, analytics). Build this as a shared utility applied at the log-emission boundary, not per call site.
-6. **Eliminate PHI/PI-Health from URLs and query strings** in all API routes; move identifiers currently in GET query parameters to path parameters or POST bodies where the sensitivity warrants it, and confirm these are excluded from access/proxy logs.
-7. **Implement field-level encryption** for the highest-sensitivity fields identified in Phase 0 (e.g., clinical/psychotherapy notes, government ID numbers), using a managed key service (not application-embedded keys). Confirm transport-layer encryption (TLS 1.2+) is enforced on all internal and external API traffic, with no fallback to unencrypted transport.
-8. **Build jurisdiction-aware consent and disclosure handling**: PIPEDA and provincial private-sector laws center on the concept of **meaningful, informed consent** as a foundational principle, distinct from HIPAA's treatment/payment/operations framework. The backend must be able to represent, per customer/tenant, which consent model applies and enforce corresponding disclosure/use restrictions.
-9. **Build breach-detection hooks**: anomalous access pattern detection (e.g., bulk export, access outside normal hours/geography) that feeds into an incident-response trigger, satisfying both HIPAA's Breach Notification Rule (60-day individual notification, HHS notification thresholds) and PIPEDA's requirement to report breaches posing a **real risk of significant harm** to the Office of the Privacy Commissioner of Canada and affected individuals, plus any applicable provincial equivalent (e.g., Ontario PHIPA's own notification obligations to the Information and Privacy Commissioner of Ontario).
-10. **Implement patient/client rights endpoints**: access requests, amendment requests, and accounting-of-disclosures (HIPAA), plus the Canadian equivalent — an individual's right to access and request correction of their personal information under PIPEDA/provincial law. These should be built as defined, auditable API flows, not manual/support-ticket processes.
-11. **Cross-border data flow controls**: implement an explicit allowlist of destinations personal/health data is permitted to flow to, keyed by the data's jurisdiction of origin. Any flow that would move Quebec-originated personal information outside Quebec must trigger a documented privacy-impact-assessment requirement before being enabled, per Quebec Law 25. Flag (do not silently permit) any Canada-to-US or US-to-Canada data transfer path for legal review.
+No Phase 1+ schema, application, infrastructure, vendor, or control implementation may begin until Gate 0 has all required artifacts and named approvals. At minimum, Product/Owner, qualified Virginia and/or BC counsel as applicable, Security/Privacy, Operations, Database, Backend, and QA must approve the narrowed packet scope; executive, assessor, vendor/procurement, and other reviewers remain required where the decision register or plan assigns them.
 
-### Phase 2 — Database and Data Store Changes
+## 5. Phased execution
 
-1. Apply encryption at rest across all data stores (managed encryption at minimum; field-level encryption per Phase 1 §7 for highest-sensitivity fields).
-2. Restructure schemas so PHI/PI-Health fields are clearly segregated (e.g., separate tables/collections or clearly namespaced fields) to make classification enforceable in code review and automatable in access-control policy.
-3. Add **retention metadata** to every PHI/PI-Health-bearing record (creation date, applicable retention period, scheduled review/deletion date) — retention periods must be configurable per jurisdiction, since US state medical-record retention law and Canadian provincial requirements differ and neither is uniform.
-4. Implement automated retention-enforcement jobs (archival or deletion per policy) rather than relying on manual cleanup.
-5. Ensure backups are encrypted, access-restricted, and included in the same classification/retention framework as primary data (a common gap: primary data is protected but backups are not).
-6. Ensure any data replication, caching layer, or search index that contains PHI/PI-Health inherits the same encryption, access control, and audit logging as the primary store — these are common places PHI leaks into unprotected paths.
+Follow the detailed plan milestone by milestone; do not collapse phases or execute speculative later work:
 
-### Phase 3 — Frontend Changes
+0. discovery, applicability inputs, data classification, flows, risk, vendors, and Gate 0;
+1. trusted access context, deny-by-default authorization, audit, logging, and Pro data-access boundaries;
+2. identity, MFA, session, recovery, invitation, and token controls;
+3. jurisdiction-policy, consent/evidence, destination/agreement, transfer, and URL controls using approved inputs;
+4. managed encryption, storage, files, backups, restore, and staged data migration;
+5. retention, legal hold, disposition, deletion, and offboarding;
+6. individual rights and disclosure accounting;
+7. frontend storage, telemetry, rendering, download, timeout, accessibility, and consent/rights UX controls;
+8. security signals, human-led incident response, runbooks, exercises, and recurring controls;
+9. synthetic staging, migration rehearsal, assurance, independent review, and separately authorized controlled rollout.
 
-1. Ensure the frontend never logs PHI/PI-Health to browser console, client-side error trackers (e.g., Sentry browser SDK), or client-side analytics — apply the same field-level redaction principle as the backend logging sanitizer.
-2. Enforce session timeout and re-authentication in the client to match backend session policy; do not allow indefinite client-side session persistence for PHI-accessing sessions.
-3. Ensure PHI/PI-Health is never persisted in browser local storage, session storage, or unencrypted client-side caches beyond the active session's needs.
-4. Implement UI-level least-privilege rendering: the frontend should only request/display fields the authenticated user's role is permitted to see, mirroring backend authorization — this reduces accidental over-fetching and display of PHI.
-5. Build (or surface) UI flows for the patient/client rights endpoints from Phase 1 §10, and for jurisdiction-appropriate consent capture at account/record creation (informed consent language should differ appropriately for HIPAA-context vs. PIPEDA/PHIPA-context users if the application serves both).
-6. Ensure any client-side analytics or third-party embedded scripts (chat widgets, support tools) are configured to never receive PHI/PI-Health fields, and confirm this technically (not just by configuration intent) via code review or automated testing.
+A phase exit means its stated technical evidence and human gates are complete for a named profile. It does not authorize the next phase, production, or a compliance claim unless those approvals are separately recorded.
 
-### Phase 4 — Retention, Deletion, and Data Management Structures
+## 6. Mandatory gates
 
-1. Document, per jurisdiction and data type, the retention period and legal basis (e.g., HIPAA documentation retention vs. US state medical-record law vs. Canadian provincial health-record retention requirements) — this cannot be a single global constant.
-2. Note explicitly that under both HIPAA and most Canadian health-privacy statutes, patients/clients generally **cannot demand deletion of their full clinical record** on request the way some general consumer-privacy laws allow — deletion mechanisms must respect statutory retention minimums, not just user preference.
-3. Build a deletion/archival workflow that checks applicable retention rules before executing any delete, and logs the outcome (deleted, archived, or retention-blocked) to the audit trail.
-4. Build a documented process for handling account/tenant offboarding (a customer organization leaving the platform) that ensures their data is retained, exported, or deleted per the applicable jurisdiction's rules, not simply deleted on account closure.
+Stop dependent work until the named evidence exists:
 
-### Phase 5 — Cross-Jurisdiction Tenant Configuration
+- **Legal/policy:** qualified counsel or the assigned human owner approves applicability, legal catalogs, text, retention, rights, breach, transfer, representative-authority, and claim wording.
+- **Customer activation:** organization, customer type, use case, jurisdiction, data flows, operating envelope, contracts, and responsibility matrix are verified. Unresolved tenants cannot activate; there is no self-service regulated activation.
+- **Contracts/vendors:** every data-touching destination has an approved vendor record, exact covered configuration, region, purpose, data classes, support access, retention/deletion behavior, transfer approval, and signed BAA/DPA or other required agreement evidenced by metadata/reference. Missing or unknown status blocks enablement.
+- **Human operations:** accountable Security/Privacy, Security Official, incident, executive risk/signatory, independent approval, training, access, sanctions, on-call, vendor review, risk-analysis, assessment, insurance, and evidence-storage duties are staffed and exercised as required.
+- **Production/claims:** technical verification alone is insufficient. The exact profile, vendors, configuration, contracts, operating evidence, legal review, remediation, assessor/security/privacy review, and executive approval must be complete before activation or public claims.
 
-1. Implement a per-tenant (per customer organization) jurisdiction flag/config that determines: applicable statutory regime(s), consent model, retention defaults, and permitted data-flow destinations.
-2. Ensure the application can support a tenant that is simultaneously subject to multiple regimes (e.g., a Canadian clinic with US patients, or a platform-level company subject to PIPEDA for cross-border transfers even where a province's "substantially similar" law otherwise applies intra-provincially).
-3. Where the agent cannot determine, from code or configuration alone, which regime applies to a given tenant or record, this must be surfaced as an open question for human/legal resolution — do not default silently to the least restrictive regime.
+## 7. Work-packet protocol
 
-### Phase 6 — Monitoring, Recurring Processes, and Documentation
+Use one isolated branch/worktree per packet. A packet must define before editing:
 
-1. Stand up a recurring (at minimum annual) automated reminder/process for re-running the Security Risk Analysis (HIPAA) and reviewing the data inventory/classification (Phase 0) for drift as the schema evolves.
-2. Ensure every subprocessor/third-party integration identified in Phase 0 has a corresponding signed Business Associate Agreement (US) or equivalent data-processing agreement (Canada) tracked in a config/inventory the agent can validate against at build or deploy time (e.g., failing a build if a new integration touches PHI without a corresponding entry in the BAA/DPA registry).
-3. Produce written, versioned documentation of every safeguard implemented in Phases 1–5, suitable for presentation in a compliance audit or OCR/regulator inquiry.
+- goal and human outcome;
+- allowed and forbidden paths;
+- controlling decisions and exact source documents;
+- dependencies, unresolved blockers, and entry/exit gates;
+- affected Pro data classes, models, fields, actors, permissions, profiles, jurisdictions, destinations, and vendors;
+- additive migration/backfill/reconciliation/rollback or forward-fix plan, including audit behavior;
+- synthetic fixtures and focused negative/positive tests;
+- required command, UI/accessibility, infrastructure read-back, restore/exercise, and regression evidence;
+- required human reviewers and release-blocker status;
+- explicit prohibition on production data, live credentials, customer/vendor contact, deploy, push, merge, release, and activation.
 
----
+For behavior changes, prove the failure first, implement the smallest approved change, run focused checks, then affected package/workspace gates and required root gates. Database work requires fresh-deploy and upgrade-path evidence against disposable PostgreSQL. UI work requires synthetic desktop, tablet, 390px, keyboard, screen-reader/WCAG 2.2 AA, network/storage/console, and artifact checks. Never rewrite applied migrations or perform a destructive migration without approved backup, restore, reconciliation, and rollback/forward-fix evidence.
 
-## ACCEPTANCE CRITERIA
+## 8. Verification, evidence, and status
 
-- [ ] A complete, reviewed data classification inventory exists covering every field in every data store, with PHI/PI-Health/PI-General/Non-personal tags.
-- [ ] No PHI/PI-Health-bearing database query occurs outside the designated data-access/repository layer (verifiable by static analysis or code search).
-- [ ] Every request touching PHI/PI-Health generates an immutable audit log entry containing actor, action, resource, timestamp, and outcome.
-- [ ] Authorization is deny-by-default; no endpoint returns PHI/PI-Health without an explicit, testable permission check.
-- [ ] MFA and session timeout are enforced for all accounts with PHI/PI-Health access.
-- [ ] No PHI/PI-Health field appears unredacted in any log, error-tracking payload, analytics event, or URL/query string, verified by automated scanning of logs and outbound telemetry.
-- [ ] Encryption at rest (managed, minimum) and field-level encryption (for the highest-sensitivity fields identified in Phase 0) are implemented and verifiable.
-- [ ] Retention metadata exists on all applicable records, and automated jobs enforce retention/deletion per jurisdiction-specific policy without manual intervention.
-- [ ] Patient/client rights endpoints (access, amendment, accounting-of-disclosures/equivalent) exist, are authenticated, and are logged.
-- [ ] A tenant-level jurisdiction configuration exists and demonstrably changes consent, retention, and data-flow behavior for at least one US-context tenant and one Canada-context tenant.
-- [ ] Cross-border and cross-provincial data flows are enumerated, allowlisted, and any Quebec-origin outbound flow is gated behind a documented privacy-impact-assessment flag.
-- [ ] A subprocessor/BAA-DPA registry exists and blocks (or flags) any integration touching PHI/PI-Health that lacks a corresponding signed agreement record.
-- [ ] All frontend telemetry, storage, and third-party embeds are confirmed (via test, not just configuration) to exclude PHI/PI-Health.
-- [ ] Written documentation of all implemented safeguards is produced and versioned alongside the code.
-- [ ] Every point where jurisdiction-specific legal interpretation was required and could not be resolved from code/config has been explicitly logged as an open item for human legal review, not silently resolved.
+Use only the package status vocabulary:
 
----
+`DRAFT`, `PROPOSED`, `COUNSEL_REVIEW_REQUIRED`, `OWNER_APPROVAL_REQUIRED`, `APPROVED`, `SPECIFIED`, `IMPLEMENTED`, `TECHNICALLY_VERIFIED`, `OPERATIONALLY_EXERCISED`, `EVIDENCE_COMPLETE`, `LEGALLY_REVIEWED`, `APPROVED_FOR_PROFILE`, `BLOCKED`, `NOT_APPLICABLE`, `SUPERSEDED`.
 
-## CONSTRAINTS
+Record statuses separately; do not skip or combine them. In particular:
 
-- Do not delete, restructure, or migrate production data containing PHI/PI-Health without a tested backup and rollback plan.
-- Do not use real production PHI/PI-Health in development, staging, or test environments under any circumstances; use synthetic data generation for all non-production testing of these flows.
-- Do not silently choose a legal interpretation where ambiguity exists (e.g., which province's law governs a given tenant, whether a customer is a covered entity/HIC) — surface it for human decision.
-- Do not treat "HIPAA compliant hosting" or any vendor's compliance marketing claim as sufficient on its own; verify actual configuration and confirm a signed BAA/DPA exists.
-- Do not implement a single global retention/deletion policy; retention must be configurable per jurisdiction and data type.
-- Do not assume Canada has a single unified law equivalent to HIPAA; treat Canadian compliance as a layered, tenant-jurisdiction-dependent determination (PIPEDA + applicable provincial private-sector law + applicable provincial health-privacy statute).
-- Do not remove or weaken any existing safeguard as a side effect of refactoring; each phase's changes must be independently reviewable and revertible.
-- Do not proceed to Phase 2+ implementation until the Phase 0 data classification report has been produced and is available for reference throughout subsequent phases.
-- This directive does not constitute legal advice or a substitute for review by a healthcare/privacy compliance attorney qualified in both the applicable US state(s) and Canadian province(s); flagged legal-interpretation items must be routed to such review before production deployment of the affected feature.
+- code present = `IMPLEMENTED`, not `TECHNICALLY_VERIFIED`;
+- passing tests/read-back = `TECHNICALLY_VERIFIED`, not operating evidence;
+- a completed exercise = `OPERATIONALLY_EXERCISED`, not legal review;
+- evidence collection = `EVIDENCE_COMPLETE`, not profile approval;
+- counsel review = `LEGALLY_REVIEWED`, not production approval;
+- activation requires `APPROVED_FOR_PROFILE` for the exact customer class, jurisdiction, vendors, configuration, modules, and operating envelope.
 
----
+Retain reproducible command/output references, candidate commit/tree state, synthetic fixture identifiers, reviewer/owner, date, affected profile, and limitations. Redact secrets and regulated content. Historical evidence is context only; rerun required evidence on the exact candidate. A skipped, unavailable, stale, or non-reproducible check is not a pass.
 
-## TESTING
+## 9. Required artifact updates
 
-1. **Static analysis**: automated scan confirming no direct database access to PHI/PI-Health tables/collections outside the designated repository layer.
-2. **Log redaction tests**: automated tests that submit requests containing known PHI/PI-Health values and assert those values never appear unredacted in application logs, error-tracker payloads, or analytics events.
-3. **Authorization tests**: for every role defined in the system, automated tests asserting which PHI/PI-Health fields/endpoints are accessible and which are correctly denied (positive and negative cases for each role).
-4. **Audit log completeness tests**: for every PHI/PI-Health-touching endpoint, an automated test confirming a corresponding audit log entry is created with the required fields populated.
-5. **Encryption verification**: automated or manual verification that data at rest is encrypted (e.g., inspecting raw storage) and that field-level encrypted values are not stored in plaintext anywhere (including backups and logs).
-6. **Session/MFA enforcement tests**: automated tests confirming session expiry after the configured timeout and confirming MFA is required before PHI/PI-Health access is granted.
-7. **Retention/deletion job tests**: automated tests simulating records at various ages relative to jurisdiction-specific retention periods, confirming correct archival/deletion/retention-hold behavior.
-8. **Cross-border flow tests**: automated tests asserting that data tagged with a Quebec or otherwise restricted origin cannot be transmitted to a disallowed destination without the required flag/approval being set, and that any Canada–US or interprovincial flow triggers the expected logging/flagging.
-9. **Patient/client rights endpoint tests**: end-to-end tests exercising access, amendment, and accounting-of-disclosures (or Canadian equivalent) requests, confirming correct data returned, correct audit logging, and correct authentication requirements.
-10. **Subprocessor registry enforcement test**: a build-time or CI test confirming that any new outbound integration touching PHI/PI-Health fails the build unless a corresponding BAA/DPA registry entry exists.
-11. **Frontend storage/telemetry audit**: automated or manual inspection of browser storage, network requests, and third-party script payloads during a representative user session, confirming no PHI/PI-Health is present outside the intended authenticated API calls.
-12. **Regression pass**: full existing test suite re-run after each phase to confirm no functional regression was introduced by the compliance refactor, with particular attention to any behavior change in data visibility caused by new authorization rules.
-13. **Manual review checkpoint**: before production deployment, a human review of the Phase 0 data classification report, the list of flagged legal-interpretation open items, and the subprocessor/BAA-DPA registry, since these three artifacts cannot be fully validated by automated testing alone.
+Every packet must update these exact artifacts before handoff, creating a planned artifact only when its approved phase first requires it:
 
----
+1. `docs/compliance/flowstate-pro/decision-register-and-open-items.md` — new decisions, conflicts, supersessions, blockers, owners, required approvals, and resolution references. Never mark a human decision approved yourself.
+2. `docs/compliance/flowstate-pro/control-and-evidence-matrix.md` — each affected requirement/control, implementation path, test/exercise, owner, evidence reference, profile, status, gap, and next gate.
+3. `docs/compliance/flowstate-pro/data-classification-and-flows.md` — every affected field/store/log/cache/artifact/destination, classification state, purpose, access, region/transfer, encryption, retention/lifecycle, and evidence source.
+4. `docs/plans/2026-08-10-hipaa-canada-compliance-implementation-plan.md` — packet status, actual paths, dependencies, verification results, deviations, and next authorized packet; do not rewrite approved scope silently.
 
-*This directive is derived from a prior compliance overview and backend architecture guide covering HIPAA (US) requirements, supplemented with current research on the Canadian health-privacy framework (PIPEDA, provincial "substantially similar" laws including Quebec's Law 25, and provincial health-specific statutes such as Ontario's PHIPA). It is written for consumption by an implementation agent and does not replace review by qualified legal counsel in each relevant jurisdiction before production release.*
+Update the following exact source document whenever the packet changes its subject:
+
+- `docs/compliance/flowstate-pro/legal-applicability-matrix.md` for counsel-owned applicability or legal-policy inputs;
+- `docs/compliance/flowstate-pro/product-spec.md` or `product-requirements-document.md` for approved product scope/behavior;
+- `docs/compliance/flowstate-pro/system-design.md` for architecture, data, API, job, integration, deployment, or failure behavior;
+- `docs/compliance/flowstate-pro/security-privacy-architecture.md` for trust boundaries, authorization, audit, encryption, threats, or fail-closed behavior;
+- `docs/compliance/flowstate-pro/operations-and-governance.md` for roles, policies, training, access, incident, vendor, review, evidence, or launch operations;
+- `docs/compliance/flowstate-pro/roadmap.md` for sequencing, gate, activation-lane, or deferred-scope changes;
+- `docs/compliance/flowstate-pro/competitor-parity-matrix.md` only when dated benchmark evidence or parity treatment changes;
+- `docs/compliance/flowstate-pro/README.md` only when package structure, precedence, status vocabulary, boundary, or entry points change.
+
+Do not duplicate detailed specifications in this directive. Link to the controlling package document and plan section.
+
+## 10. Fail-closed and rollback rules
+
+- Unknown, conflicting, expired, unapproved, or missing applicability, authority, purpose, consent/authorization, role, tenant, MFA, policy, retention, hold, destination, agreement, transfer, key, audit, vendor, or configuration state denies the regulated operation and creates a reviewable blocker/audit outcome.
+- High-risk data categories and deferred modules remain disabled until their purpose, authority, controls, access, retention, vendors, and profile are approved.
+- Audit contains no PHI payload. Required audit outage blocks sensitive operations except a separately approved, time-limited, named, audited emergency mode.
+- Finalized clinical records are immutable; corrections use linked amendments/late entries. Unknown retention blocks destruction. Legal hold blocks disposition. Offboarding and nonpayment never trigger blind deletion or improper loss of required/emergency access.
+- Outbound destinations start disabled. No unknown region, cross-border path, agreement, or transfer review is treated as allowed.
+- Malware/quarantine, tenant isolation, authorization, key, integrity, migration, reconciliation, backup, or restore failure stops the affected operation or rollout.
+- Rollback must not restore broad access, bypass audit/policy, delete audit history, reintroduce plaintext, activate a destination, or weaken the safest approved state. Use additive migrations and forward-fix where rollback would violate these rules.
+
+## 11. Handoff
+
+End every packet with:
+
+- exact files changed and concise behavior/result summary;
+- exact commands/checks run and their real outcomes;
+- evidence and artifact references with statuses;
+- unresolved legal/vendor/contract/operational blockers and named owner;
+- migration/rollback/forward-fix state and production impact (`none` unless separately authorized);
+- required reviewers and approvals still outstanding;
+- the next smallest authorized packet, or `BLOCKED` if no packet is authorized.
+
+The immediate handoff is Phase 0 only, beginning with the detailed plan's Tasks 0.1–0.3 in an isolated documentation/tooling worktree. Do not begin Pro implementation, vendor provisioning, or production preparation until Phase 0 review and Gate 0 authorization narrow the next packet.
