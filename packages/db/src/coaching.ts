@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { assertStaffNotOnLeave, StaffLeaveError } from "./staff-leave.js";
 import {
   Prisma,
   PrismaClient,
@@ -17,6 +18,21 @@ import {
   parseDateOnlyString,
   toDateOnlyString,
 } from "./occurrences.js";
+import {
+  coachingSettlementCommands,
+  executeCoachingSettlement,
+  prepareCoachingRecordExport,
+  coachingIncidentCommands,
+  executeCoachingIncident,
+} from "./coaching-records.js";
+import {
+  recordCoachingAppointmentEvent,
+  releaseCoachingAppointmentsTx,
+} from "./coaching-appointments.js";
+import {
+  coachingPayerCommands,
+  executeCoachingPayer,
+} from "./coaching-payer.js";
 
 export interface CoachingActor {
   workspaceId: string;
@@ -91,6 +107,7 @@ export function coachingStatus(
     !enrollment.currentCoachWorkspaceUserId
   )
     return "ONBOARDING";
+  if (enrollment.paymentState === "REVIEW_REQUIRED") return "PAYMENT_REVIEW";
   if (enrollment.paymentState !== "PAID") return "PAYMENT_PENDING";
   const today = getWorkspaceDateString(now, enrollment.timezone);
   if (today < toDateOnlyString(enrollment.startsOn)) return "SCHEDULED";
@@ -131,7 +148,21 @@ async function identity(db: Tx, actor: CoachingActor) {
       },
     }),
     db.member.findFirst({
-      where: { workspaceId: actor.workspaceId, userId: actor.userId, workspace: { status: { not: "DISABLED" } }, user: { workspaceUsers: { some: { workspaceId: actor.workspaceId, userId: actor.userId, role: "CUSTOMER", isActive: true } } } },
+      where: {
+        workspaceId: actor.workspaceId,
+        userId: actor.userId,
+        workspace: { status: { not: "DISABLED" } },
+        user: {
+          workspaceUsers: {
+            some: {
+              workspaceId: actor.workspaceId,
+              userId: actor.userId,
+              role: "CUSTOMER",
+              isActive: true,
+            },
+          },
+        },
+      },
       include: { user: { select: { email: true } } },
     }),
   ]);
@@ -199,7 +230,9 @@ async function notifyClient(
       body: "There is an update to your coaching program. Sign in to your HitLink member portal to review it.",
       status: "PENDING",
       nextAttemptAt: new Date(),
-      ...(context ? { context, dedupeKey: `coaching-note:${String(context.revisionId)}` } : {}),
+      ...(context
+        ? { context, dedupeKey: `coaching-note:${String(context.revisionId)}` }
+        : { context: { kind: "COACHING_UPDATE", enrollmentId: enrollment.id } }),
     },
   });
 }
@@ -228,12 +261,25 @@ export interface CoachingCommand {
     | "completeAppointment"
     | "disputeAppointment"
     | "resolveAppointment"
+    | "resolveDeliveryException"
+    | "inviteCoachingPayer"
+    | "sendPayerVerification"
+    | "verifyPayerContact"
+    | "acceptPayerTerms"
+    | "revokeCoachingPayer"
     | "pause"
     | "resume"
     | "proposeCoach"
     | "revokeCoach"
     | "proposePlan"
     | "close"
+    | "proposeSettlement"
+    | "acceptSettlement"
+    | "confirmSettlement"
+    | "resolveRecordIncident"
+    | "proposeRecordReview"
+    | "approveRecordReview"
+    | "revokeRecordReview"
     | "recordSettlement";
   operationId: string;
   enrollmentId?: string;
@@ -274,22 +320,62 @@ export async function runCoachingCommand(
             );
           return { id: prior.resultId ?? prior.id, replayed: true };
         }
-        const before = command.enrollmentId ? await db.coachingEnrollment.findFirst({
-          where: { id: command.enrollmentId, workspaceId: actor.workspaceId },
-          select: { version: true, status: true, programVersionId: true, currentCoachWorkspaceUserId: true, startsOn: true, endsOn: true },
-        }) : null;
+        const before = command.enrollmentId
+          ? await db.coachingEnrollment.findFirst({
+              where: {
+                id: command.enrollmentId,
+                workspaceId: actor.workspaceId,
+              },
+              select: {
+                version: true,
+                status: true,
+                programVersionId: true,
+                currentCoachWorkspaceUserId: true,
+                startsOn: true,
+                endsOn: true,
+              },
+            })
+          : null;
         const resultId = await execute(db, actor, who, command);
-        const safeInput = Object.fromEntries(Object.entries(command.input).filter(([key]) => ["programId", "programVersionId", "coachId", "memberId", "startsOn", "endsOn", "historyFromDate", "localDate", "noteVersion", "milestoneId", "appointmentId", "appointmentVersion", "availabilityId", "startsAt", "endsAt", "bufferMinutes", "roomId", "unitState", "noShow"].includes(key)));
+        const safeInput = Object.fromEntries(
+          Object.entries(command.input).filter(([key]) =>
+            [
+              "programId",
+              "programVersionId",
+              "coachId",
+              "memberId",
+              "startsOn",
+              "endsOn",
+              "historyFromDate",
+              "localDate",
+              "noteVersion",
+              "milestoneId",
+              "appointmentId",
+              "appointmentVersion",
+              "availabilityId",
+              "startsAt",
+              "endsAt",
+              "bufferMinutes",
+              "roomId",
+              "unitState",
+              "noShow",
+            ].includes(key),
+          ),
+        );
         await db.coachingEvent.create({
           data: {
             workspaceId: actor.workspaceId,
-            enrollmentId: command.enrollmentId ?? (command.kind === "enroll" ? resultId : undefined),
+            enrollmentId:
+              command.enrollmentId ??
+              (command.kind === "enroll" ? resultId : undefined),
             operationId: command.operationId,
             actorUserId: actor.userId,
             kind: command.kind,
             inputHash,
             resultId,
-            metadata: JSON.parse(JSON.stringify({ before, input: safeInput })) as Prisma.InputJsonObject,
+            metadata: JSON.parse(
+              JSON.stringify({ before, input: safeInput }),
+            ) as Prisma.InputJsonObject,
           },
         });
         return { id: resultId };
@@ -352,6 +438,12 @@ function programInput(input: Record<string, unknown>) {
       0,
       720,
       "Cancellation notice",
+    ),
+    noShowGraceMinutes: integer(
+      input.noShowGraceMinutes ?? 15,
+      0,
+      480,
+      "No-show grace in minutes",
     ),
     priceCents: integer(input.priceCents, 0, 100000000, "Price in cents"),
     currency,
@@ -525,6 +617,8 @@ async function execute(
     }
     if (!roomId && !virtualUrl)
       fail("Choose a room or provide a private meeting link.");
+    const bufferMinutes = integer(input.bufferMinutes ?? 0, 0, 240, "Buffer");
+    await ensureAppointmentFree(db, actor.workspaceId, { coachWorkspaceUserId: who.staff.id, roomId, startsAt, endsAt, bufferMinutes });
     return (
       await db.coachingAvailability.create({
         data: {
@@ -534,17 +628,51 @@ async function execute(
           endsAt,
           roomId,
           virtualUrl,
-          bufferMinutes: integer(input.bufferMinutes ?? 0, 0, 240, "Buffer"),
+          bufferMinutes,
         },
       })
     ).id;
   }
+  if (coachingIncidentCommands.has(kind))
+    return executeCoachingIncident(db, actor, command);
+  if (coachingPayerCommands.has(kind))
+    return executeCoachingPayer(db, actor, command);
   const ctx = await access(db, actor, command.enrollmentId ?? "");
   const e = ctx.enrollment;
   expected(e.version, command.expectedVersion);
-  const affectsEntitlement = ["acceptPlan", "saveDailyNote", "publishDailyNote", "savePrivateNote", "completeMilestone", "bookAppointment", "moveAppointment", "cancelAppointment", "completeAppointment", "disputeAppointment", "resolveAppointment", "pause", "resume", "proposePlan"];
-  if (affectsEntitlement.includes(kind) && await db.financialEntitlementHold.findFirst({ where: { workspaceId: actor.workspaceId, targetKind: "COACHING", targetId: e.id, activeSlot: "ACTIVE" }, select: { id: true } })) {
-    fail("A refund or credit is being reconciled for this program. Delivery and appointment changes are held until its outcome is known.");
+  if (coachingSettlementCommands.has(kind))
+    return executeCoachingSettlement(db, actor, command);
+  const affectsEntitlement = [
+    "acceptPlan",
+    "saveDailyNote",
+    "publishDailyNote",
+    "savePrivateNote",
+    "completeMilestone",
+    "bookAppointment",
+    "moveAppointment",
+    "cancelAppointment",
+    "completeAppointment",
+    "disputeAppointment",
+    "resolveAppointment",
+    "pause",
+    "resume",
+    "proposePlan",
+  ];
+  if (
+    affectsEntitlement.includes(kind) &&
+    (await db.financialEntitlementHold.findFirst({
+      where: {
+        workspaceId: actor.workspaceId,
+        targetKind: "COACHING",
+        targetId: e.id,
+        activeSlot: "ACTIVE",
+      },
+      select: { id: true },
+    }))
+  ) {
+    fail(
+      "A refund or credit is being reconciled for this program. Delivery and appointment changes are held until its outcome is known.",
+    );
   }
   const bump = async (
     data: Prisma.CoachingEnrollmentUncheckedUpdateInput = {},
@@ -597,7 +725,12 @@ async function execute(
         status: "PENDING",
         nextAttemptAt: now,
         expiresAt: new Date(now.getTime() + 30 * 60000),
-        context: { kind: "COACHING_VERIFICATION", enrollmentId: e.id, verificationHash: hash(token), issuedAt: now.toISOString() },
+        context: {
+          kind: "COACHING_VERIFICATION",
+          enrollmentId: e.id,
+          verificationHash: hash(token),
+          issuedAt: now.toISOString(),
+        },
         dedupeKey: `coaching-verification:${e.id}:${now.toISOString()}`,
       },
     });
@@ -665,6 +798,30 @@ async function execute(
   }
   if (kind === "acceptPlan") {
     own();
+    if (
+      e.closedAt &&
+      (!e.proposedProgramVersionId || e.settlementState === "SETTLED")
+    )
+      fail(
+        "A closed program needs an explicit owner proposal before restart. A settled program needs a new enrollment.",
+      );
+    if (
+      e.closedAt &&
+      e.paymentId &&
+      (await db.payment.findFirst({
+        where: {
+          id: e.paymentId,
+          workspaceId: actor.workspaceId,
+          OR: [
+            { refundedAmountCents: { gt: 0 } },
+            { status: { not: "SUCCEEDED" } },
+          ],
+        },
+      }))
+    )
+      fail(
+        "The previous payment was refunded or is unresolved. Start a separately purchased program.",
+      );
     if (!e.contactVerifiedAt || !e.currentCoachWorkspaceUserId)
       fail("Verify your contact and accept your named coach first.");
     if (
@@ -709,6 +866,32 @@ async function execute(
       status: "ONBOARDING",
       ...(version.priceCents === 0 ? { paymentState: "PAID" } : {}),
     });
+    const acceptedIntake = await db.coachingIntake.findUniqueOrThrow({
+      where: { enrollmentId: e.id },
+    });
+    await db.coachingAcceptedPlan.create({
+      data: {
+        workspaceId: actor.workspaceId,
+        enrollmentId: e.id,
+        programVersionId: version.id,
+        clientUserId: actor.userId,
+        operationId: command.operationId,
+        startsOn,
+        endsOn,
+        timezone: e.timezone,
+        snapshot: JSON.parse(JSON.stringify(version)),
+        agreement: {
+          acceptedTerms: true,
+          acceptedAt: now.toISOString(),
+          coachWorkspaceUserId: e.currentCoachWorkspaceUserId,
+          historyFromDate: e.historyFromDate?.toISOString() ?? null,
+          intakeId: acceptedIntake.id,
+          intakeVersion: acceptedIntake.version,
+          intakeContentHash: hash(acceptedIntake.content),
+        },
+        acceptedAt: now,
+      },
+    });
     return e.id;
   }
   if (kind === "submitIntake") {
@@ -743,7 +926,6 @@ async function execute(
   if (
     kind === "saveDailyNote" ||
     kind === "publishDailyNote" ||
-    kind === "withdrawDailyNote" ||
     kind === "savePrivateNote"
   ) {
     content();
@@ -802,10 +984,11 @@ async function execute(
         update: {
           draftBody: text(input.body, "Client note"),
           version: { increment: 1 },
+          ...(prior?.withdrawnAt ? { status: "CORRECTION_DRAFT" } : {}),
         },
       });
     } else if (kind === "publishDailyNote") {
-      if (!prior || prior.withdrawnAt)
+      if (!prior || (prior.withdrawnAt && prior.status !== "CORRECTION_DRAFT"))
         fail("Save a client note before publishing it.");
       if (coachingStatus(e, now) !== "ACTIVE")
         fail("Notes can be published only while this program is active.");
@@ -830,47 +1013,17 @@ async function execute(
         data: {
           status: number === 1 ? "PUBLISHED" : "AMENDED",
           publishedAt: now,
+          withdrawnAt: null,
           version: { increment: 1 },
         },
       });
-      await notifyClient(db, e, "A coaching note is ready", { kind: "COACHING_NOTE", enrollmentId: e.id, noteId: prior.id, revisionId: publishedRevision.id, revisionNumber: number });
-    } else {
-      if (!prior?.publishedAt) fail("There is no published note to withdraw.");
-      text(input.reason, "Incident reason", 1000);
-      await db.coachingDailyNote.update({
-        where: { id: prior.id },
-        data: {
-          status: "WITHDRAWN",
-          withdrawnAt: now,
-          version: { increment: 1 },
-        },
+      await notifyClient(db, e, "A coaching note is ready", {
+        kind: "COACHING_NOTE",
+        enrollmentId: e.id,
+        noteId: prior.id,
+        revisionId: publishedRevision.id,
+        revisionNumber: number,
       });
-      // Notices contain no note text or direct download token; suppression prevents further prompts.
-      const email = await db.member.findUnique({
-        where: { id: e.memberId },
-        select: { user: { select: { email: true } } },
-      });
-      if (email?.user)
-        await db.notificationJob.updateMany({
-          where: {
-            workspaceId: actor.workspaceId,
-            recipientEmail: email.user.email,
-            subject: "A coaching note is ready",
-            status: { in: ["PENDING", "FAILED"] },
-            context: { path: ["noteId"], equals: prior.id },
-          },
-          data: {
-            status: "CANCELLED",
-            nextAttemptAt: null,
-            lastError: "Suppressed after publication withdrawal.",
-          },
-        });
-      await bump({
-        settlementState: "REVIEW_REQUIRED",
-        settlementNote:
-          "Published content withdrawn. The records reviewer must assess access and contact the recipient.",
-      });
-      return e.id;
     }
     await bump();
     return e.id;
@@ -893,8 +1046,10 @@ async function execute(
     return e.id;
   }
   if (kind === "bookAppointment" || kind === "moveAppointment") {
-    if (!ctx.own && !ctx.coach)
-      fail("Only the client or accepted coach can book an appointment.");
+    if (!ctx.own && !ctx.coach && !(ctx.owner && kind === "moveAppointment"))
+      fail(
+        "Only the client or accepted coach can book; an owner can review a move.",
+      );
     open();
     const state = coachingStatus(e, now);
     if (state !== "ACTIVE" && state !== "SCHEDULED")
@@ -940,16 +1095,34 @@ async function execute(
             },
           })) ?? fail("Appointment not found."))
         : null;
-    if (
-      previous &&
+    const priorPolicy = previous?.policySnapshot as {
+      cancellationHours?: number;
+    } | null;
+    const late =
+      !!previous &&
       previous.startsAt.getTime() - now.getTime() <
-        e.programVersion.cancellationHours * 3600000
-    )
+        (priorPolicy?.cancellationHours ?? e.programVersion.cancellationHours) *
+          3600000;
+    const waiver = late && ctx.owner && input.waiveLatePenalty === true;
+    const reason = previous
+      ? text(
+          input.reason ?? "Client requested a new appointment time.",
+          "Move reason",
+          1000,
+        )
+      : undefined;
+    if (previous && input.appointmentVersion !== undefined)
+      expected(previous.version, input.appointmentVersion);
+    if (input.waiveLatePenalty === true && !waiver)
       fail(
-        "The move deadline has passed. Ask the coach to review this appointment.",
+        "Only an owner can waive a late-move penalty with a recorded reason.",
+      );
+    if (late && !waiver && input.confirmConsequences !== true)
+      fail(
+        "A late move consumes the original unit and reserves another. Confirm this before moving.",
       );
     if (
-      !previous &&
+      (!previous || (late && !waiver)) &&
       (await db.coachingAppointment.count({
         where: {
           enrollmentId: e.id,
@@ -967,15 +1140,49 @@ async function execute(
       endsAt: slot.endsAt,
       bufferMinutes: slot.bufferMinutes,
       virtualUrl: slot.virtualUrl,
+      policySnapshot: {
+        programVersionId: e.programVersionId,
+        cancellationHours: e.programVersion.cancellationHours,
+        noShowGraceMinutes: e.programVersion.noShowGraceMinutes,
+        appointmentMinutes: e.programVersion.appointmentMinutes,
+      },
     };
-    const appointment = previous
-      ? await db.coachingAppointment.update({
-          where: { id: previous.id },
-          data: { ...data, version: { increment: 1 } },
-        })
-      : await db.coachingAppointment.create({
-          data: { ...data, workspaceId: actor.workspaceId, enrollmentId: e.id },
-        });
+    if (previous) {
+      const retired = await db.coachingAppointment.update({
+        where: { id: previous.id },
+        data: {
+          status: late && !waiver ? "LATE_MOVED" : "MOVED",
+          unitState: late && !waiver ? "CONSUMED" : "RELEASED",
+          reason,
+          version: { increment: 1 },
+        },
+      });
+      await recordCoachingAppointmentEvent(db, {
+        workspaceId: actor.workspaceId,
+        actorUserId: actor.userId,
+        operationId: command.operationId,
+        kind: waiver ? "OWNER_WAIVED_LATE_MOVE" : retired.status,
+        before: previous,
+        after: retired,
+        reason,
+      });
+    }
+    const appointment = await db.coachingAppointment.create({
+      data: {
+        ...data,
+        workspaceId: actor.workspaceId,
+        enrollmentId: e.id,
+        movedFromId: previous?.id,
+      },
+    });
+    await recordCoachingAppointmentEvent(db, {
+      workspaceId: actor.workspaceId,
+      actorUserId: actor.userId,
+      operationId: command.operationId,
+      kind: previous ? "MOVE_RESERVED" : "BOOKED",
+      after: appointment,
+      reason,
+    });
     await bump();
     await notifyClient(db, e, "Your coaching appointment was updated");
     return appointment.id;
@@ -999,9 +1206,18 @@ async function execute(
         fail("Only the client or accepted coach can dispute this appointment.");
       if (appointment.unitState === "RELEASED")
         fail("This unit has already been returned.");
-      await db.coachingAppointment.update({
+      const after = await db.coachingAppointment.update({
         where: { id: appointment.id },
         data: { unitState: "DISPUTED", reason, version: { increment: 1 } },
+      });
+      await recordCoachingAppointmentEvent(db, {
+        workspaceId: actor.workspaceId,
+        actorUserId: actor.userId,
+        operationId: command.operationId,
+        kind,
+        before: appointment,
+        after,
+        reason,
       });
       await bump({ settlementState: "REVIEW_REQUIRED" });
       return appointment.id;
@@ -1023,12 +1239,26 @@ async function execute(
       });
     } else if (kind === "completeAppointment") {
       content();
+      const acceptedPolicy = appointment.policySnapshot as {
+        noShowGraceMinutes?: number;
+      } | null;
+      const earliest =
+        input.noShow === true
+          ? new Date(
+              appointment.startsAt.getTime() +
+                (acceptedPolicy?.noShowGraceMinutes ??
+                  e.programVersion.noShowGraceMinutes) *
+                  60000,
+            )
+          : appointment.endsAt;
       if (
         appointment.status !== "BOOKED" ||
-        appointment.endsAt > now ||
+        earliest > now ||
         appointment.unitState !== "HELD"
       )
-        fail("Only a past booked appointment can be completed.");
+        fail(
+          "Confirm attendance after the appointment ends, or no-show only after its accepted grace period.",
+        );
       const status = input.noShow === true ? "NO_SHOW" : "ATTENDED";
       await db.coachingAppointment.update({
         where: { id: appointment.id },
@@ -1046,7 +1276,9 @@ async function execute(
         fail("This appointment has already been resolved.");
       const timely =
         appointment.startsAt.getTime() - now.getTime() >=
-        e.programVersion.cancellationHours * 3600000;
+        ((appointment.policySnapshot as { cancellationHours?: number } | null)
+          ?.cancellationHours ?? e.programVersion.cancellationHours) *
+          3600000;
       const providerCancellation = !ctx.own;
       await db.coachingAppointment.update({
         where: { id: appointment.id },
@@ -1062,6 +1294,18 @@ async function execute(
         },
       });
     }
+    const after = await db.coachingAppointment.findUniqueOrThrow({
+      where: { id: appointment.id },
+    });
+    await recordCoachingAppointmentEvent(db, {
+      workspaceId: actor.workspaceId,
+      actorUserId: actor.userId,
+      operationId: command.operationId,
+      kind,
+      before: appointment,
+      after,
+      reason,
+    });
     await bump();
     await notifyClient(db, e, "Your coaching appointment was updated");
     return appointment.id;
@@ -1101,18 +1345,14 @@ async function execute(
       minutes: 0,
       timezone: e.timezone,
     });
-    await db.coachingAppointment.updateMany({
-      where: {
-        enrollmentId: e.id,
-        status: "BOOKED",
-        startsAt: { gte: startsAt, lt: endsAt },
-      },
-      data: {
-        status: "PAUSE_CANCELLED",
-        unitState: "RELEASED",
-        reason: "Program paused; appointment unit returned.",
-        version: { increment: 1 },
-      },
+    await releaseCoachingAppointmentsTx(db, {
+      workspaceId: actor.workspaceId,
+      enrollmentId: e.id,
+      actorUserId: actor.userId,
+      operationId: command.operationId,
+      status: "PAUSE_CANCELLED",
+      reason: "Program paused; appointment unit returned.",
+      startsAt: { gte: startsAt, lt: endsAt },
     });
     await bump({
       pauseStartsOn: start,
@@ -1151,14 +1391,14 @@ async function execute(
       where: { enrollmentId: e.id, revokedAt: null },
       data: { revokedAt: now },
     });
-    await db.coachingAppointment.updateMany({
-      where: { enrollmentId: e.id, startsAt: { gt: now }, status: "BOOKED" },
-      data: {
-        status: "PROVIDER_CANCELLED",
-        unitState: "RELEASED",
-        reason: "Coach assignment ended; unit returned.",
-        version: { increment: 1 },
-      },
+    await releaseCoachingAppointmentsTx(db, {
+      workspaceId: actor.workspaceId,
+      enrollmentId: e.id,
+      actorUserId: actor.userId,
+      operationId: command.operationId,
+      status: "PROVIDER_CANCELLED",
+      reason: "Coach assignment ended; unit returned.",
+      startsAt: { gt: now },
     });
     await bump({
       currentCoachWorkspaceUserId: null,
@@ -1214,14 +1454,14 @@ async function execute(
       fail(
         "Review the remaining appointment units and settlement before closing.",
       );
-    await db.coachingAppointment.updateMany({
-      where: { enrollmentId: e.id, startsAt: { gt: now }, status: "BOOKED" },
-      data: {
-        status: "PROGRAM_CLOSED",
-        unitState: "RELEASED",
-        reason: "Program closed; obligation retained for settlement.",
-        version: { increment: 1 },
-      },
+    await releaseCoachingAppointmentsTx(db, {
+      workspaceId: actor.workspaceId,
+      enrollmentId: e.id,
+      actorUserId: actor.userId,
+      operationId: command.operationId,
+      status: "PROGRAM_CLOSED",
+      reason: "Program closed; obligation retained for settlement.",
+      startsAt: { gt: now },
     });
     await bump({
       closedAt: now,
@@ -1246,6 +1486,33 @@ async function execute(
     });
     return e.id;
   }
+  if (kind === "resolveDeliveryException") {
+    owner();
+    const issue =
+      (await db.coachingDeliveryException.findFirst({
+        where: {
+          id: String(input.exceptionId),
+          enrollmentId: e.id,
+          workspaceId: actor.workspaceId,
+        },
+      })) ?? fail("Delivery exception not found.");
+    if (issue.reviewerWorkspaceUserId !== ctx.staff!.id)
+      fail("The assigned owner must review this delivery exception.");
+    await db.coachingDeliveryException.update({
+      where: { id: issue.id },
+      data: {
+        status: "RESOLVED",
+        resolution: text(
+          input.reason,
+          "Agreed replacement delivery or money review",
+          2000,
+        ),
+        resolvedAt: now,
+      },
+    });
+    await bump();
+    return issue.id;
+  }
   return fail("Unsupported coaching action.");
 }
 
@@ -1263,6 +1530,12 @@ async function ensureAppointmentFree(
 ) {
   const from = new Date(slot.startsAt.getTime() - slot.bufferMinutes * 60000),
     until = new Date(slot.endsAt.getTime() + slot.bufferMinutes * 60000);
+  try {
+    await assertStaffNotOnLeave(db, { workspaceId, coachWorkspaceUserId: slot.coachWorkspaceUserId, startsAt: from, endsAt: until });
+  } catch (error) {
+    if (error instanceof StaffLeaveError) fail(error.message);
+    throw error;
+  }
   const conflicts = await db.coachingAppointment.findMany({
     where: {
       workspaceId,
@@ -1356,7 +1629,10 @@ export async function getCoachingWorkspace(actor: CoachingActor) {
         member: { select: { fullName: true } },
         programVersion: { include: { program: { select: { name: true } } } },
         currentCoach: {
-          select: { isActive: true, user: { select: { fullName: true, email: true } } },
+          select: {
+            isActive: true,
+            user: { select: { fullName: true, email: true } },
+          },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -1477,6 +1753,7 @@ export async function getCoachingDetail(
             status: true,
             publishedAt: true,
             revisions: {
+              where: { withdrawnAt: null },
               select: { number: true, body: true, publishedAt: true },
               orderBy: { number: "desc" },
             },
@@ -1527,11 +1804,17 @@ export async function getCoachingDetail(
         version: true,
         virtualUrl: canRead,
         reason: true,
+        policySnapshot: true,
+        movedFromId: true,
+        events: {
+          select: { id: true, kind: true, reason: true, createdAt: true },
+          orderBy: { createdAt: "asc" },
+        },
       },
       orderBy: { startsAt: "desc" },
     });
     const availability =
-      canRead &&
+      (canRead || ctx.owner) &&
       e.currentCoachWorkspaceUserId &&
       e.programVersion.appointmentUnits > 0 &&
       !e.closedAt
@@ -1552,12 +1835,33 @@ export async function getCoachingDetail(
             orderBy: { startsAt: "asc" },
           })
         : [];
+    const deliveryExceptions = ctx.owner
+      ? await db.coachingDeliveryException.findMany({
+          where: { workspaceId: actor.workspaceId, enrollmentId: e.id },
+          orderBy: { localDate: "desc" },
+        })
+      : [];
     const proposedPlan =
       canRead && e.proposedProgramVersionId
         ? await db.coachingProgramVersion.findUnique({
             where: { id: e.proposedProgramVersionId },
           })
         : null;
+    if (canRead)
+      await db.coachingRecordAccessEvent.create({
+        data: {
+          workspaceId: actor.workspaceId,
+          enrollmentId: e.id,
+          actorUserId: actor.userId,
+          kind: ctx.own ? "CLIENT_RECORD_READ" : "COACH_RECORD_READ",
+          purpose: "Read authorized program records",
+          scope: {
+            publishedNoteIds: published.map((note) => note.id),
+            privateNoteIds: privateNotes.map((note) => note.id),
+            intake: !!intake,
+          },
+        },
+      });
     // Do not spread the database enrollment: verification hashes, draft text and commercial internals stay server-side.
     return {
       id: e.id,
@@ -1582,13 +1886,15 @@ export async function getCoachingDetail(
       timezone: e.timezone,
       contactVerified: !!e.contactVerifiedAt,
       accepted: !!e.acceptedAt,
-      coachAccepted: !!e.currentCoachWorkspaceUserId && !!e.currentCoach?.isActive,
+      coachAccepted:
+        !!e.currentCoachWorkspaceUserId && !!e.currentCoach?.isActive,
       plan: canRead ? e.programVersion : null,
       proposedPlan,
       proposedStartsOn: e.proposedStartsOn,
       proposedEndsOn: e.proposedEndsOn,
       paymentState: e.paymentState,
       checkoutAvailable: !!e.checkoutSessionId,
+      payerGrantId: ctx.own ? e.currentPayerGrantId : null,
       closedAt: e.closedAt,
       retrievalUntil: e.retrievalUntil,
       settlementState: e.settlementState,
@@ -1602,6 +1908,7 @@ export async function getCoachingDetail(
       intake,
       milestones,
       appointments,
+      deliveryExceptions,
       availability,
       includedUnits: e.programVersion.appointmentUnits,
       reservedOrUsedUnits: appointments.filter((a) =>
@@ -1615,47 +1922,91 @@ export async function exportCoachingRecords(
   actor: CoachingActor,
   enrollmentId: string,
 ) {
-  const detail = await getCoachingDetail(actor, enrollmentId);
-  if (!detail.own)
-    fail("Only the client can download their routine coaching record.");
-  // Explicit client scope: submitted intake and published versions are permitted; private notes and drafts never enter any export.
-  return {
-    program: detail.programName,
-    client: detail.memberName,
-    startDate: toDateOnlyString(detail.startsOn),
-    endDate: toDateOnlyString(detail.endsOn),
-    timezone: detail.timezone,
-    plan: detail.plan,
-    submittedIntake: detail.intake,
-    milestones: detail.milestones,
-    publishedNotes: detail.published.map((note) => ({
-      date: toDateOnlyString(note.localDate),
-      revisions: note.revisions,
-    })),
-    appointments: detail.appointments.map(
-      ({ startsAt, endsAt, status, unitState }) => ({
-        startsAt,
-        endsAt,
-        status,
-        unitState,
-      }),
-    ),
-    exportedAt: new Date().toISOString(),
-  };
+  return (await prepareCoachingRecordExport(actor, enrollmentId)).records;
 }
 
 /** Call inside the caller's transaction after acquiring lockClassSchedule first.
  * Provider settlement is checked independently; this helper never reads notes. */
-export async function applyCoachingRefundDisposition(db: Prisma.TransactionClient, args: { workspaceId: string; enrollmentId: string; refundId: string; actorUserId: string; disposition: "REVOKE_UNUSED_ACCESS" | "RETAIN_ACCESS" }) {
-  const enrollment = await db.coachingEnrollment.findFirst({ where: { id: args.enrollmentId, workspaceId: args.workspaceId }, include: { programVersion: { select: { retrievalDays: true } } } }) ?? fail("Coaching program not found.");
-  const refund = await db.refund.findFirst({ where: { id: args.refundId, workspaceId: args.workspaceId, paymentId: enrollment.paymentId ?? "", status: "SUCCEEDED" } });
+export async function applyCoachingRefundDisposition(
+  db: Prisma.TransactionClient,
+  args: {
+    workspaceId: string;
+    enrollmentId: string;
+    refundId: string;
+    actorUserId: string;
+    disposition: "REVOKE_UNUSED_ACCESS" | "RETAIN_ACCESS";
+  },
+) {
+  const enrollment =
+    (await db.coachingEnrollment.findFirst({
+      where: { id: args.enrollmentId, workspaceId: args.workspaceId },
+      include: { programVersion: { select: { retrievalDays: true } } },
+    })) ?? fail("Coaching program not found.");
+  const refund = await db.refund.findFirst({
+    where: {
+      id: args.refundId,
+      workspaceId: args.workspaceId,
+      paymentId: enrollment.paymentId ?? "",
+      status: "SUCCEEDED",
+    },
+  });
   if (!refund) fail("The provider has not confirmed this program's refund.");
   const operationId = `refund:${refund.id}`;
-  if (await db.coachingEvent.findUnique({ where: { workspaceId_operationId: { workspaceId: args.workspaceId, operationId } } })) return;
+  if (
+    await db.coachingEvent.findUnique({
+      where: {
+        workspaceId_operationId: { workspaceId: args.workspaceId, operationId },
+      },
+    })
+  )
+    return;
   const now = new Date();
   if (args.disposition === "REVOKE_UNUSED_ACCESS") {
-    await db.coachingAppointment.updateMany({ where: { enrollmentId: enrollment.id, status: "BOOKED", startsAt: { gt: now }, unitState: "HELD" }, data: { status: "REFUND_CANCELLED", unitState: "RELEASED", reason: "Unused service withdrawn after verified refund.", version: { increment: 1 } } });
-    await db.coachingEnrollment.update({ where: { id: enrollment.id }, data: { closedAt: enrollment.closedAt ?? now, status: "CLOSED", retrievalUntil: enrollment.retrievalUntil ?? new Date(now.getTime() + enrollment.programVersion.retrievalDays * 86400000), exportState: "AVAILABLE", settlementState: "REVIEW_REQUIRED", settlementNote: "The provider confirmed a refund. Review any remaining delivery or appointment obligations.", version: { increment: 1 } } });
+    await db.coachingAppointment.updateMany({
+      where: {
+        enrollmentId: enrollment.id,
+        status: "BOOKED",
+        startsAt: { gt: now },
+        unitState: "HELD",
+      },
+      data: {
+        status: "REFUND_CANCELLED",
+        unitState: "RELEASED",
+        reason: "Unused service withdrawn after verified refund.",
+        version: { increment: 1 },
+      },
+    });
+    await db.coachingEnrollment.update({
+      where: { id: enrollment.id },
+      data: {
+        closedAt: enrollment.closedAt ?? now,
+        status: "CLOSED",
+        retrievalUntil:
+          enrollment.retrievalUntil ??
+          new Date(
+            now.getTime() + enrollment.programVersion.retrievalDays * 86400000,
+          ),
+        exportState: "AVAILABLE",
+        settlementState: "REVIEW_REQUIRED",
+        settlementNote:
+          "The provider confirmed a refund. Review any remaining delivery or appointment obligations.",
+        version: { increment: 1 },
+      },
+    });
   }
-  await db.coachingEvent.create({ data: { workspaceId: args.workspaceId, enrollmentId: enrollment.id, operationId, actorUserId: args.actorUserId, kind: "REFUND_VERIFIED", inputHash: refund.id, resultId: refund.id, metadata: { disposition: args.disposition, amountCents: refund.amountCents } } });
+  await db.coachingEvent.create({
+    data: {
+      workspaceId: args.workspaceId,
+      enrollmentId: enrollment.id,
+      operationId,
+      actorUserId: args.actorUserId,
+      kind: "REFUND_VERIFIED",
+      inputHash: refund.id,
+      resultId: refund.id,
+      metadata: {
+        disposition: args.disposition,
+        amountCents: refund.amountCents,
+      },
+    },
+  });
 }

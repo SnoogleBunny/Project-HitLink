@@ -4,6 +4,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "./client.js";
 import { lockClassSchedule } from "./class-occurrences.js";
 import { workspaceExportFields } from "./workspace-export-fields.js";
+import { inspectWorkspaceBillingHandover } from "./workspace-billing-handover.js";
 
 export class WorkspaceDataError extends Error {}
 export interface WorkspaceDataActor {
@@ -14,20 +15,20 @@ type Options = { db?: PrismaClient; now?: Date };
 type Tx = Prisma.TransactionClient;
 type Row = Record<string, unknown>;
 async function retrySerialization<T>(work: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < 12; attempt++) {
     try {
       return await work();
     } catch (error) {
       if (
         !(error instanceof Prisma.PrismaClientKnownRequestError) ||
         error.code !== "P2034" ||
-        attempt === 7
+        attempt === 11
       )
         throw error;
       await new Promise((resolve) =>
         setTimeout(
           resolve,
-          Math.min(250, 25 * 2 ** attempt) + Math.floor(Math.random() * 25),
+          Math.min(1000, 50 * 2 ** attempt) + Math.floor(Math.random() * 100),
         ),
       );
     }
@@ -136,7 +137,7 @@ async function snapshot(db: Tx, workspaceId: string) {
       fail(
         "This export needs a larger batch. Contact your named records contact; no records have been omitted.",
       );
-    for (const row of rows)
+    for (const row of rows) {
       if (row.fileData instanceof Uint8Array) {
         const bytes = Buffer.from(row.fileData);
         const checksum = hash(bytes);
@@ -155,6 +156,38 @@ async function snapshot(db: Tx, workspaceId: string) {
         delete row.fileData;
         row.fileReference = `files/${row.id}`;
       }
+      if(model === "SourceMembershipLifecycleEvidence") {
+        if(!(row.receiptData instanceof Uint8Array)) fail("The original-system lifecycle receipt bytes are missing.");
+        const bytes=Buffer.from(row.receiptData);
+        if(!bytes.subarray(0,5).equals(Buffer.from("%PDF-")) || hash(bytes)!==row.receiptHash) fail("An original-system lifecycle receipt failed its type or checksum check.");
+        files.push({id:`source-lifecycle-${row.id}`,name:`source-lifecycle-${row.id}.pdf`,mimeType:"application/pdf",sha256:hash(bytes),bytes:bytes.length,base64:bytes.toString("base64")});
+        delete row.receiptData;row.receiptReference=`files/source-lifecycle-${row.id}`;
+      }
+      if(model === "SourceBillingEvidence" && (row.sourceReceiptData || row.sourceReceiptHash)) {
+        if(!(row.sourceReceiptData instanceof Uint8Array)) fail("The paid source receipt bytes are missing.");
+        const bytes=Buffer.from(row.sourceReceiptData);
+        if(!bytes.subarray(0,5).equals(Buffer.from("%PDF-")) || hash(bytes)!==row.sourceReceiptHash || hash(bytes)!==row.sourceFileHash) fail("A paid source receipt failed its type or checksum check.");
+        files.push({id:`source-paid-${row.id}`,name:`source-paid-${row.id}.pdf`,mimeType:"application/pdf",sha256:hash(bytes),bytes:bytes.length,base64:bytes.toString("base64")});
+        delete row.sourceReceiptData;row.sourceReceiptReference=`files/source-paid-${row.id}`;
+      }
+      if (model === "ImportedSignatureEvidence") {
+        if (!(row.signatureReceiptData instanceof Uint8Array)) fail("The source signature receipt is missing its original bytes.");
+        const bytes=Buffer.from(row.signatureReceiptData);
+        if(!bytes.subarray(0,5).equals(Buffer.from("%PDF-")) || hash(bytes)!==row.signatureReceiptHash) fail("A source signature receipt failed its type or checksum check.");
+        files.push({id:`source-signature-${row.id}`,name:`source-signature-${row.id}.pdf`,mimeType:"application/pdf",sha256:hash(bytes),bytes:bytes.length,base64:bytes.toString("base64")});
+        delete row.signatureReceiptData;
+        row.signatureReceiptReference=`files/source-signature-${row.id}`;
+      }
+      if(model === "ImportedFinancialEvidence") {
+        const source=row.sourceSnapshot as {kind?:string;receiptBase64?:string;receiptHash?:string;receiptReference?:string}|null;
+        if(source?.kind === "LIVE_SOURCE_REFUND") {
+          const bytes=Buffer.from(source.receiptBase64??"","base64");
+          if(!bytes.subarray(0,5).equals(Buffer.from("%PDF-")) || hash(bytes)!==source.receiptHash || hash(bytes)!==row.sourceFileHash) fail("A source refund receipt failed its type or checksum check.");
+          files.push({id:`source-refund-${row.id}`,name:`source-refund-${row.id}.pdf`,mimeType:"application/pdf",sha256:hash(bytes),bytes:bytes.length,base64:bytes.toString("base64")});
+          delete source.receiptBase64;source.receiptReference=`files/source-refund-${row.id}`;
+        }
+      }
+    }
     tables[model] = JSON.parse(JSON.stringify(rows)) as Row[];
     dictionary[model] = metadata.fields
       .filter(
@@ -207,6 +240,16 @@ async function snapshot(db: Tx, workspaceId: string) {
     },
     orderBy: { id: "asc" },
   });
+  const sourceFiles=await db.importSourceFile.findMany({where:{workspaceId,stagingRecords:{some:{importedAt:{not:null},recordKind:{in:["MEMBER","MEMBERSHIP_PLAN","MEMBER_MEMBERSHIP","PUNCH_CARD_BALANCE","ALLOWANCE_USAGE","FUTURE_BOOKING","DROP_IN_PRODUCT","SCHEDULE_TEMPLATE","BILLING_HISTORY","SOURCE_SIGNATURE"]}}}},orderBy:{id:"asc"},take:50001});
+  if(sourceFiles.length>50000) fail("Source files need a larger export batch. No source files were omitted.");
+  tables.ImportSourceFile=[];
+  for(const source of sourceFiles) {
+    if(source.rawContent===null) fail("An imported source file is missing its original bytes. Resolve this before exporting.");
+    const bytes=Buffer.from(source.rawContent,"utf8");
+    if(hash(bytes)!==source.fileSha256 || bytes.length!==source.fileSizeBytes) fail("An imported source file failed its checksum check.");
+    files.push({id:`source-${source.id}`,name:source.fileName,mimeType:source.mimeType??"text/csv",sha256:source.fileSha256,bytes:bytes.length,base64:bytes.toString("base64")});
+    tables.ImportSourceFile.push({id:source.id,workspaceId,importJobId:source.importJobId,fileName:source.fileName,fileSha256:source.fileSha256,fileSizeBytes:source.fileSizeBytes,fileReference:`files/source-${source.id}`});
+  }
   const sourceHash = hash(JSON.stringify({ tables, files }));
   const csv = Object.fromEntries(
     Object.entries(tables).map(([model, rows]) => {
@@ -457,6 +500,9 @@ export async function saveWorkspaceOffboarding(
       retentionHoldReason: input.retentionHoldReason?.trim() || null,
       exportJobId: job.id,
       customerBillingDisposition: "STOP",
+      customerBillingHandoverId: null,
+      customerBillingEvidence: Prisma.JsonNull,
+      platformBillingConfirmedAt: null,
       state: "REVIEW",
       ownerConfirmedAt: null,
       ownerConfirmedByUserId: null,
@@ -516,6 +562,9 @@ async function inventory(tx: Tx, workspaceId: string, now: Date) {
   const blockers: string[] = [];
   if (!plan)
     return { plan: null, blockers: ["Prepare an agreed offboarding plan."] };
+  const handover = plan.customerBillingDisposition === "HANDOVER"
+    ? await inspectWorkspaceBillingHandover(tx, plan, now) : null;
+  if (handover && !handover.valid) blockers.push(handover.reason!);
   const owners = await tx.workspaceUser.findMany({
     where: { workspaceId, role: "OWNER", isActive: true },
     select: { userId: true },
@@ -564,7 +613,7 @@ async function inventory(tx: Tx, workspaceId: string, now: Date) {
   if (await tx.refund.count({ where: { workspaceId, status: "PENDING" } }))
     blockers.push("Resolve pending refunds.");
   if (
-    await tx.memberPunchCard.count({
+    !handover?.valid && await tx.memberPunchCard.count({
       where: { workspaceId, remainingPunches: { gt: 0 } },
     })
   )
@@ -572,7 +621,7 @@ async function inventory(tx: Tx, workspaceId: string, now: Date) {
       "Resolve unused class-pack units, including archived packs, through a recorded settlement or handover.",
     );
   if (
-    await tx.accountCredit.count({
+    !handover?.valid && await tx.accountCredit.count({
       where: {
         workspaceId,
         status: "ACTIVE",
@@ -593,6 +642,8 @@ async function inventory(tx: Tx, workspaceId: string, now: Date) {
     })
   )
     blockers.push("Resolve future coaching appointments.");
+  if (await tx.membershipLifecycleRequest.count({ where: { workspaceId, state: { notIn: ["COMPLETE", "WITHDRAWN", "SUPERSEDED", "REJECTED"] } } }))
+    blockers.push("Resolve pending membership lifecycle changes before handing over billing or ending access.");
   const coaching = await tx.coachingEnrollment.findMany({
     where: { workspaceId },
     select: { status: true, settlementState: true, retrievalUntil: true },
@@ -673,7 +724,7 @@ async function inventory(tx: Tx, workspaceId: string, now: Date) {
     now.getTime() - new Date(String(evidence.verifiedAt)).getTime() > 300000 ||
     evidence.version !== plan.version
   )
-    blockers.push("Freshly verify every customer subscription's renewal stop.");
+    blockers.push(plan.customerBillingDisposition === "HANDOVER" ? "Freshly verify the agreed customer billing handover." : "Freshly verify every customer subscription's renewal stop.");
   return { plan, blockers };
 }
 export async function getWorkspaceDataManagement(
@@ -682,7 +733,7 @@ export async function getWorkspaceDataManagement(
 ) {
   const db = options.db ?? prisma;
   await requireWorkspaceDataOwner(db, actor);
-  const [exports, grants, events, state] = await Promise.all([
+  const [exports, grants, events, state, retention] = await Promise.all([
     db.workspaceDataExport.findMany({
       where: { workspaceId: actor.workspaceId },
       select: {
@@ -712,6 +763,7 @@ export async function getWorkspaceDataManagement(
       take: 30,
     }),
     inventory(db, actor.workspaceId, options.now ?? new Date()),
+    db.workspaceRetentionCase.findUnique({ where: { workspaceId: actor.workspaceId }, select: { id: true, version: true } }),
   ]);
   const safePlan = (value: NonNullable<typeof state.plan>) => {
     const { exportJob, ...record } = value;
@@ -724,6 +776,7 @@ export async function getWorkspaceDataManagement(
     events,
     plan: state.plan ? safePlan(state.plan) : null,
     blockers: state.blockers,
+    retention,
   };
 }
 export async function finalizeWorkspaceOffboarding(
@@ -751,6 +804,14 @@ export async function finalizeWorkspaceOffboarding(
           fail(
             "Records changed after the export. Prepare, download and verify a fresh archive, then update the plan.",
           );
+        const approvedOwnerUserIds = (await tx.workspaceUser.findMany({
+          where: { workspaceId: actor.workspaceId, role: "OWNER", isActive: true },
+          select: { userId: true },
+        })).map((owner) => owner.userId).sort();
+        await tx.workspaceRetentionCase.updateMany({
+          where: { workspaceId: actor.workspaceId, offboardingPlanVersion: plan.version, executedAt: null },
+          data: { authorizationFrozenAt: now },
+        });
         await tx.workspace.update({
           where: { id: actor.workspaceId },
           data: { status: "DISABLED" },
@@ -782,6 +843,8 @@ export async function finalizeWorkspaceOffboarding(
         });
         await audit(tx, actor, "WORKSPACE_ACCESS_REVOKED", {
           planId: plan.id,
+          version: plan.version,
+          approvedOwnerUserIds,
           exportId: plan.exportJobId,
           retentionUntil: plan.retentionUntil,
           recordsContact: plan.recordsContact,

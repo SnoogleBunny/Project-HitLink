@@ -199,15 +199,55 @@ integration("adult coaching permissions and persistent workflows", () => {
       where: { id: offer.id },
     });
     expect(record.verificationHash).not.toBe(code);
-    expect(notice.expiresAt?.getTime()).toBe(record.verificationExpiresAt?.getTime());
-    expect(await api.shouldDeliverNotification(notice, db, record.verificationSentAt!)).toBe(true);
-    await db.workspaceUser.updateMany({ where: { workspaceId, userId: client.userId }, data: { isActive: false } });
-    expect(await api.shouldDeliverNotification(notice, db, record.verificationSentAt!)).toBe(false);
-    await expect(api.getCoachingDetail(client, offer.id)).rejects.toThrow("do not have access");
-    await db.workspaceUser.updateMany({ where: { workspaceId, userId: client.userId }, data: { isActive: true } });
-    expect(await api.shouldDeliverNotification({ ...notice, context: { ...(notice.context as object), verificationHash: "superseded-challenge" } }, db, record.verificationSentAt!)).toBe(false);
+    expect(notice.expiresAt?.getTime()).toBe(
+      record.verificationExpiresAt?.getTime(),
+    );
+    expect(
+      await api.shouldDeliverNotification(
+        notice,
+        db,
+        record.verificationSentAt!,
+      ),
+    ).toBe(true);
+    await db.workspaceUser.updateMany({
+      where: { workspaceId, userId: client.userId },
+      data: { isActive: false },
+    });
+    expect(
+      await api.shouldDeliverNotification(
+        notice,
+        db,
+        record.verificationSentAt!,
+      ),
+    ).toBe(false);
+    await expect(api.getCoachingDetail(client, offer.id)).rejects.toThrow(
+      "do not have access",
+    );
+    await db.workspaceUser.updateMany({
+      where: { workspaceId, userId: client.userId },
+      data: { isActive: true },
+    });
+    expect(
+      await api.shouldDeliverNotification(
+        {
+          ...notice,
+          context: {
+            ...(notice.context as object),
+            verificationHash: "superseded-challenge",
+          },
+        },
+        db,
+        record.verificationSentAt!,
+      ),
+    ).toBe(false);
     await mutate(client, offer.id, "verifyContact", { code });
-    expect(await api.shouldDeliverNotification(notice, db, record.verificationSentAt!)).toBe(false);
+    expect(
+      await api.shouldDeliverNotification(
+        notice,
+        db,
+        record.verificationSentAt!,
+      ),
+    ).toBe(false);
     await expect(
       mutate(client, offer.id, "verifyContact", { code }),
     ).rejects.toThrow("invalid or expired");
@@ -263,7 +303,7 @@ integration("adult coaching permissions and persistent workflows", () => {
       JSON.stringify(await api.exportCoachingRecords(client, e.id)),
     ).not.toContain("SENTINEL");
     await expect(api.exportCoachingRecords(owner, e.id)).rejects.toThrow(
-      "Only the client",
+      "Only the adult client",
     );
   });
 
@@ -496,32 +536,850 @@ integration("adult coaching permissions and persistent workflows", () => {
   });
 
   it("rejects enrollment for minors and inactive-coach delivery", async () => {
-    await db.member.update({ where: { id: `${prefix}-stranger-member` }, data: { dateOfBirth: new Date(`${Number(today.slice(0, 4)) - 16}-01-01`) } });
-    await expect(command(owner, "enroll", { memberId: `${prefix}-stranger-member`, programVersionId, coachId, startsOn: today })).rejects.toThrow("18 or older");
+    await db.member.update({
+      where: { id: `${prefix}-stranger-member` },
+      data: {
+        dateOfBirth: new Date(`${Number(today.slice(0, 4)) - 16}-01-01`),
+      },
+    });
+    await expect(
+      command(owner, "enroll", {
+        memberId: `${prefix}-stranger-member`,
+        programVersionId,
+        coachId,
+        startsOn: today,
+      }),
+    ).rejects.toThrow("18 or older");
     const e = await activeEnrollment();
-    await db.workspaceUser.update({ where: { id: coachId }, data: { isActive: false } });
+    await db.workspaceUser.update({
+      where: { id: coachId },
+      data: { isActive: false },
+    });
     try {
-      expect((await api.getCoachingDetail(client, e.id)).status).toBe("AWAITING_REPLACEMENT");
-      expect((await api.getCoachingDetail(client, e.id)).coachAccepted).toBe(false);
-      await expect(mutate(coach, e.id, "savePrivateNote", { localDate: today, body: "No longer allowed", noteVersion: -1 })).rejects.toThrow("access");
-    } finally { await db.workspaceUser.update({ where: { id: coachId }, data: { isActive: true } }); }
+      expect((await api.getCoachingDetail(client, e.id)).status).toBe(
+        "AWAITING_REPLACEMENT",
+      );
+      expect((await api.getCoachingDetail(client, e.id)).coachAccepted).toBe(
+        false,
+      );
+      await expect(
+        mutate(coach, e.id, "savePrivateNote", {
+          localDate: today,
+          body: "No longer allowed",
+          noteVersion: -1,
+        }),
+      ).rejects.toThrow("access");
+    } finally {
+      await db.workspaceUser.update({
+        where: { id: coachId },
+        data: { isActive: true },
+      });
+    }
+  });
+
+  it("finishes closure settlement only after the adult accepts the reviewed unused obligations", async () => {
+    const e = await activeEnrollment();
+    await mutate(client, e.id, "close", {
+      reason: "End service",
+      confirmConsequences: true,
+    });
+    const review = await api.getCoachingSettlement(owner, e.id);
+    expect(review?.snapshot.unusedUnits).toBe(1);
+    expect(review?.snapshot.undeliveredDays.length).toBeGreaterThan(0);
+    await expect(
+      mutate(coach, e.id, "proposeSettlement", {
+        settlementKind: "NO_ADJUSTMENT",
+        amountCents: 0,
+        obligationHash: review!.obligationHash,
+        reason: "Client agrees to close without adjustment",
+      }),
+    ).rejects.toThrow("owner");
+    const proposal = await mutate(owner, e.id, "proposeSettlement", {
+      settlementKind: "NO_ADJUSTMENT",
+      amountCents: 0,
+      obligationHash: review!.obligationHash,
+      reason:
+        "Unused free-program services waived by agreement; no money changes",
+    });
+    await expect(
+      mutate(owner, e.id, "confirmSettlement", { decisionId: proposal.id }),
+    ).rejects.toThrow("accepted");
+    await expect(
+      mutate(owner, e.id, "acceptSettlement", {
+        decisionId: proposal.id,
+        confirmConsequences: true,
+      }),
+    ).rejects.toThrow("adult client");
+    await mutate(client, e.id, "acceptSettlement", {
+      decisionId: proposal.id,
+      confirmConsequences: true,
+    });
+    await mutate(owner, e.id, "confirmSettlement", { decisionId: proposal.id });
+    const settled = await db.coachingEnrollment.findUniqueOrThrow({
+      where: { id: e.id },
+    });
+    expect(settled.settlementState).toBe("SETTLED");
+    expect(settled.status).toBe("CLOSED");
+    expect(settled.retrievalUntil).toEqual(
+      (await api.getCoachingDetail(client, e.id)).retrievalUntil,
+    );
+    expect(
+      await db.payment.count({
+        where: { workspaceId, id: settled.paymentId ?? "none" },
+      }),
+    ).toBe(0);
+  });
+
+  it("exports accepted-plan evidence and own intake with a scoped checksum receipt, never private notes or drafts", async () => {
+    const e = await activeEnrollment();
+    await mutate(client, e.id, "submitIntake", {
+      body: "My submitted intake for export",
+    });
+    await mutate(client, e.id, "acceptPlan", { acceptTerms: true });
+    await mutate(coach, e.id, "savePrivateNote", {
+      localDate: today,
+      noteVersion: -1,
+      body: "EXPORT_PRIVATE_SENTINEL",
+    });
+    await mutate(coach, e.id, "saveDailyNote", {
+      localDate: today,
+      noteVersion: -1,
+      body: "EXPORT_DRAFT_SENTINEL",
+    });
+    const prepared = await api.prepareCoachingRecordExport(client, e.id);
+    expect(prepared.records.acceptedPlans).toHaveLength(1);
+    expect(prepared.records.acceptedPlans[0]?.clientUserId).toBe(client.userId);
+    expect(prepared.records.acceptedPlans[0]?.agreement).toMatchObject({
+      acceptedTerms: true,
+    });
+    expect(prepared.records.submittedIntake?.content).toBe(
+      "My submitted intake for export",
+    );
+    expect(prepared.records.transactionHistory).toEqual([]);
+    expect(JSON.stringify(prepared.records)).not.toContain(
+      "EXPORT_PRIVATE_SENTINEL",
+    );
+    expect(JSON.stringify(prepared.records)).not.toContain(
+      "EXPORT_DRAFT_SENTINEL",
+    );
+    await expect(
+      api.downloadCoachingRecordExport(owner, e.id, prepared.id),
+    ).rejects.toThrow("adult client");
+    await expect(
+      api.downloadCoachingRecordExport(stranger, e.id, prepared.id),
+    ).rejects.toThrow("access");
+    const downloaded = await api.downloadCoachingRecordExport(
+      client,
+      e.id,
+      prepared.id,
+    );
+    expect(downloaded.checksum).toBe(prepared.checksum);
+    expect(Buffer.from(downloaded.artifact).toString("utf8")).not.toContain(
+      "EXPORT_PRIVATE_SENTINEL",
+    );
+    await expect(
+      api.confirmCoachingExportReceipt(
+        client,
+        e.id,
+        prepared.id,
+        "incorrect-checksum",
+      ),
+    ).rejects.toThrow("Download and check");
+    await api.confirmCoachingExportReceipt(
+      client,
+      e.id,
+      prepared.id,
+      prepared.checksum,
+    );
+    expect(
+      (
+        await db.coachingRecordExport.findUniqueOrThrow({
+          where: { id: prepared.id },
+        })
+      ).receiptConfirmedAt,
+    ).toBeInstanceOf(Date);
+    await api.expireCoachingRecordExports(new Date(Date.now() + 25 * 3600000));
+    expect(
+      (
+        await db.coachingRecordExport.findUniqueOrThrow({
+          where: { id: prepared.id },
+        })
+      ).artifact,
+    ).toBeNull();
+    await expect(
+      api.downloadCoachingRecordExport(client, e.id, prepared.id),
+    ).rejects.toThrow("unavailable or expired");
+  });
+
+  it("does not turn a refund note or pending provider record into completed settlement", async () => {
+    const e = await activeEnrollment();
+    const base = await db.coachingProgramVersion.findUniqueOrThrow({
+      where: { id: programVersionId },
+    });
+    const paidPlan = await db.coachingProgramVersion.create({
+      data: {
+        programId: base.programId,
+        number: 50,
+        durationDays: 28,
+        deliveryWeekdays: base.deliveryWeekdays,
+        responseHours: 48,
+        goals: "Paid program",
+        milestones: [],
+        priceCents: 10000,
+        currency: "cad",
+        terms: "Agreed refund review",
+        appointmentUnits: 1,
+      },
+    });
+    const payment = await db.payment.create({
+      data: {
+        workspaceId,
+        memberId,
+        status: "SUCCEEDED",
+        amountCents: 10000,
+        currency: "cad",
+        stripePaymentIntentId: `${prefix}-settlement-intent`,
+      },
+    });
+    await db.coachingEnrollment.update({
+      where: { id: e.id },
+      data: { programVersionId: paidPlan.id, paymentId: payment.id },
+    });
+    await mutate(client, e.id, "close", {
+      reason: "Review unused service",
+      confirmConsequences: true,
+    });
+    const review = await api.getCoachingSettlement(owner, e.id);
+    const proposal = await mutate(owner, e.id, "proposeSettlement", {
+      settlementKind: "REFUND",
+      amountCents: 5000,
+      obligationHash: review!.obligationHash,
+      reason: "Return half and waive remaining delivery by agreement",
+    });
+    await mutate(client, e.id, "acceptSettlement", {
+      decisionId: proposal.id,
+      confirmConsequences: true,
+    });
+    const refund = await db.refund.create({
+      data: {
+        workspaceId,
+        memberId,
+        paymentId: payment.id,
+        amountCents: 5000,
+        currency: "cad",
+        status: "PENDING",
+      },
+    });
+    await expect(
+      mutate(owner, e.id, "confirmSettlement", {
+        decisionId: proposal.id,
+        evidenceIds: refund.id,
+      }),
+    ).rejects.toThrow("pending");
+    await db.refund.update({
+      where: { id: refund.id },
+      data: {
+        status: "SUCCEEDED",
+        stripeRefundId: `${prefix}-settlement-refund`,
+        refundedAt: new Date(),
+      },
+    });
+    await db.payment.update({
+      where: { id: payment.id },
+      data: { refundedAmountCents: 5000 },
+    });
+    await mutate(owner, e.id, "confirmSettlement", {
+      decisionId: proposal.id,
+      evidenceIds: refund.id,
+    });
+    expect(
+      (await db.coachingEnrollment.findUniqueOrThrow({ where: { id: e.id } }))
+        .settlementState,
+    ).toBe("SETTLED");
+    expect(
+      (
+        await db.coachingSettlementDecision.findUniqueOrThrow({
+          where: { id: proposal.id },
+        })
+      ).evidenceIds,
+    ).toEqual([refund.id]);
+  });
+
+  it("contains publications after closure and never republishes withdrawn revision history", async () => {
+    const e = await activeEnrollment();
+    await mutate(coach, e.id, "saveDailyNote", {
+      localDate: today,
+      noteVersion: -1,
+      body: "WITHDRAWN_SENTINEL",
+    });
+    await mutate(coach, e.id, "publishDailyNote", {
+      localDate: today,
+      noteVersion: 0,
+      confirmPublish: true,
+      confirmClientId: memberId,
+    });
+    const archive = await api.prepareCoachingRecordExport(client, e.id);
+    await mutate(owner, e.id, "withdrawDailyNote", {
+      localDate: today,
+      noteVersion: 1,
+      reason: "Wrong publication; recipient follow-up needed",
+    });
+    expect(
+      (
+        await db.coachingRecordExport.findUniqueOrThrow({
+          where: { id: archive.id },
+        })
+      ).artifact,
+    ).toBeNull();
+    await mutate(coach, e.id, "saveDailyNote", {
+      localDate: today,
+      noteVersion: 2,
+      body: "Corrected client note",
+    });
+    await mutate(coach, e.id, "publishDailyNote", {
+      localDate: today,
+      noteVersion: 3,
+      confirmPublish: true,
+      confirmClientId: memberId,
+    });
+    const view = await api.getCoachingDetail(client, e.id);
+    expect(view.published[0]?.revisions).toHaveLength(1);
+    expect(JSON.stringify(view)).not.toContain("WITHDRAWN_SENTINEL");
+    expect(
+      JSON.stringify(await api.exportCoachingRecords(client, e.id)),
+    ).not.toContain("WITHDRAWN_SENTINEL");
+    await mutate(client, e.id, "close", {
+      reason: "End service",
+      confirmConsequences: true,
+    });
+    await db.workspaceUser.update({
+      where: { id: coachId },
+      data: { isActive: false },
+    });
+    try {
+      await mutate(owner, e.id, "withdrawDailyNote", {
+        localDate: today,
+        noteVersion: 4,
+        reason: "Contain after author departure",
+      });
+    } finally {
+      await db.workspaceUser.update({
+        where: { id: coachId },
+        data: { isActive: true },
+      });
+    }
+    expect((await api.getCoachingDetail(client, e.id)).published).toHaveLength(
+      0,
+    );
+    expect(
+      (await api.getCoachingRecordReview(owner, e.id)).incidents,
+    ).toHaveLength(2);
+    await expect(
+      mutate(client, e.id, "acceptPlan", { acceptTerms: true }),
+    ).rejects.toThrow("explicit owner proposal");
+  });
+
+  it("requires exact owner, client and author approval for temporary audited private reads", async () => {
+    const e = await activeEnrollment();
+    await mutate(coach, e.id, "savePrivateNote", {
+      localDate: today,
+      noteVersion: -1,
+      body: "EXCEPTIONAL_PRIVATE_SENTINEL",
+    });
+    const note = await db.coachingPrivateNote.findFirstOrThrow({
+      where: { enrollmentId: e.id },
+    });
+    const proposed = await mutate(owner, e.id, "proposeRecordReview", {
+      privateNoteIds: note.id,
+      reviewerId: replacementId,
+      reason: "Client and author requested bounded incident review",
+      expiresInMinutes: 30,
+    });
+    await expect(
+      api.readExceptionalCoachingNotes(replacement, proposed.id),
+    ).rejects.toThrow("not currently authorized");
+    await expect(
+      mutate(stranger, e.id, "approveRecordReview", {
+        grantId: proposed.id,
+        confirmConsequences: true,
+      }),
+    ).rejects.toThrow("access");
+    await mutate(client, e.id, "approveRecordReview", {
+      grantId: proposed.id,
+      confirmConsequences: true,
+    });
+    // The author can consent after a handoff without regaining ordinary client-record access.
+    await db.coachingEnrollment.update({
+      where: { id: e.id },
+      data: { currentCoachWorkspaceUserId: replacementId },
+    });
+    await mutate(coach, e.id, "approveRecordReview", {
+      grantId: proposed.id,
+      confirmConsequences: true,
+    });
+    await expect(
+      api.readExceptionalCoachingNotes(owner, proposed.id),
+    ).rejects.toThrow("authority");
+    expect(
+      (await api.readExceptionalCoachingNotes(replacement, proposed.id))
+        .notes[0]?.body,
+    ).toBe("EXCEPTIONAL_PRIVATE_SENTINEL");
+    expect(
+      await db.coachingRecordAccessEvent.findMany({
+        where: { reviewGrantId: proposed.id, kind: "EXCEPTIONAL_PRIVATE_READ" },
+      }),
+    ).toHaveLength(1);
+    expect(
+      JSON.stringify(await api.exportCoachingRecords(client, e.id)),
+    ).not.toContain("EXCEPTIONAL_PRIVATE_SENTINEL");
+    expect(
+      JSON.stringify(await api.getCoachingDetail(owner, e.id)),
+    ).not.toContain("EXCEPTIONAL_PRIVATE_SENTINEL");
+    await mutate(client, e.id, "revokeRecordReview", { grantId: proposed.id });
+    await expect(
+      api.readExceptionalCoachingNotes(replacement, proposed.id),
+    ).rejects.toThrow("not currently authorized");
+    expect(
+      JSON.stringify(
+        await db.coachingRecordAccessEvent.findMany({
+          where: { enrollmentId: e.id },
+        }),
+      ),
+    ).not.toContain("EXCEPTIONAL_PRIVATE_SENTINEL");
+  });
+
+  it("retains late-move consumption, atomic failure and reasoned owner waiver in appointment history", async () => {
+    const e = await activeEnrollment();
+    const base = await db.coachingProgramVersion.findUniqueOrThrow({
+      where: { id: programVersionId },
+    });
+    const plan = await db.coachingProgramVersion.create({
+      data: {
+        programId: base.programId,
+        number: 60,
+        durationDays: 28,
+        deliveryWeekdays: base.deliveryWeekdays,
+        responseHours: 48,
+        goals: "Move rules",
+        milestones: [],
+        priceCents: 0,
+        currency: "cad",
+        terms: "Late moves consume the previous unit",
+        appointmentUnits: 2,
+        cancellationHours: 24,
+        noShowGraceMinutes: 15,
+      },
+    });
+    await db.coachingEnrollment.update({
+      where: { id: e.id },
+      data: { programVersionId: plan.id },
+    });
+    const slot = (hours: number) =>
+      db.coachingAvailability.create({
+        data: {
+          workspaceId,
+          coachWorkspaceUserId: coachId,
+          startsAt: new Date(Date.now() + hours * 3600000),
+          endsAt: new Date(Date.now() + (hours + 1) * 3600000),
+        },
+      });
+    const first = await slot(2),
+      second = await slot(4),
+      third = await slot(6);
+    const booking = await mutate(client, e.id, "bookAppointment", {
+      availabilityId: first.id,
+    });
+    await expect(
+      mutate(client, e.id, "moveAppointment", {
+        appointmentId: booking.id,
+        availabilityId: second.id,
+      }),
+    ).rejects.toThrow("consumes the original");
+    const moved = await mutate(client, e.id, "moveAppointment", {
+      appointmentId: booking.id,
+      availabilityId: second.id,
+      confirmConsequences: true,
+      reason: "Client requested late move",
+    });
+    const old = await db.coachingAppointment.findUniqueOrThrow({
+      where: { id: booking.id },
+    });
+    expect(old.unitState).toBe("CONSUMED");
+    expect(old.status).toBe("LATE_MOVED");
+    expect(
+      (
+        await db.coachingAppointment.findUniqueOrThrow({
+          where: { id: moved.id },
+        })
+      ).movedFromId,
+    ).toBe(booking.id);
+    await expect(
+      mutate(client, e.id, "moveAppointment", {
+        appointmentId: moved.id,
+        availabilityId: third.id,
+        confirmConsequences: true,
+      }),
+    ).rejects.toThrow("All included");
+    expect(
+      (
+        await db.coachingAppointment.findUniqueOrThrow({
+          where: { id: moved.id },
+        })
+      ).status,
+    ).toBe("BOOKED");
+    const waived = await mutate(owner, e.id, "moveAppointment", {
+      appointmentId: moved.id,
+      availabilityId: third.id,
+      waiveLatePenalty: true,
+      reason: "Gym changed availability; waive penalty",
+    });
+    expect(
+      (
+        await db.coachingAppointment.findUniqueOrThrow({
+          where: { id: moved.id },
+        })
+      ).unitState,
+    ).toBe("RELEASED");
+    expect(
+      (
+        await db.coachingAppointment.findUniqueOrThrow({
+          where: { id: waived.id },
+        })
+      ).unitState,
+    ).toBe("HELD");
+    expect(
+      await db.coachingAppointmentEvent.count({
+        where: {
+          workspaceId,
+          appointmentId: { in: [booking.id, moved.id, waived.id] },
+        },
+      }),
+    ).toBe(5);
+  });
+
+  it("requires coach confirmation after accepted no-show grace and returns units for provider absence", async () => {
+    const e = await activeEnrollment();
+    const pastSlot = await db.coachingAvailability.create({
+      data: {
+        workspaceId,
+        coachWorkspaceUserId: coachId,
+        startsAt: new Date(Date.now() - 5 * 60000),
+        endsAt: new Date(Date.now() + 55 * 60000),
+      },
+    });
+    const appointment = await db.coachingAppointment.create({
+      data: {
+        workspaceId,
+        enrollmentId: e.id,
+        availabilityId: pastSlot.id,
+        coachWorkspaceUserId: coachId,
+        startsAt: pastSlot.startsAt,
+        endsAt: pastSlot.endsAt,
+        policySnapshot: { noShowGraceMinutes: 15, cancellationHours: 24 },
+      },
+    });
+    await expect(
+      mutate(coach, e.id, "completeAppointment", {
+        appointmentId: appointment.id,
+        appointmentVersion: 0,
+        noShow: true,
+        reason: "Coach checked attendance",
+      }),
+    ).rejects.toThrow("grace period");
+    expect(
+      (
+        await db.coachingAppointment.findUniqueOrThrow({
+          where: { id: appointment.id },
+        })
+      ).unitState,
+    ).toBe("HELD");
+    await db.coachingAppointment.update({
+      where: { id: appointment.id },
+      data: { startsAt: new Date(Date.now() - 20 * 60000) },
+    });
+    await mutate(coach, e.id, "completeAppointment", {
+      appointmentId: appointment.id,
+      appointmentVersion: 0,
+      noShow: true,
+      reason: "Coach confirmed absence after grace",
+    });
+    expect(
+      (
+        await db.coachingAppointment.findUniqueOrThrow({
+          where: { id: appointment.id },
+        })
+      ).status,
+    ).toBe("NO_SHOW");
+    const other = await activeEnrollment();
+    const futureSlot = await db.coachingAvailability.create({
+      data: {
+        workspaceId,
+        coachWorkspaceUserId: coachId,
+        startsAt: new Date(Date.now() + 4 * 86400000),
+        endsAt: new Date(Date.now() + 4 * 86400000 + 3600000),
+      },
+    });
+    const future = await db.coachingAppointment.create({
+      data: {
+        workspaceId,
+        enrollmentId: other.id,
+        availabilityId: futureSlot.id,
+        coachWorkspaceUserId: coachId,
+        startsAt: futureSlot.startsAt,
+        endsAt: futureSlot.endsAt,
+      },
+    });
+    await db.workspaceUser.update({
+      where: { id: coachId },
+      data: { isActive: false },
+    });
+    try {
+      await api.reconcileCoachingDelivery(workspaceId);
+    } finally {
+      await db.workspaceUser.update({
+        where: { id: coachId },
+        data: { isActive: true },
+      });
+    }
+    expect(
+      (
+        await db.coachingAppointment.findUniqueOrThrow({
+          where: { id: future.id },
+        })
+      ).unitState,
+    ).toBe("RELEASED");
+    expect(
+      (
+        await db.coachingEnrollment.findUniqueOrThrow({
+          where: { id: other.id },
+        })
+      ).currentCoachWorkspaceUserId,
+    ).toBeNull();
+    expect(
+      await db.coachingDeliveryException.count({
+        where: {
+          enrollmentId: other.id,
+          kind: "COACH_UNAVAILABLE",
+          reviewerWorkspaceUserId: ownerId,
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it("shows an empty payer inbox for gym-only accounts without adult eligibility", async () => {
+    await db.member.update({
+      where: { id: `${prefix}-stranger-member` },
+      data: { dateOfBirth: null },
+    });
+    expect(await api.getCoachingPayerRequests(stranger)).toEqual([]);
+  });
+
+  it("retains past promised delivery dates when an accepted revision changes the future schedule", () => {
+    const date = (value: string) => new Date(`${value}T00:00:00Z`);
+    expect(
+      api.coachingExpectedDeliveryDates({
+        startsOn: date("2026-10-10"),
+        endsOn: date("2026-10-20"),
+        timezone: "UTC",
+        weekdays: [4],
+        pauses: [],
+        acceptedPlans: [
+          {
+            startsOn: date("2026-10-05"),
+            endsOn: date("2026-10-20"),
+            acceptedAt: date("2026-10-01"),
+            snapshot: { deliveryWeekdays: [1] },
+          },
+          {
+            startsOn: date("2026-10-10"),
+            endsOn: date("2026-10-20"),
+            acceptedAt: date("2026-10-10"),
+            snapshot: { deliveryWeekdays: [4] },
+          },
+        ],
+      }),
+    ).toEqual(["2026-10-05", "2026-10-15"]);
+  });
+
+  it("separates adult payer consent, current verified contact and money authority from coaching records", async () => {
+    const e = await activeEnrollment();
+    await db.coachingEnrollment.update({
+      where: { id: e.id },
+      data: { paymentState: "UNPAID" },
+    });
+    await db.member.update({
+      where: { id: `${prefix}-stranger-member` },
+      data: { dateOfBirth: new Date("1991-01-01") },
+    });
+    await mutate(coach, e.id, "savePrivateNote", {
+      localDate: today,
+      noteVersion: -1,
+      body: "PAYER_PRIVATE_SENTINEL",
+    });
+    await expect(
+      mutate(owner, e.id, "inviteCoachingPayer", {
+        payerEmail: `${stranger.userId}@example.test`,
+        confirmConsequences: true,
+      }),
+    ).rejects.toThrow("adult");
+    const request = await mutate(client, e.id, "inviteCoachingPayer", {
+      payerEmail: `${stranger.userId}@example.test`,
+      confirmConsequences: true,
+    });
+    const view = await api.getCoachingPayerView(stranger, request.id);
+    expect(view.clientName).toBe("Adult client");
+    expect(view).not.toHaveProperty("intake");
+    expect(view).not.toHaveProperty("goals");
+    expect(JSON.stringify(view)).not.toContain("PAYER_PRIVATE_SENTINEL");
+    await expect(api.getCoachingDetail(stranger, e.id)).rejects.toThrow(
+      "access",
+    );
+    const authority = () =>
+      db.$transaction(async (tx) => {
+        await api.lockClassSchedule(tx, workspaceId);
+        return api.requireCoachingPaymentAuthority(tx, stranger, e.id);
+      });
+    await expect(authority()).rejects.toThrow("both consent");
+    await mutate(stranger, e.id, "sendPayerVerification", {
+      grantId: request.id,
+    });
+    const job = await db.notificationJob.findFirstOrThrow({
+      where: {
+        workspaceId,
+        context: { path: ["grantId"], equals: request.id },
+      },
+    });
+    expect(await api.shouldDeliverNotification(job, db)).toBe(true);
+    await db.workspaceUser.update({
+      where: { id: `${prefix}-client-role` },
+      data: { isActive: false },
+    });
+    expect(await api.shouldDeliverNotification(job, db)).toBe(false);
+    await db.workspaceUser.update({
+      where: { id: `${prefix}-client-role` },
+      data: { isActive: true },
+    });
+    const stored = await db.coachingPayerGrant.findUniqueOrThrow({
+      where: { id: request.id },
+    });
+    await db.coachingPayerGrant.update({
+      where: { id: request.id },
+      data: { verificationHash: "superseded-hash" },
+    });
+    expect(await api.shouldDeliverNotification(job, db)).toBe(false);
+    await db.coachingPayerGrant.update({
+      where: { id: request.id },
+      data: { verificationHash: stored.verificationHash },
+    });
+    const code = job.body.match(/request: ([a-f0-9]+)/)?.[1];
+    expect(code).toBeTruthy();
+    await mutate(stranger, e.id, "verifyPayerContact", {
+      grantId: request.id,
+      code,
+    });
+    expect(await api.shouldDeliverNotification(job, db)).toBe(false);
+    await expect(authority()).rejects.toThrow("both consent");
+    await mutate(stranger, e.id, "acceptPayerTerms", {
+      grantId: request.id,
+      confirmConsequences: true,
+    });
+    const approved = await authority();
+    expect(approved.payerGrantId).toBe(request.id);
+    expect(approved.payerUserId).toBe(stranger.userId);
+    const operation = await db.financialOperation.create({
+      data: {
+        workspaceId,
+        operationKey: `${prefix}-payer-checkout`,
+        requestHash: "fixture",
+        kind: "CHECKOUT",
+        status: "SUBMITTED",
+        actorUserId: stranger.userId,
+        payerAccountId: approved.payerAccountId,
+        beneficiaryMemberId: memberId,
+        targetId: e.id,
+        providerIdempotencyKey: `${prefix}-payer-key`,
+        providerUrl: "https://checkout.example.test/pending",
+        payload: {},
+      },
+    });
+    await mutate(client, e.id, "revokeCoachingPayer", { grantId: request.id });
+    await expect(authority()).rejects.toThrow("both consent");
+    expect(await api.shouldDeliverNotification(job, db)).toBe(false);
+    const blocked = await db.financialOperation.findUniqueOrThrow({
+      where: { id: operation.id },
+    });
+    expect(blocked.status).toBe("REVIEW_REQUIRED");
+    expect(blocked.providerUrl).toBeNull();
+    expect(
+      await db.financialReviewCase.count({
+        where: { workspaceId, operationId: operation.id, resolvedAt: null },
+      }),
+    ).toBe(1);
   });
 
   it("checks class conflicts including buffers and keeps the old reservation after a failed move", async () => {
     const e = await activeEnrollment();
     const day = api.addDays(today, 10);
-    const location = await db.location.findUniqueOrThrow({ where: { workspaceId } });
-    const room = await db.room.create({ data: { locationId: location.id, name: "Coaching conflict room" } });
-    const program = await db.program.create({ data: { workspaceId, name: "Conflict class" } });
-    await db.classTemplate.create({ data: { workspaceId, programId: program.id, roomId: room.id, coachWorkspaceUserId: coachId, weekday: api.getWeekdayForDateString(day), startTimeMinutes: 660, endTimeMinutes: 720, bookingCutoffMinutes: 0, cancellationCutoffMinutes: 0 } });
-    const slot = async (minutes: number, bufferMinutes = 0) => db.coachingAvailability.create({ data: { workspaceId, coachWorkspaceUserId: coachId, roomId: room.id, startsAt: api.getZonedDateTimeAsUtc({ dateString: day, minutes, timezone: e.timezone }), endsAt: api.getZonedDateTimeAsUtc({ dateString: day, minutes: minutes + 60, timezone: e.timezone }), bufferMinutes } });
-    const original = await slot(540), buffered = await slot(720, 15);
-    const booking = await mutate(client, e.id, "bookAppointment", { availabilityId: original.id });
-    await expect(mutate(client, e.id, "moveAppointment", { appointmentId: booking.id, availabilityId: buffered.id })).rejects.toThrow("has a class");
-    const retained = await db.coachingAppointment.findUniqueOrThrow({ where: { id: booking.id } });
+    const location = await db.location.findUniqueOrThrow({
+      where: { workspaceId },
+    });
+    const room = await db.room.create({
+      data: { locationId: location.id, name: "Coaching conflict room" },
+    });
+    const program = await db.program.create({
+      data: { workspaceId, name: "Conflict class" },
+    });
+    await db.classTemplate.create({
+      data: {
+        workspaceId,
+        programId: program.id,
+        roomId: room.id,
+        coachWorkspaceUserId: coachId,
+        weekday: api.getWeekdayForDateString(day),
+        startTimeMinutes: 660,
+        endTimeMinutes: 720,
+        bookingCutoffMinutes: 0,
+        cancellationCutoffMinutes: 0,
+      },
+    });
+    const slot = async (minutes: number, bufferMinutes = 0) =>
+      db.coachingAvailability.create({
+        data: {
+          workspaceId,
+          coachWorkspaceUserId: coachId,
+          roomId: room.id,
+          startsAt: api.getZonedDateTimeAsUtc({
+            dateString: day,
+            minutes,
+            timezone: e.timezone,
+          }),
+          endsAt: api.getZonedDateTimeAsUtc({
+            dateString: day,
+            minutes: minutes + 60,
+            timezone: e.timezone,
+          }),
+          bufferMinutes,
+        },
+      });
+    const original = await slot(540),
+      buffered = await slot(720, 15);
+    const booking = await mutate(client, e.id, "bookAppointment", {
+      availabilityId: original.id,
+    });
+    await expect(
+      mutate(client, e.id, "moveAppointment", {
+        appointmentId: booking.id,
+        availabilityId: buffered.id,
+      }),
+    ).rejects.toThrow("has a class");
+    const retained = await db.coachingAppointment.findUniqueOrThrow({
+      where: { id: booking.id },
+    });
     expect(retained.availabilityId).toBe(original.id);
     expect(retained.unitState).toBe("HELD");
     expect(retained.status).toBe("BOOKED");
-    expect((await api.getCoachingDetail(client, e.id)).reservedOrUsedUnits).toBe(1);
+    expect(
+      (await api.getCoachingDetail(client, e.id)).reservedOrUsedUnits,
+    ).toBe(1);
   });
 });

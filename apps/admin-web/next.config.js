@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: { serverActions: { bodySizeLimit: "11mb" } },
   turbopack: {
     root: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."),
   },

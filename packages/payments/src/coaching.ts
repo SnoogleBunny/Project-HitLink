@@ -2,7 +2,8 @@ import Stripe from "stripe";
 import { createHash } from "node:crypto";
 import {
   CoachingError,
-  getCoachingDetail,
+  requireCoachingPaymentAuthority,
+  requireCoachingPaymentViewer,
   lockClassSchedule,
   prisma,
   type CoachingActor,
@@ -31,22 +32,39 @@ function memberOrigin() {
   return url.origin;
 }
 
+function verifyCheckoutRequest(
+  session: Stripe.Checkout.Session,
+  operation: {
+    amountCents: number | null;
+    currency: string | null;
+    payload: unknown;
+  },
+  enrollmentId: string,
+) {
+  const request = operation.payload as { metadata?: Record<string, string> };
+  if (
+    session.mode !== "payment" ||
+    session.client_reference_id !== enrollmentId ||
+    session.amount_total !== operation.amountCents ||
+    session.currency !== operation.currency ||
+    Object.entries(request.metadata ?? {}).some(
+      ([key, value]) => session.metadata?.[key] !== value,
+    )
+  )
+    throw new CoachingError(
+      "The provider checkout does not match the accepted payment request. The owner must review it.",
+    );
+}
+
 export async function startCoachingPayment(
   actor: CoachingActor,
   enrollmentId: string,
 ): Promise<string> {
-  const detail = await getCoachingDetail(actor, enrollmentId);
-  if (
-    !detail.own ||
-    !detail.contactVerified ||
-    !detail.accepted ||
-    !detail.coachAccepted ||
-    detail.closedAt
-  )
-    throw new CoachingError(
-      "Accept your program from your own account before paying.",
-    );
-  if (detail.paymentState === "PAID")
+  const authority = await prisma.$transaction(async (db) => {
+    await lockClassSchedule(db, actor.workspaceId);
+    return requireCoachingPaymentAuthority(db, actor, enrollmentId);
+  });
+  if (authority.enrollment.paymentState === "PAID")
     throw new CoachingError("This program has already been paid.");
   const stripe = stripeClient();
   // One stable provider key per offered enrollment. A retry after an unknown response recovers the same checkout.
@@ -70,12 +88,47 @@ export async function startCoachingPayment(
     );
   const stripeAccount = current.checkoutAccountId ?? settings.stripeAccountId;
   if (current.checkoutSessionId) {
+    const prior = await prisma.financialOperation.findFirst({
+      where: {
+        workspaceId: actor.workspaceId,
+        targetId: current.id,
+        providerReference: current.checkoutSessionId,
+        kind: "CHECKOUT",
+      },
+    });
+    if (
+      !prior ||
+      prior.status === "REVIEW_REQUIRED" ||
+      prior.actorUserId !== actor.userId ||
+      prior.payerAccountId !== authority.payerAccountId
+    )
+      throw new CoachingError(
+        "The existing checkout needs owner review before payment. No payment link is available.",
+      );
     const existing = await stripe.checkout.sessions.retrieve(
       current.checkoutSessionId,
       {},
       { stripeAccount },
     );
-    if (existing.status === "open" && existing.url) return existing.url;
+    verifyCheckoutRequest(existing, prior, current.id);
+    if (existing.status === "open" && existing.url) {
+      await prisma.$transaction(async (db) => {
+        await lockClassSchedule(db, actor.workspaceId);
+        const fresh = await requireCoachingPaymentAuthority(
+          db,
+          actor,
+          enrollmentId,
+        );
+        if (
+          fresh.payerGrantId !== authority.payerGrantId ||
+          fresh.payerGrantVersion !== authority.payerGrantVersion
+        )
+          throw new CoachingError(
+            "The payer consent changed. Reload before paying.",
+          );
+      });
+      return existing.url;
+    }
     if (existing.payment_status === "paid") {
       await reconcileCoachingPayment(current.id);
       throw new CoachingError(
@@ -91,49 +144,211 @@ export async function startCoachingPayment(
   const operationKey = `coaching-checkout:${current.id}:${attempt}`;
   const checkoutRequest = {
     mode: "payment" as const,
-    customer_email: current.member.user?.email,
+    customer_email: authority.payerEmail,
     client_reference_id: current.id,
-    line_items: [{ quantity: 1, price_data: { currency: current.programVersion.currency, unit_amount: current.programVersion.priceCents, product_data: { name: current.programVersion.program.name } } }],
-    metadata: { purpose: "coaching", workspaceId: actor.workspaceId, enrollmentId: current.id, memberId: current.memberId, programVersionId: current.programVersionId },
-    payment_intent_data: { metadata: { purpose: "coaching", workspaceId: actor.workspaceId, enrollmentId: current.id } },
-    success_url: `${memberOrigin()}/app/coaching/${current.id}?payment=returned`,
-    cancel_url: `${memberOrigin()}/app/coaching/${current.id}?payment=cancelled`,
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: current.programVersion.currency,
+          unit_amount: current.programVersion.priceCents,
+          product_data: { name: current.programVersion.program.name },
+        },
+      },
+    ],
+    metadata: {
+      purpose: "coaching",
+      workspaceId: actor.workspaceId,
+      enrollmentId: current.id,
+      memberId: current.memberId,
+      programVersionId: current.programVersionId,
+      payerAccountId: authority.payerAccountId,
+      payerUserId: actor.userId,
+      payerGrantId: authority.payerGrantId ?? "",
+      payerGrantVersion: String(authority.payerGrantVersion ?? ""),
+    },
+    payment_intent_data: {
+      metadata: {
+        purpose: "coaching",
+        workspaceId: actor.workspaceId,
+        enrollmentId: current.id,
+      },
+    },
+    success_url: `${memberOrigin()}/app/coaching/${authority.payerGrantId ? `payments/${authority.payerGrantId}` : current.id}?payment=returned`,
+    cancel_url: `${memberOrigin()}/app/coaching/${authority.payerGrantId ? `payments/${authority.payerGrantId}` : current.id}?payment=cancelled`,
   };
   const reservation = await prisma.$transaction(async (db) => {
     await lockClassSchedule(db, actor.workspaceId);
-    const prior = await db.financialOperation.findUnique({ where: { workspaceId_operationKey: { workspaceId: actor.workspaceId, operationKey } } });
+    const consent = await requireCoachingPaymentAuthority(
+      db,
+      actor,
+      enrollmentId,
+    );
+    if (
+      consent.payerAccountId !== authority.payerAccountId ||
+      consent.payerGrantId !== authority.payerGrantId ||
+      consent.payerGrantVersion !== authority.payerGrantVersion
+    )
+      throw new CoachingError(
+        "The payer consent changed. Reload before paying.",
+      );
+    const prior = await db.financialOperation.findUnique({
+      where: {
+        workspaceId_operationKey: {
+          workspaceId: actor.workspaceId,
+          operationKey,
+        },
+      },
+    });
     if (prior) {
-      const tooOld = !prior.providerReference && prior.submittedAt && Date.now() - prior.submittedAt.getTime() >= 23 * 3600000;
+      const tooOld =
+        !prior.providerReference &&
+        prior.submittedAt &&
+        Date.now() - prior.submittedAt.getTime() >= 23 * 3600000;
       if (tooOld || prior.status === "REVIEW_REQUIRED") {
-        await db.financialOperation.update({ where: { id: prior.id }, data: { status: "REVIEW_REQUIRED", lastError: "Checkout outcome is unknown beyond the safe provider replay window." } });
-        await db.financialReviewCase.upsert({ where: { workspaceId_sourceKey: { workspaceId: actor.workspaceId, sourceKey: operationKey } }, create: { workspaceId: actor.workspaceId, sourceKey: operationKey, reason: "Coaching checkout outcome is unknown. Check the provider before creating another charge.", memberId: current.memberId, operationId: prior.id, amountCents: current.programVersion.priceCents, currency: current.programVersion.currency }, update: {} });
+        await db.financialOperation.update({
+          where: { id: prior.id },
+          data: {
+            status: "REVIEW_REQUIRED",
+            lastError:
+              "Checkout outcome is unknown beyond the safe provider replay window.",
+          },
+        });
+        await db.financialReviewCase.upsert({
+          where: {
+            workspaceId_sourceKey: {
+              workspaceId: actor.workspaceId,
+              sourceKey: operationKey,
+            },
+          },
+          create: {
+            workspaceId: actor.workspaceId,
+            sourceKey: operationKey,
+            reason:
+              "Coaching checkout outcome is unknown. Check the provider before creating another charge.",
+            memberId: current.memberId,
+            operationId: prior.id,
+            amountCents: current.programVersion.priceCents,
+            currency: current.programVersion.currency,
+          },
+          update: {},
+        });
         return { operation: prior, reviewRequired: true };
       }
+      const saved = prior.payload as { metadata?: Record<string, string> };
+      if (
+        prior.actorUserId !== actor.userId ||
+        prior.payerAccountId !== authority.payerAccountId ||
+        saved.metadata?.payerGrantId !== (authority.payerGrantId ?? "") ||
+        saved.metadata?.payerGrantVersion !==
+          String(authority.payerGrantVersion ?? "")
+      )
+        throw new CoachingError(
+          "The reserved payment belongs to an earlier consent. It needs owner review.",
+        );
       return { operation: prior, reviewRequired: false };
     }
-    const fresh = await db.coachingEnrollment.findUniqueOrThrow({ where: { id: current.id } });
-    if (fresh.closedAt || !fresh.acceptedAt || fresh.programVersionId !== current.programVersionId) throw new CoachingError("The program changed. Reload it before paying.");
+    const fresh = await db.coachingEnrollment.findUniqueOrThrow({
+      where: { id: current.id },
+    });
+    if (
+      fresh.closedAt ||
+      !fresh.acceptedAt ||
+      fresh.programVersionId !== current.programVersionId
+    )
+      throw new CoachingError("The program changed. Reload it before paying.");
     const payload = JSON.parse(JSON.stringify(checkoutRequest));
-    const operation = await db.financialOperation.create({ data: { workspaceId: actor.workspaceId, operationKey, requestHash: createHash("sha256").update(JSON.stringify(payload)).digest("hex"), kind: "CHECKOUT", status: "SUBMITTED", actorUserId: actor.userId, beneficiaryMemberId: current.memberId, targetId: current.id, amountCents: current.programVersion.priceCents, currency: current.programVersion.currency, providerAccountId: stripeAccount, providerIdempotencyKey: operationKey, payload, submittedAt: new Date() } });
+    const operation = await db.financialOperation.create({
+      data: {
+        workspaceId: actor.workspaceId,
+        operationKey,
+        requestHash: createHash("sha256")
+          .update(JSON.stringify(payload))
+          .digest("hex"),
+        kind: "CHECKOUT",
+        status: "SUBMITTED",
+        actorUserId: actor.userId,
+        payerAccountId: authority.payerAccountId,
+        beneficiaryMemberId: current.memberId,
+        targetId: current.id,
+        amountCents: current.programVersion.priceCents,
+        currency: current.programVersion.currency,
+        providerAccountId: stripeAccount,
+        providerIdempotencyKey: operationKey,
+        payload,
+        submittedAt: new Date(),
+      },
+    });
     return { operation, reviewRequired: false };
   });
-  if (reservation.reviewRequired) throw new CoachingError("The earlier payment attempt needs owner review before another checkout can be created. No new charge was started.");
-  if (reservation.operation.providerAccountId !== stripeAccount) throw new CoachingError("The payment account changed. The owner must review this attempt.");
-  const session = reservation.operation.providerReference ? await stripe.checkout.sessions.retrieve(reservation.operation.providerReference, {}, { stripeAccount }) : await stripe.checkout.sessions.create(
-    reservation.operation.payload as unknown as Parameters<Stripe["checkout"]["sessions"]["create"]>[0],
-    { stripeAccount, idempotencyKey: reservation.operation.providerIdempotencyKey },
-  );
+  if (reservation.reviewRequired)
+    throw new CoachingError(
+      "The earlier payment attempt needs owner review before another checkout can be created. No new charge was started.",
+    );
+  if (reservation.operation.providerAccountId !== stripeAccount)
+    throw new CoachingError(
+      "The payment account changed. The owner must review this attempt.",
+    );
+  await prisma.$transaction(async (db) => {
+    await lockClassSchedule(db, actor.workspaceId);
+    const fresh = await requireCoachingPaymentAuthority(
+      db,
+      actor,
+      enrollmentId,
+    );
+    const op = await db.financialOperation.findUnique({
+      where: { id: reservation.operation.id },
+    });
+    if (
+      !op ||
+      op.status === "REVIEW_REQUIRED" ||
+      fresh.payerGrantId !== authority.payerGrantId ||
+      fresh.payerGrantVersion !== authority.payerGrantVersion
+    )
+      throw new CoachingError(
+        "Payer authorization changed before dispatch. No payment was started.",
+      );
+  });
+  const session = reservation.operation.providerReference
+    ? await stripe.checkout.sessions.retrieve(
+        reservation.operation.providerReference,
+        {},
+        { stripeAccount },
+      )
+    : await stripe.checkout.sessions.create(
+        reservation.operation.payload as unknown as Parameters<
+          Stripe["checkout"]["sessions"]["create"]
+        >[0],
+        {
+          stripeAccount,
+          idempotencyKey: reservation.operation.providerIdempotencyKey,
+        },
+      );
+  verifyCheckoutRequest(session, reservation.operation, current.id);
   if (!session.url)
     throw new CoachingError("The payment page is not ready. Please try again.");
   await prisma.$transaction(async (db) => {
     await lockClassSchedule(db, actor.workspaceId);
+    const finalAuthority = await requireCoachingPaymentAuthority(
+      db,
+      actor,
+      enrollmentId,
+    );
+    if (
+      finalAuthority.payerAccountId !== authority.payerAccountId ||
+      finalAuthority.payerGrantVersion !== authority.payerGrantVersion ||
+      finalAuthority.payerGrantId !== authority.payerGrantId
+    )
+      throw new CoachingError(
+        "Payer consent changed while checkout was starting. The payment needs review.",
+      );
     const fresh = await db.coachingEnrollment.findUniqueOrThrow({
       where: { id: current.id },
     });
     if (
       fresh.closedAt ||
       fresh.programVersionId !== current.programVersionId ||
-      fresh.memberId !== detail.memberId
+      fresh.memberId !== current.memberId
     )
       throw new CoachingError(
         "Your program changed while payment was starting. Reload it before paying.",
@@ -144,11 +359,19 @@ export async function startCoachingPayment(
         checkoutSessionId: session.id,
         checkoutUrl: session.url,
         checkoutAccountId: stripeAccount,
+        payerAccountId: authority.payerAccountId,
         paymentState: "PENDING",
         version: { increment: 1 },
       },
     });
-    await db.financialOperation.update({ where: { id: reservation.operation.id }, data: { providerReference: session.id, providerUrl: session.url, expiresAt: new Date(session.expires_at * 1000) } });
+    await db.financialOperation.update({
+      where: { id: reservation.operation.id },
+      data: {
+        providerReference: session.id,
+        providerUrl: session.url,
+        expiresAt: new Date(session.expires_at * 1000),
+      },
+    });
   });
   return session.url;
 }
@@ -156,12 +379,14 @@ export async function startCoachingPayment(
 /** Provider-authoritative reconciliation. Call only after authenticated ownership or a verified Stripe webhook. */
 async function reconcileCoachingPayment(
   enrollmentId: string,
-): Promise<"PAID" | "PENDING"> {
+): Promise<"PAID" | "PENDING" | "REVIEW_REQUIRED"> {
   const current = await prisma.coachingEnrollment.findUniqueOrThrow({
     where: { id: enrollmentId },
     include: { programVersion: true },
   });
   if (current.paymentId && current.paymentState === "PAID") return "PAID";
+  if (current.paymentId && current.paymentState === "REVIEW_REQUIRED")
+    return "REVIEW_REQUIRED";
   if (!current.checkoutSessionId || !current.checkoutAccountId)
     return "PENDING";
   const stripe = stripeClient();
@@ -200,12 +425,15 @@ async function reconcileCoachingPayment(
     throw new CoachingError(
       "The provider settlement does not match this program. The owner must review the payment.",
     );
-  await prisma.$transaction(async (db) => {
+  return prisma.$transaction(async (db) => {
     await lockClassSchedule(db, current.workspaceId);
     const fresh = await db.coachingEnrollment.findUniqueOrThrow({
       where: { id: current.id },
     });
-    if (fresh.paymentId) return;
+    if (fresh.paymentId)
+      return fresh.paymentState === "PAID"
+        ? ("PAID" as const)
+        : ("REVIEW_REQUIRED" as const);
     if (
       fresh.checkoutSessionId !== session.id ||
       fresh.programVersionId !== current.programVersionId
@@ -213,10 +441,56 @@ async function reconcileCoachingPayment(
       throw new CoachingError(
         "The enrollment changed. Payment requires review.",
       );
+    const operation = await db.financialOperation.findFirst({
+      where: {
+        workspaceId: current.workspaceId,
+        targetId: current.id,
+        providerReference: session.id,
+        providerAccountId: current.checkoutAccountId,
+        kind: "CHECKOUT",
+      },
+    });
+    const request = operation?.payload as
+      | { metadata?: Record<string, string> }
+      | undefined;
+    if (
+      operation &&
+      (operation.amountCents !== session.amount_total ||
+        operation.currency !== session.currency ||
+        (request?.metadata?.payerAccountId &&
+          session.metadata?.payerAccountId !==
+            request.metadata.payerAccountId) ||
+        (request?.metadata?.payerGrantId &&
+          session.metadata?.payerGrantId !== request.metadata.payerGrantId))
+    )
+      throw new CoachingError(
+        "The provider payer evidence does not match the durable request.",
+      );
+    let reviewRequired =
+      !!fresh.closedAt || operation?.status === "REVIEW_REQUIRED" || !operation;
+    try {
+      if (!operation?.actorUserId)
+        throw new CoachingError("Missing payer authority.");
+      const authority = await requireCoachingPaymentAuthority(
+        db,
+        { workspaceId: current.workspaceId, userId: operation.actorUserId },
+        current.id,
+      );
+      if (
+        authority.payerAccountId !== operation.payerAccountId ||
+        authority.payerGrantId !== (request?.metadata?.payerGrantId || null) ||
+        String(authority.payerGrantVersion ?? "") !==
+          (request?.metadata?.payerGrantVersion ?? "")
+      )
+        reviewRequired = true;
+    } catch {
+      reviewRequired = true;
+    }
     const payment = await db.payment.create({
       data: {
         workspaceId: current.workspaceId,
         memberId: current.memberId,
+        payerAccountId: operation?.payerAccountId,
         status: "SUCCEEDED",
         amountCents: intent.amount_received,
         currency: intent.currency,
@@ -228,13 +502,14 @@ async function reconcileCoachingPayment(
       where: { id: current.id },
       data: {
         paymentId: payment.id,
-        paymentState: "PAID",
+        paymentState: reviewRequired ? "REVIEW_REQUIRED" : "PAID",
+        payerAccountId: operation?.payerAccountId ?? fresh.payerAccountId,
         version: { increment: 1 },
-        ...(fresh.closedAt
+        ...(reviewRequired
           ? {
               settlementState: "REVIEW_REQUIRED",
               settlementNote:
-                "Payment arrived after closure; review refund obligations.",
+                "Payment is recorded, but consent or service changed. The owner must review access and refund obligations.",
             }
           : {}),
       },
@@ -250,18 +525,53 @@ async function reconcileCoachingPayment(
         resultId: payment.id,
       },
     });
-    await db.financialOperation.updateMany({ where: { workspaceId: current.workspaceId, providerReference: session.id, kind: "CHECKOUT" }, data: { status: "SUCCEEDED", paymentId: payment.id, settledAt: new Date() } });
+    await db.financialOperation.updateMany({
+      where: {
+        workspaceId: current.workspaceId,
+        providerReference: session.id,
+        kind: "CHECKOUT",
+      },
+      data: {
+        status: reviewRequired ? "REVIEW_REQUIRED" : "SUCCEEDED",
+        paymentId: payment.id,
+        settledAt: new Date(),
+      },
+    });
+    if (reviewRequired)
+      await db.financialReviewCase.upsert({
+        where: {
+          workspaceId_sourceKey: {
+            workspaceId: current.workspaceId,
+            sourceKey: `coaching-payment:${session.id}`,
+          },
+        },
+        create: {
+          workspaceId: current.workspaceId,
+          sourceKey: `coaching-payment:${session.id}`,
+          reason:
+            "Verified coaching payment has unresolved consent or delivery authority; cash recorded without activation.",
+          memberId: current.memberId,
+          payerAccountId: operation?.payerAccountId,
+          operationId: operation?.id,
+          paymentId: payment.id,
+          amountCents: payment.amountCents,
+          currency: payment.currency,
+        },
+        update: {},
+      });
+    return reviewRequired ? ("REVIEW_REQUIRED" as const) : ("PAID" as const);
   });
-  return "PAID";
 }
 
 export async function checkCoachingPayment(
   actor: CoachingActor,
   enrollmentId: string,
 ) {
-  const detail = await getCoachingDetail(actor, enrollmentId);
-  if (!detail.own)
-    throw new CoachingError("Check payment from the client's own account.");
+  const detail = await requireCoachingPaymentViewer(actor, enrollmentId);
+  if (!detail.own && !detail.payer)
+    throw new CoachingError(
+      "Check payment from the client's or authorized payer's own account.",
+    );
   return reconcileCoachingPayment(enrollmentId);
 }
 
@@ -284,33 +594,142 @@ export async function handleCoachingCheckoutWebhook(
     where: { checkoutSessionId: session.id },
   });
   if (!event.account) return false;
-  if (enrollment?.checkoutAccountId && enrollment.checkoutAccountId !== event.account) return false;
+  if (
+    enrollment?.checkoutAccountId &&
+    enrollment.checkoutAccountId !== event.account
+  )
+    return false;
   if (!enrollment && session.metadata?.enrollmentId) {
-    const candidate = await prisma.coachingEnrollment.findUnique({ where: { id: session.metadata.enrollmentId } });
-    if (!candidate || candidate.workspaceId !== session.metadata.workspaceId || candidate.memberId !== session.metadata.memberId) throw new CoachingError("The coaching checkout cannot yet be linked to its enrollment. Retry reconciliation.");
-    const operation = await prisma.financialOperation.findFirst({ where: { workspaceId: candidate.workspaceId, targetId: candidate.id, kind: "CHECKOUT", providerAccountId: event.account, OR: [{ providerReference: session.id }, { providerReference: null }] }, orderBy: { createdAt: "desc" } });
-    const request = operation?.payload as { metadata?: Record<string, string>; client_reference_id?: string } | undefined;
-    if (!operation || request?.client_reference_id !== candidate.id || request.metadata?.enrollmentId !== candidate.id || request.metadata.programVersionId !== candidate.programVersionId) throw new CoachingError("The coaching payment request is not yet available. Retry reconciliation.");
-    const retrieved = await stripeClient().checkout.sessions.retrieve(session.id, {}, { stripeAccount: event.account });
-    if (retrieved.metadata?.enrollmentId !== candidate.id || retrieved.metadata.workspaceId !== candidate.workspaceId || retrieved.metadata.programVersionId !== candidate.programVersionId || retrieved.client_reference_id !== candidate.id || retrieved.amount_total !== operation.amountCents || retrieved.currency !== operation.currency) throw new CoachingError("The coaching checkout does not match its durable payment request.");
+    const candidate = await prisma.coachingEnrollment.findUnique({
+      where: { id: session.metadata.enrollmentId },
+    });
+    if (
+      !candidate ||
+      candidate.workspaceId !== session.metadata.workspaceId ||
+      candidate.memberId !== session.metadata.memberId
+    )
+      throw new CoachingError(
+        "The coaching checkout cannot yet be linked to its enrollment. Retry reconciliation.",
+      );
+    const operation = await prisma.financialOperation.findFirst({
+      where: {
+        workspaceId: candidate.workspaceId,
+        targetId: candidate.id,
+        kind: "CHECKOUT",
+        providerAccountId: event.account,
+        OR: [{ providerReference: session.id }, { providerReference: null }],
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    const request = operation?.payload as
+      | { metadata?: Record<string, string>; client_reference_id?: string }
+      | undefined;
+    if (
+      !operation ||
+      request?.client_reference_id !== candidate.id ||
+      request.metadata?.enrollmentId !== candidate.id ||
+      request.metadata.programVersionId !== candidate.programVersionId
+    )
+      throw new CoachingError(
+        "The coaching payment request is not yet available. Retry reconciliation.",
+      );
+    const retrieved = await stripeClient().checkout.sessions.retrieve(
+      session.id,
+      {},
+      { stripeAccount: event.account },
+    );
+    if (
+      retrieved.metadata?.enrollmentId !== candidate.id ||
+      retrieved.metadata.workspaceId !== candidate.workspaceId ||
+      retrieved.metadata.programVersionId !== candidate.programVersionId ||
+      retrieved.client_reference_id !== candidate.id ||
+      retrieved.amount_total !== operation.amountCents ||
+      retrieved.currency !== operation.currency
+    )
+      throw new CoachingError(
+        "The coaching checkout does not match its durable payment request.",
+      );
     await prisma.$transaction(async (db) => {
       await lockClassSchedule(db, candidate.workspaceId);
-      const fresh = await db.coachingEnrollment.findUniqueOrThrow({ where: { id: candidate.id } });
-      if (fresh.checkoutSessionId && fresh.checkoutSessionId !== session.id) throw new CoachingError("Another checkout is linked to this enrollment. Payment requires review.");
-      await db.coachingEnrollment.update({ where: { id: candidate.id }, data: { checkoutSessionId: session.id, checkoutAccountId: event.account, checkoutUrl: retrieved.url, version: { increment: 1 } } });
-      await db.financialOperation.update({ where: { id: operation.id }, data: { providerReference: session.id, providerUrl: retrieved.url } });
+      const fresh = await db.coachingEnrollment.findUniqueOrThrow({
+        where: { id: candidate.id },
+      });
+      if (fresh.checkoutSessionId && fresh.checkoutSessionId !== session.id)
+        throw new CoachingError(
+          "Another checkout is linked to this enrollment. Payment requires review.",
+        );
+      await db.coachingEnrollment.update({
+        where: { id: candidate.id },
+        data: {
+          checkoutSessionId: session.id,
+          checkoutAccountId: event.account,
+          checkoutUrl: retrieved.url,
+          version: { increment: 1 },
+        },
+      });
+      await db.financialOperation.update({
+        where: { id: operation.id },
+        data: { providerReference: session.id, providerUrl: retrieved.url },
+      });
     });
-    enrollment = { ...candidate, checkoutSessionId: session.id, checkoutAccountId: event.account };
+    enrollment = {
+      ...candidate,
+      checkoutSessionId: session.id,
+      checkoutAccountId: event.account,
+    };
   }
-  if (!enrollment) throw new CoachingError("The coaching enrollment is not yet linked. Retry reconciliation.");
-  if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
-    const retrieved = await stripeClient().checkout.sessions.retrieve(session.id, {}, { stripeAccount: event.account });
-    if (retrieved.payment_status === "paid") { await reconcileCoachingPayment(enrollment.id); return true; }
-    if (event.type === "checkout.session.expired" && retrieved.status !== "expired") throw new CoachingError("Checkout expiry is not confirmed by the provider.");
+  if (!enrollment)
+    throw new CoachingError(
+      "The coaching enrollment is not yet linked. Retry reconciliation.",
+    );
+  if (
+    event.type === "checkout.session.expired" ||
+    event.type === "checkout.session.async_payment_failed"
+  ) {
+    const retrieved = await stripeClient().checkout.sessions.retrieve(
+      session.id,
+      {},
+      { stripeAccount: event.account },
+    );
+    if (retrieved.payment_status === "paid") {
+      await reconcileCoachingPayment(enrollment.id);
+      return true;
+    }
+    if (
+      event.type === "checkout.session.expired" &&
+      retrieved.status !== "expired"
+    )
+      throw new CoachingError(
+        "Checkout expiry is not confirmed by the provider.",
+      );
     await prisma.$transaction(async (db) => {
       await lockClassSchedule(db, enrollment!.workspaceId);
-      await db.coachingEnrollment.updateMany({ where: { id: enrollment!.id, checkoutSessionId: session.id, paymentState: { not: "PAID" } }, data: { paymentState: event.type === "checkout.session.expired" ? "EXPIRED" : "FAILED", version: { increment: 1 } } });
-      await db.financialOperation.updateMany({ where: { workspaceId: enrollment!.workspaceId, providerReference: session.id, status: { not: "SUCCEEDED" } }, data: { status: "FAILED", lastError: event.type === "checkout.session.expired" ? "Checkout expired before payment." : "Provider reported asynchronous payment failure." } });
+      await db.coachingEnrollment.updateMany({
+        where: {
+          id: enrollment!.id,
+          checkoutSessionId: session.id,
+          paymentState: { notIn: ["PAID", "REVIEW_REQUIRED"] },
+        },
+        data: {
+          paymentState:
+            event.type === "checkout.session.expired" ? "EXPIRED" : "FAILED",
+          version: { increment: 1 },
+        },
+      });
+      await db.financialOperation.updateMany({
+        where: {
+          workspaceId: enrollment!.workspaceId,
+          providerReference: session.id,
+          status: { notIn: ["SUCCEEDED", "REVIEW_REQUIRED"] },
+        },
+        data: {
+          status: "FAILED",
+          lastError:
+            event.type === "checkout.session.expired"
+              ? "Checkout expired before payment."
+              : "Provider reported asynchronous payment failure.",
+        },
+      });
     });
     return true;
   }

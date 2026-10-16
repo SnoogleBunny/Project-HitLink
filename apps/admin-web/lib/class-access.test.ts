@@ -394,8 +394,9 @@ describe("shared class access helpers", () => {
         ]),
         findFirst: vi.fn().mockResolvedValue({
           id: "card_1",
-          remainingPunches: 2,
+          remainingPunches: 3,
           status: "ACTIVE",
+          punchCardProduct: { id: "product_1", name: "10-class pack", restrictionMode: "GENERAL", programRestrictions: [] },
         }),
         updateMany: vi
           .fn()
@@ -694,7 +695,7 @@ describe("shared class access helpers", () => {
         updateMany: vi.fn().mockResolvedValue({
           count: 1,
         }),
-        findFirst: vi.fn(),
+        findFirst: vi.fn().mockResolvedValue({id:"card_1",remainingPunches:2,status:"ACTIVE",punchCardProduct:{id:"product_1",name:"10-class pack",restrictionMode:"GENERAL",programRestrictions:[]}}),
       },
       dropInProduct: {
         findMany: vi.fn().mockResolvedValue([]),

@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
-import { getCoachingDetail, getWorkspaceDateString } from "@flowstate/db";
+import {
+  getCoachingDetail,
+  getCoachingSettlement,
+  getCoachingExportHistory,
+  getWorkspaceDateString,
+} from "@flowstate/db";
 import { Badge, Money, Notice } from "@flowstate/ui";
 import { MemberShell } from "../../../_components/member-shell";
 import { requireMemberPortalContext } from "../../../../lib/member-auth";
@@ -12,6 +17,7 @@ import {
 } from "../../../../lib/coaching-fields";
 import { CoachingPauseFields } from "../../../../lib/coaching-pause-fields";
 import { CoachingForm } from "../form";
+import { CoachingRecordsPanel } from "./records-panel";
 
 export default async function CoachingProgramPage({
   params,
@@ -22,12 +28,20 @@ export default async function CoachingProgramPage({
 }) {
   const context = await requireMemberPortalContext({ scope: "account" });
   const { id } = await params;
-  const [data, feedback] = await Promise.all([
+  const [data, feedback, settlement, exports] = await Promise.all([
     getCoachingDetail(
       { workspaceId: context.workspace.id, userId: context.session.userId },
       id,
     ),
     searchParams,
+    getCoachingSettlement(
+      { workspaceId: context.workspace.id, userId: context.session.userId },
+      id,
+    ),
+    getCoachingExportHistory(
+      { workspaceId: context.workspace.id, userId: context.session.userId },
+      id,
+    ),
   ]);
   const form = { enrollmentId: id, version: data.version };
   const plan = data.proposedPlan ?? data.plan;
@@ -162,24 +176,24 @@ export default async function CoachingProgramPage({
       {data.coachAccepted && data.contactVerified && !data.closedAt ? (
         <section className="member-card">
           <details open={!data.accepted}>
-          <summary>My intake</summary>
-          <p>
-            Your accepted coach can read this. Include only what you want to
-            share for this program.
-          </p>
-          <CoachingForm
-            {...form}
-            operationId={randomUUID()}
-            kind="submitIntake"
-            submit={data.intake ? "Update intake" : "Submit intake"}
-          >
-            <Field
-              label="Goals, current situation and what you would like help with"
-              name="body"
-              type="textarea"
-              value={data.intake?.content}
-            />
-          </CoachingForm>
+            <summary>My intake</summary>
+            <p>
+              Your accepted coach can read this. Include only what you want to
+              share for this program.
+            </p>
+            <CoachingForm
+              {...form}
+              operationId={randomUUID()}
+              kind="submitIntake"
+              submit={data.intake ? "Update intake" : "Submit intake"}
+            >
+              <Field
+                label="Goals, current situation and what you would like help with"
+                name="body"
+                type="textarea"
+                value={data.intake?.content}
+              />
+            </CoachingForm>
           </details>
         </section>
       ) : null}
@@ -231,14 +245,26 @@ export default async function CoachingProgramPage({
           <h2>Program payment</h2>
           <p>
             Payment: {coachingLabel(data.paymentState)}. Service starts after
-            payment is confirmed and your start date arrives.
+            payment and current consent are confirmed and your start date
+            arrives.
           </p>
-          <CoachingForm
-            {...form}
-            operationId={randomUUID()}
-            kind="pay"
-            submit="Open secure payment"
-          />
+          {data.paymentState === "REVIEW_REQUIRED" ? (
+            <p>
+              The gym must review this payment before service can start. Your
+              recorded payment is retained; do not pay again.
+            </p>
+          ) : !data.payerGrantId ? (
+            <CoachingForm
+              {...form}
+              operationId={randomUUID()}
+              kind="pay"
+              submit="Open secure payment"
+            />
+          ) : (
+            <Link href={`/app/coaching/payments/${data.payerGrantId}`}>
+              Review the invited payer&apos;s payment request
+            </Link>
+          )}
           {data.checkoutAvailable ? (
             <CoachingForm
               {...form}
@@ -298,6 +324,67 @@ export default async function CoachingProgramPage({
           ) : null}
         </section>
       ) : null}
+      {data.closedAt && settlement ? (
+        <section className="member-card">
+          <h2>Final settlement</h2>
+          <p>
+            {settlement.snapshot.unusedUnits} unused appointments and{" "}
+            {settlement.snapshot.undeliveredDays.length} undelivered note days
+            are included in this review.
+          </p>
+          {settlement.decisions.length ? (
+            settlement.decisions.map((decision) => (
+              <article key={decision.id} className="member-stack-item">
+                <div>
+                  <h3>
+                    {coachingLabel(decision.kind)} ·{" "}
+                    {coachingLabel(decision.status)}
+                  </h3>
+                  <p>{decision.reason}</p>
+                  <Money
+                    amountMinor={decision.amountCents}
+                    currency={decision.currency}
+                  />
+                  {decision.status === "PROPOSED" ? (
+                    <CoachingForm
+                      {...form}
+                      operationId={randomUUID()}
+                      kind="acceptSettlement"
+                      submit="Accept settlement"
+                    >
+                      <input
+                        type="hidden"
+                        name="decisionId"
+                        value={decision.id}
+                      />
+                      <label className="field-checkbox">
+                        <input
+                          type="checkbox"
+                          name="confirmConsequences"
+                          required
+                        />
+                        <span>
+                          I accept this outcome for the unused services and
+                          stated money adjustment.
+                        </span>
+                      </label>
+                      <p>
+                        Acceptance does not claim a refund or credit is
+                        complete. The gym must verify the actual records.
+                      </p>
+                    </CoachingForm>
+                  ) : null}
+                </div>
+              </article>
+            ))
+          ) : (
+            <p>
+              The gym is reviewing your remaining services and money. Your
+              record access remains separate.
+            </p>
+          )}
+        </section>
+      ) : null}
       {data.published.length ? (
         <section className="member-card">
           <h2>Published notes</h2>
@@ -333,11 +420,65 @@ export default async function CoachingProgramPage({
               </div>
             </article>
           ))}
-          <a href={`/app/coaching/${id}/export`}>
-            Download my published program record
-          </a>
         </section>
       ) : null}
+      <section className="member-card">
+        <h2>My program records</h2>
+        <p>
+          Your archive contains accepted plans, your submitted intake,
+          agreements, milestones, published notes, appointments and this
+          program&apos;s transactions. Private working notes and unpublished
+          drafts are excluded.
+        </p>
+        <a href={`/app/coaching/${id}/export`}>Download my program archive</a>
+        {exports.map((job) => (
+          <article key={job.id} className="member-stack-item">
+            <div>
+              <h3>{coachingLabel(job.status)}</h3>
+              <p>{coachingTime(job.createdAt, data.timezone)}</p>
+              {job.failureCode ? (
+                <p>
+                  The gym&apos;s records reviewer is assigned to this failed
+                  export. Reference: {job.id}.
+                </p>
+              ) : null}
+              {job.checksum ? (
+                <p
+                  className="management-copy"
+                  style={{ overflowWrap: "anywhere" }}
+                >
+                  SHA-256: {job.checksum}
+                </p>
+              ) : null}
+              {job.status === "READY" &&
+              job.downloadedAt &&
+              job.expiresAt > new Date() ? (
+                <CoachingForm
+                  {...form}
+                  operationId={randomUUID()}
+                  kind="confirmExportReceipt"
+                  submit="Confirm receipt"
+                >
+                  <input type="hidden" name="exportId" value={job.id} />
+                  <input
+                    type="hidden"
+                    name="checksum"
+                    value={job.checksum ?? ""}
+                  />
+                  <label className="field-checkbox">
+                    <input
+                      name="confirmConsequences"
+                      type="checkbox"
+                      required
+                    />
+                    <span>I downloaded and checked this archive.</span>
+                  </label>
+                </CoachingForm>
+              ) : null}
+            </div>
+          </article>
+        ))}
+      </section>
       {data.includedUnits > 0 ? (
         <section className="member-card">
           <h2>My appointments</h2>
@@ -410,6 +551,25 @@ export default async function CoachingProgramPage({
                             </option>
                           ))}
                         </Field>
+                        <input
+                          type="hidden"
+                          name="appointmentVersion"
+                          value={appointment.version}
+                        />
+                        <Field label="Move reason" name="reason" />
+                        <label className="field-checkbox">
+                          <input
+                            type="checkbox"
+                            name="confirmConsequences"
+                            required
+                          />
+                          <span>
+                            A move after the accepted cancellation deadline
+                            consumes this unit and reserves another. If another
+                            unit or time is unavailable, this booking stays
+                            unchanged.
+                          </span>
+                        </label>
                       </CoachingForm>
                     </details>
                     <details>
@@ -528,6 +688,54 @@ export default async function CoachingProgramPage({
           </details>
         </section>
       ) : null}
+      {!data.closedAt && data.accepted && data.paymentState !== "PAID" ? (
+        <section className="member-card">
+          <h2>Choose who pays</h2>
+          {data.payerGrantId ? (
+            <p>
+              <Link href={`/app/coaching/payments/${data.payerGrantId}`}>
+                Review or revoke the current payer request
+              </Link>
+            </p>
+          ) : null}
+          <details>
+            <summary>Invite another adult to pay</summary>
+            <p>
+              They need their own active account at this gym. The invitation
+              shares only your name, the amount and payment terms. Share the
+              request with them through your usual contact method.
+            </p>
+            <CoachingForm
+              {...form}
+              kind="inviteCoachingPayer"
+              operationId={randomUUID()}
+              submit="Create payment request"
+            >
+              <Field
+                name="payerEmail"
+                label="Payer's account email"
+                type="email"
+              />
+              <label className="field-checkbox">
+                <input name="confirmConsequences" type="checkbox" required />
+                <span>
+                  I consent to this adult paying for my program and seeing these
+                  commercial details. My coaching records stay private.
+                </span>
+              </label>
+            </CoachingForm>
+          </details>
+        </section>
+      ) : null}
+      <CoachingRecordsPanel
+        actor={{
+          workspaceId: context.workspace.id,
+          userId: context.session.userId,
+        }}
+        enrollmentId={id}
+        version={data.version}
+        timezone={data.timezone}
+      />
     </MemberShell>
   );
 }

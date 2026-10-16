@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useEffect } from "react";
 import { formatMoney } from "./money";
 
 export interface LifecycleReviewView {
   requestId: string;
+  timezone: string;
   kind: string;
   receivedAt: string;
   effectiveOn: string;
@@ -17,6 +18,12 @@ export interface LifecycleReviewView {
   affectedBookings: Array<{ id: string; date: string; title: string }>;
   outstandingDebtCents: number;
   notices: string[];
+  sourceBilling?: {
+    system: string;
+    accountReference: string;
+    contractReference: string;
+    suggestedEvidenceState: "CONFIGURED" | "COMPLETED";
+  };
 }
 export interface LifecycleFormState {
   error?: string;
@@ -38,6 +45,7 @@ export interface LifecyclePanelProps {
   membershipId: string;
   memberName: string;
   owner: boolean;
+  sourceBillingManaged?: boolean;
   currency: string;
   requests: LifecycleRequestView[];
   policyKnown: boolean;
@@ -57,6 +65,10 @@ const kindName: Record<string, string> = {
 };
 const stateName: Record<string, string> = {
   RECEIVED: "Awaiting review",
+  SOURCE_SCHEDULED: "Scheduled in the original billing system",
+  SOURCE_CONFIRMATION_REQUIRED:
+    "Confirm the original system completed this change",
+  SOURCE_FROZEN: "Frozen; original-system resume confirmation required",
   APPROVED: "Approved; payment provider confirmation pending",
   PROVIDER_PENDING: "Checking with payment provider",
   SCHEDULED: "Scheduled; provider confirmation pending",
@@ -81,8 +93,12 @@ function Review({
     >
       <h4>Review membership change</h4>
       <p>
-        Received {new Date(review.receivedAt).toLocaleString()}. This receipt
-        time stays unchanged.
+        Received{" "}
+        {new Date(review.receivedAt)
+          .toISOString()
+          .replace("T", " ")
+          .replace(/\.\d{3}Z$/, " UTC")}
+        . This receipt time stays unchanged.
       </p>
       <p>
         <strong>
@@ -223,6 +239,10 @@ function Request({
   request: LifecycleRequestView;
 }) {
   const [state, action, pending] = useActionState(panel.action, {});
+  const [sourceOperationKey, setSourceOperationKey] = useState(() =>
+    crypto.randomUUID(),
+  );
+  useEffect(() => setSourceOperationKey(crypto.randomUUID()), [request.state]);
   return (
     <article className="stack-item">
       <div className="form-stack">
@@ -230,7 +250,11 @@ function Request({
         <p>
           {stateName[request.state] ??
             request.state.toLowerCase().replaceAll("_", " ")}{" "}
-          · Received {new Date(request.receivedAt).toLocaleString()}
+          · Received{" "}
+          {new Date(request.receivedAt)
+            .toISOString()
+            .replace("T", " ")
+            .replace(/\.\d{3}Z$/, " UTC")}
         </p>
         {request.effectiveOn ? (
           <p>
@@ -256,7 +280,11 @@ function Request({
               name="reviewToken"
               value={state.review?.reviewToken ?? ""}
             />
-            {request.state === "RECEIVED" ? (
+            {[
+              "RECEIVED",
+              "SOURCE_SCHEDULED",
+              "SOURCE_CONFIRMATION_REQUIRED",
+            ].includes(request.state) ? (
               <>
                 {panel.owner && request.kind === "CANCEL" ? (
                   <details>
@@ -289,6 +317,7 @@ function Request({
                   className="button button-secondary"
                   name="mode"
                   value="review"
+                  formNoValidate
                   disabled={pending}
                 >
                   {pending ? "Checking…" : "Review dates and bookings"}
@@ -296,8 +325,107 @@ function Request({
                 {state.review ? (
                   <>
                     <Review review={state.review} currency={panel.currency} />
-                    {panel.owner || !state.review.ownerApprovalRequired ? (
+                    {panel.owner ||
+                    (!state.review.ownerApprovalRequired &&
+                      !panel.sourceBillingManaged) ? (
                       <>
+                        {state.review.sourceBilling ? (
+                          <div className="form-stack">
+                            <p>
+                              Billing stays with{" "}
+                              {state.review.sourceBilling.system}. Record its
+                              actual receipt after checking the exact account,
+                              contract, dates, notice billing and automatic
+                              collection of existing debt. This action does not
+                              contact that system.
+                            </p>
+                            <input
+                              type="hidden"
+                              name="operationKey"
+                              value={sourceOperationKey}
+                            />
+                            <label className="field">
+                              <span>Source account</span>
+                              <input
+                                name="sourceAccountReference"
+                                value={
+                                  state.review.sourceBilling.accountReference
+                                }
+                                readOnly
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Source contract</span>
+                              <input
+                                name="sourceContractReference"
+                                value={
+                                  state.review.sourceBilling.contractReference
+                                }
+                                readOnly
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Receipt confirms</span>
+                              <select
+                                name="evidenceState"
+                                defaultValue={
+                                  state.review.sourceBilling
+                                    .suggestedEvidenceState
+                                }
+                              >
+                                <option value="CONFIGURED">
+                                  Configured future change
+                                </option>
+                                <option value="COMPLETED">
+                                  Completed change
+                                </option>
+                              </select>
+                            </label>
+                            <label className="field">
+                              <span>
+                                Source confirmation time (
+                                {state.review.timezone})
+                              </span>
+                              <input
+                                name="sourceConfirmedAt"
+                                type="datetime-local"
+                                required
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Source change reference</span>
+                              <input
+                                name="sourceReference"
+                                required
+                                maxLength={1000}
+                              />
+                            </label>
+                            <label className="field">
+                              <span>
+                                Original source receipt PDF (up to 5 MB)
+                              </span>
+                              <input
+                                name="sourceReceipt"
+                                type="file"
+                                accept="application/pdf"
+                                required
+                              />
+                            </label>
+                            <label className="field-checkbox">
+                              <input
+                                name="sourceConfirmed"
+                                type="checkbox"
+                                required
+                              />
+                              <span>
+                                I verified that this source account and contract
+                                match the receipt, access dates, notice-period
+                                billing and existing-debt collection in this
+                                review.
+                              </span>
+                            </label>
+                          </div>
+                        ) : null}
                         <label className="field-checkbox">
                           <input type="checkbox" name="confirmed" />
                           <span>
@@ -308,10 +436,18 @@ function Request({
                         <button
                           className="button"
                           name="mode"
-                          value="approve"
+                          value={
+                            state.review.sourceBilling
+                              ? "source-evidence"
+                              : "approve"
+                          }
                           disabled={pending}
                         >
-                          {pending ? "Confirming…" : "Confirm reviewed change"}
+                          {pending
+                            ? "Confirming…"
+                            : state.review.sourceBilling
+                              ? "Record source change receipt"
+                              : "Confirm reviewed change"}
                         </button>
                       </>
                     ) : (
@@ -355,6 +491,14 @@ export function MembershipLifecyclePanel(props: LifecyclePanelProps) {
   return (
     <section className="form-stack" aria-label="Membership changes">
       <h3>Membership changes</h3>
+      {props.sourceBillingManaged ? (
+        <p>
+          The original system handles billing. Requests keep their original
+          receipt; the gym records its source confirmation. A source freeze
+          stays blocked until resumption is confirmed. Cancelled bookings are
+          not restored.
+        </p>
+      ) : null}
       {!props.policyKnown ? (
         <p>
           Your original cancellation and freeze agreement needs owner review.

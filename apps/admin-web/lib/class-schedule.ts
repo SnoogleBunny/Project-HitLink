@@ -129,13 +129,14 @@ async function inspectSchedule(args: { access: ClassScheduleAccess; input: Class
     candidate.classInstances.push({ ...previous!, ...(input.scope === "occurrence" ? fields : {}), id: existing?.id ?? "candidate", scheduledForDate: dateOnlyStringToUtcDate(input.date), status: input.scope === "cancel" ? "CANCELLED" : "ACTIVE", cancellationReason: input.scope === "cancel" ? input.reason : existing?.cancellationReason, isScheduleOverride: input.scope === "occurrence" || input.scope === "cancel" || (!!existing && existing.isScheduleOverride !== false), coachAssignmentMode: input.scope === "cancel" ? previous!.coachAssignmentMode : input.coachAssignmentMode, coachWorkspaceUserId: input.scope === "cancel" ? previous!.coachWorkspaceUserId : coach?.id ?? null, coachWorkspaceUser: input.scope === "cancel" ? previous!.coachWorkspaceUser : coach });
   }
   const recordedWhere = { workspaceId: access.workspaceId, classTemplateId: input.templateId ?? "new", scheduledForDate: perDate ? dateOnlyStringToUtcDate(input.date) : { gte: dateOnlyStringToUtcDate(input.date) } };
-  const [bookings, waitlist, attendance, lessons, events, appointments] = await Promise.all([
+  const [bookings, waitlist, attendance, lessons, events, appointments, staffLeave] = await Promise.all([
     db.classBooking.findMany({ where: { ...recordedWhere, status: { in: [...activeStatuses] } }, include: { member: { include: { familyLinks: { include: { guardian: true } } } }, guardian: true } }),
     db.waitlistEntry.findMany({ where: { ...recordedWhere, status: "ACTIVE" }, include: { member: { include: { familyLinks: { include: { guardian: true } } } } } }),
     db.attendanceRecord.findMany({ where: recordedWhere }),
     db.privateLessonSlot.findMany({ where: { workspaceId: access.workspaceId, status: { in: ["OPEN", "BOOKED"] }, endsAt: { gte: now } } }),
     db.event.findMany({ where: { workspaceId: access.workspaceId, status: "PUBLISHED", endsAt: { gte: now } } }),
     db.coachingAppointment.findMany({ where: { workspaceId: access.workspaceId, status: { in: ["HELD", "BOOKED"] } } }),
+    db.staffTimeOff.findMany({ where: { workspaceId: access.workspaceId, revokedAt: null, endsAt: { gt: now } }, orderBy: { id: "asc" } }),
   ]);
   const entitlementHolds = await db.financialEntitlementHold.findMany({ where: { workspaceId: access.workspaceId, activeSlot: "ACTIVE" } });
   for (const booking of bookings) {
@@ -144,7 +145,7 @@ async function inspectSchedule(args: { access: ClassScheduleAccess; input: Class
   const recordedDates = [...bookings, ...waitlist, ...attendance].map((item) => toDateOnlyString(item.scheduledForDate));
   const blockedAppointments = appointments.map((item) => ({ ...item, startsAt: new Date(item.startsAt.getTime() - item.bufferMinutes * 60000), endsAt: new Date(item.endsAt.getTime() + item.bufferMinutes * 60000) }));
   const resourceDates: string[] = [];
-  for (const item of [...lessons, ...events, ...blockedAppointments]) {
+  for (const item of [...lessons, ...events, ...blockedAppointments, ...staffLeave]) {
     const endDate = getWorkspaceDateString(item.endsAt, access.timezone);
     for (let date = getWorkspaceDateString(item.startsAt, access.timezone); date <= endDate; date = addDays(date, 1)) resourceDates.push(date);
   }
@@ -180,6 +181,7 @@ async function inspectSchedule(args: { access: ClassScheduleAccess; input: Class
     if (!after || after.status === "CANCELLED" || !changed) continue;
     const startAt = getZonedDateTimeAsUtc({ dateString: date, minutes: after.startTimeMinutes, timezone: access.timezone });
     const endAt = getZonedDateTimeAsUtc({ dateString: date, minutes: after.endTimeMinutes, timezone: access.timezone });
+    if (after.coachWorkspaceUserId && staffLeave.some((leave) => leave.coachWorkspaceUserId === after.coachWorkspaceUserId && leave.startsAt < endAt && leave.endsAt > startAt)) errors.push(`${date}: This coach is on leave. Assign another coach, leave this date unassigned, or review leave under Settings → Coaches and staff.`);
     if (!isUnambiguousClassTime(date, after.startTimeMinutes, access.timezone) || !isUnambiguousClassTime(date, after.endTimeMinutes, access.timezone)) errors.push(`${date}: This local time is missing or ambiguous because of daylight saving. Choose an unambiguous time.`);
     for (const otherTemplate of templates) {
       if (otherTemplate.id === candidate.id) continue;
@@ -201,7 +203,7 @@ async function inspectSchedule(args: { access: ClassScheduleAccess; input: Class
   if (ineligibleBookings.length && (!["CANCEL", "EXCEPTION"].includes(input.ineligibleResolution ?? "") || input.reason.trim().length < 5)) errors.push("Review the members who no longer qualify. Choose cancellation without penalty or an exception, and give a reason.");
   const previewThrough = input.endDate && input.endDate < addDays(input.date, 41) ? input.endDate : addDays(input.date, 41);
   const verifiedRecipients = await memberNotificationRecipients(db, access.workspaceId, [...bookings, ...waitlist].map((record) => record.memberId));
-  const token = digest({ input, ineligibleBookings, templates: rawTemplates, bookings, waitlist, attendance, lessons, events, appointments, entitlementHolds, verifiedRecipients });
+  const token = digest({ input, ineligibleBookings, templates: rawTemplates, bookings, waitlist, attendance, lessons, events, appointments, staffLeave, entitlementHolds, verifiedRecipients });
   const recipients = (noticeDate: string) => {
     const memberIds = new Set([...bookings, ...waitlist].filter((item) => toDateOnlyString(item.scheduledForDate) === noticeDate).map((item) => item.memberId));
     return verifiedRecipients.filter((recipient) => memberIds.has(recipient.memberId));
@@ -248,9 +250,10 @@ export async function commitClassSchedule(args: { access: ClassScheduleAccess; i
           if (booking.bookingType === "DROP_IN") {
             const funding = booking.fundedByBookingId ? await tx.classBooking.findFirst({ where: { id: booking.fundedByBookingId, workspaceId: args.access.workspaceId, memberId: booking.memberId } }) : booking;
             if (funding?.dropInPaidAt) {
-              const payment = funding.dropInPaymentIntentId ? await tx.payment.findFirst({ where: { workspaceId: args.access.workspaceId, stripePaymentIntentId: funding.dropInPaymentIntentId } }) : null;
+              const imported = await tx.importedBookingFunding.findFirst({where:{workspaceId:args.access.workspaceId,bookingId:funding.id},include:{evidence:{include:{payment:true}}}});
+              const payment = imported?.evidence.payment ?? (funding.dropInPaymentIntentId ? await tx.payment.findFirst({ where: { workspaceId: args.access.workspaceId, stripePaymentIntentId: funding.dropInPaymentIntentId } }) : null);
               const sourceKey = `gym-cancel:${booking.id}:${booking.fundingRevision}`;
-              await tx.financialReviewCase.upsert({ where: { workspaceId_sourceKey: { workspaceId: args.access.workspaceId, sourceKey } }, update: {}, create: { workspaceId: args.access.workspaceId, sourceKey, reason: "Gym cancelled paid class — arrange refund or agreed credit", memberId: booking.memberId, bookingId: booking.id, paymentId: payment?.id, payerAccountId: payment?.payerAccountId, amountCents: funding.dropInPriceCents, currency: funding.dropInCurrency } });
+              await tx.financialReviewCase.upsert({ where: { workspaceId_sourceKey: { workspaceId: args.access.workspaceId, sourceKey } }, update: {}, create: { workspaceId: args.access.workspaceId, sourceKey, reason: imported ? "Gym cancelled source-paid class — refund through the original source and attach its receipt" : "Gym cancelled paid class — arrange refund or agreed credit", memberId: booking.memberId, bookingId: booking.id, paymentId: payment?.id, payerAccountId: payment?.payerAccountId, amountCents: funding.dropInPriceCents, currency: funding.dropInCurrency } });
             }
           }
           const punchSettlement = await settlePunchCardBooking({ workspaceId: args.access.workspaceId, bookingId: booking.id, outcome: "PROVIDER_CANCEL", db: tx, actorWorkspaceUserId: args.access.workspaceUserId });

@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { Prisma, prisma, approveMembershipLifecycleChange, applyMembershipLifecycleEvidence, getMembershipLifecycle,
-  MembershipLifecycleError, lockClassSchedule, lockFinancialAccount, transitionFinancialOperation, reserveFinancialOperation, queueFinancialReview,
+  reconcileSourceMembershipLifecycle, MembershipLifecycleError, lockClassSchedule, lockFinancialAccount, transitionFinancialOperation, reserveFinancialOperation, queueFinancialReview,
   getZonedDateTimeAsUtc, type MembershipLifecycleActor, type MembershipLifecycleOverride, type MembershipLifecycleProviderEvidence } from "@flowstate/db";
 import { paymentProvider } from "./index.js";
 type FinancialOperation = Awaited<ReturnType<typeof prisma.financialOperation.findUniqueOrThrow>>;
@@ -76,6 +76,7 @@ async function persistProviderState(operationId: string, update: { state: "RESER
     const initial = await tx.financialOperation.findUniqueOrThrow({ where: { id: operationId } });
     await lockClassSchedule(tx, initial.workspaceId); await lockFinancialAccount(tx, initial.workspaceId);
     const operation = await tx.financialOperation.findUniqueOrThrow({ where: { id: operationId } });
+    if (update.state === "SUBMITTED" && !(await tx.workspace.findFirst({ where: { id: operation.workspaceId, status: { not: "DISABLED" } }, select: { id: true } }))) throw new MembershipLifecycleError("Gym billing is no longer managed by HitLink.");
     if (update.state === "SUBMITTED" && !operation.submittedAt) {
       const lifecycle = await tx.membershipLifecycleRequest.findUniqueOrThrow({ where: { providerOperationId: operation.id } });
       if (!["APPROVED", "SCHEDULED"].includes(lifecycle.state)) throw new MembershipLifecycleError("This request changed before processor submission. Review it again.");
@@ -115,6 +116,7 @@ async function reconcileDebtCollection(operation: FinancialOperation, request: M
   });
   const save = async (state: "SUBMITTED" | "SUCCEEDED" | "REVIEW_REQUIRED", message?: string) => prisma.$transaction(async (tx) => {
     await lockClassSchedule(tx, operation.workspaceId); await lockFinancialAccount(tx, operation.workspaceId);
+    if (state === "SUBMITTED" && !(await tx.workspace.findFirst({ where: { id: operation.workspaceId, status: { not: "DISABLED" } }, select: { id: true } }))) throw new MembershipLifecycleError("Gym billing is no longer managed by HitLink.");
     const fresh = await tx.financialOperation.findUniqueOrThrow({ where: { id: debtOperation.id } });
     const updated = await transitionFinancialOperation(tx, fresh, state, { action: "stop-existing-debt-collection", message: message ?? null }, { lastError: message ?? null, ...(state === "SUBMITTED" ? { submittedAt: fresh.submittedAt ?? now } : {}), ...(state === "SUCCEEDED" ? { settledAt: now, providerReference: provider.subscriptionId, result: JSON.parse(JSON.stringify(evidence)) } : {}) });
     if (state === "REVIEW_REQUIRED") await queueFinancialReview(tx, { workspaceId: operation.workspaceId, sourceKey: `lifecycle-debt:${request.id}:provider`, memberId: operation.beneficiaryMemberId, payerAccountId: operation.payerAccountId, operationId: fresh.id, reason: message ?? "Verify automatic collection is stopped before completing cancellation." });
@@ -138,6 +140,7 @@ async function reconcileDebtCollection(operation: FinancialOperation, request: M
 /** Internal worker path; HTTP callers must use the authenticated wrapper below. */
 async function reconcileOperation(operationId: string, gateway: MembershipLifecycleGateway, now: Date) {
   let operation = await prisma.financialOperation.findUniqueOrThrow({ where: { id: operationId } });
+  if (!(await prisma.workspace.findFirst({ where: { id: operation.workspaceId, status: { not: "DISABLED" } }, select: { id: true } }))) return { state: "WORKSPACE_DISABLED", requestId: operationId };
   const request = await prisma.membershipLifecycleRequest.findUniqueOrThrow({ where: { providerOperationId: operation.id } });
   if (["COMPLETE", "WITHDRAWN", "SUPERSEDED"].includes(request.state)) return { state: request.state, requestId: request.id };
   const payload = operation.payload as Prisma.JsonObject;
@@ -190,8 +193,8 @@ export async function retryMembershipLifecycleChange(actor: MembershipLifecycleA
 }
 /** Run alongside the existing server-side billing/notification worker and after verified subscription webhooks. */
 export async function reconcileDueMembershipLifecycle(options: { workspaceId?: string; subscriptionId?: string; gateway?: MembershipLifecycleGateway; now?: Date; limit?: number } = {}) {
-  const rows = await prisma.membershipLifecycleRequest.findMany({ where: { ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}), ...(options.subscriptionId ? { membership: { stripeSubscriptionId: options.subscriptionId } } : {}), providerOperationId: { not: null }, state: { in: ["APPROVED", "SCHEDULED", "CONFIRMED", "RECONCILIATION_REQUIRED"] } }, orderBy: { updatedAt: "asc" }, take: Math.min(options.limit ?? 100, 500) });
-  const results = [];
+  const rows = await prisma.membershipLifecycleRequest.findMany({ where: { workspace: { status: { not: "DISABLED" } }, ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}), ...(options.subscriptionId ? { membership: { stripeSubscriptionId: options.subscriptionId } } : {}), providerOperationId: { not: null }, state: { in: ["APPROVED", "SCHEDULED", "CONFIRMED", "RECONCILIATION_REQUIRED"] } }, orderBy: { updatedAt: "asc" }, take: Math.min(options.limit ?? 100, 500) });
+  const results = (await reconcileSourceMembershipLifecycle({workspaceId:options.workspaceId,now:options.now,limit:options.limit})).map(request=>({state:request.state,requestId:request.id}));
   for (const request of rows) {
     results.push(await reconcileOperation(request.providerOperationId!, options.gateway ?? createStripeMembershipLifecycleGateway(), options.now ?? new Date()));
     await prisma.membershipLifecycleRequest.update({ where: { id: request.id }, data: { updatedAt: options.now ?? new Date() } });

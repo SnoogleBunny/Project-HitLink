@@ -2,9 +2,13 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import {
   createEmailNotificationAdapter,
   expireWorkspaceDataExports,
+  expireMemberDataExports,
+  expireCoachingRecordExports,
   prisma,
   processNotificationOutbox,
   shouldDeliverNotification,
+  reconcileCoachingDelivery,
+  reconcileSourceMembershipLifecycle,
 } from "@flowstate/db";
 import { reconcileDueMembershipLifecycle } from "@flowstate/payments";
 export const runtime = "nodejs";
@@ -25,6 +29,8 @@ export async function POST(request: Request) {
   if (cursor && (cursor.length > 150 || !/^[\w-]+$/.test(cursor)))
     return Response.json({ error: "Invalid cursor." }, { status: 400 });
   await expireWorkspaceDataExports();
+  await expireMemberDataExports();
+  await expireCoachingRecordExports();
   const workspace = await prisma.workspace.findFirst({
     where: {
       status: "ACTIVE",
@@ -35,12 +41,24 @@ export async function POST(request: Request) {
     select: { id: true },
   });
   if (!workspace) return Response.json({ done: true, nextCursor: null });
-  const result: { nextCursor: string; email: unknown; billing: unknown } = {
+  const result: {
+    nextCursor: string;
+    email: unknown;
+    billing: unknown;
+    coaching: unknown;
+  } = {
     nextCursor: workspace.id,
     email: "not_configured",
     billing: "not_configured",
+    coaching: "pending",
   };
   let failed = false;
+  try {
+    result.coaching = await reconcileCoachingDelivery(workspace.id);
+  } catch {
+    result.coaching = "retry_required";
+    failed = true;
+  }
   if (process.env.RESEND_API_KEY && process.env.HITLINK_EMAIL_FROM) {
     try {
       result.email = await processNotificationOutbox({
@@ -58,17 +76,26 @@ export async function POST(request: Request) {
       failed = true;
     }
   }
-  if (process.env.STRIPE_SECRET_KEY) {
-    try {
-      const reconciled = await reconcileDueMembershipLifecycle({
-        workspaceId: workspace.id,
-        limit: 10,
-      });
-      result.billing = { reconciled: reconciled.length };
-    } catch {
-      result.billing = "retry_required";
-      failed = true;
-    }
+  try {
+    // The provider sweep already includes source changes. Run the source-only
+    // sweep without Stripe so reviewed access boundaries still take effect.
+    const configured = !!process.env.STRIPE_SECRET_KEY;
+    const reconciled = configured
+      ? await reconcileDueMembershipLifecycle({
+          workspaceId: workspace.id,
+          limit: 10,
+        })
+      : await reconcileSourceMembershipLifecycle({
+          workspaceId: workspace.id,
+          limit: 10,
+        });
+    result.billing = {
+      reconciled: reconciled.length,
+      ...(!configured ? { provider: "not_configured" } : {}),
+    };
+  } catch {
+    result.billing = "retry_required";
+    failed = true;
   }
   return Response.json(result, {
     status: failed ? 503 : 200,

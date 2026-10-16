@@ -1,14 +1,17 @@
+import { buildSourceStagedRow, importSourceRecord } from "./migration-source-records";
+import { buildEntitlementStagedRow, MigrationEntitlementError } from "./migration-entitlement-parser";
+import { importEntitlement } from "./migration-entitlements";
 import { inspectMigrationCutoverSnapshot } from "./migration-cutover";
 import { createHash } from "node:crypto";
 import { parse } from "csv-parse/sync";
 import {
   Prisma,
+  lockClassSchedule,
   isWorkspaceMigrationReady as isSharedWorkspaceMigrationReady,
   prisma,
   type ImportJobStatus,
   type ImportRecordKind,
   type MigrationStage,
-  type MemberMembershipStatus,
   type MemberStatus,
   type Weekday,
 } from "@flowstate/db";
@@ -72,10 +75,13 @@ export const migrationRecordKindOptions: Array<{
     label: "Weekly schedule",
     description: "Creates programs, rooms, and recurring class templates.",
   },
+  { value: "ALLOWANCE_USAGE", label: "Opening allowance usage", description: "Preserves source usage for exact weekly and billing-month windows." },
+  { value: "FUTURE_BOOKING", label: "Future class reservations", description: "Maps each reservation to its named source contract or class pack." },
+  { value: "SOURCE_SIGNATURE", label: "Source consent receipts", description: "Maps exact source document and signed receipt bytes to verified signer and participant evidence." },
   {
     value: "BILLING_HISTORY",
     label: "Historical billing",
-    description: "Stages historical billing for review only in this version.",
+    description: "Imports reviewed source invoices, payments and refunds with their exact ownership and evidence.",
   },
   {
     value: "ATTENDANCE",
@@ -91,6 +97,8 @@ export const migrationRecordKindOptions: Array<{
 ];
 
 const productionImportKinds = new Set<ImportRecordKind>([
+  "BILLING_HISTORY", "SOURCE_SIGNATURE",
+  "ALLOWANCE_USAGE", "FUTURE_BOOKING",
   "MEMBER",
   "MEMBERSHIP_PLAN",
   "MEMBER_MEMBERSHIP",
@@ -539,7 +547,7 @@ async function runSerializableWithRetry<T>(
   db: MigrationDatabase,
   operation: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
-  const maxAttempts = 6;
+  const maxAttempts = 12;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -550,7 +558,7 @@ async function runSerializableWithRetry<T>(
       if (!isPrismaSerializationConflict(error) || attempt === maxAttempts) {
         throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, Math.min(250, 15 * 2 ** attempt) + Math.floor(Math.random() * 20)));
+      await new Promise((resolve) => setTimeout(resolve, Math.min(1000, 25 * 2 ** attempt) + Math.floor(Math.random() * 100)));
     }
   }
 
@@ -730,33 +738,6 @@ function normalizeMemberStatus(value: string | undefined): MemberStatus | null {
     .replace(/[\s-]+/g, "_");
 
   return isMemberStatus(status) ? status : null;
-}
-
-function isMemberMembershipStatus(
-  value: string | undefined,
-): value is MemberMembershipStatus {
-  return Boolean(
-    value &&
-    [
-      "ACTIVE",
-      "PENDING_PAYMENT_METHOD",
-      "PAST_DUE",
-      "FROZEN",
-      "CANCELLED",
-      "ENDED",
-    ].includes(value),
-  );
-}
-
-function normalizeMembershipStatus(
-  value: string | undefined,
-): MemberMembershipStatus | null {
-  const status = value
-    ?.trim()
-    .toUpperCase()
-    .replace(/[\s-]+/g, "_");
-
-  return isMemberMembershipStatus(status) ? status : null;
 }
 
 function normalizeWeekday(value: string | undefined): Weekday | null {
@@ -969,102 +950,6 @@ function buildMembershipPlanStagedRow(row: Record<string, string>): StagedRow {
   };
 }
 
-function buildMemberMembershipStagedRow(
-  row: Record<string, string>,
-): StagedRow {
-  const issues: StagedRow["issues"] = [];
-  const externalId = getExternalId(row, issues);
-  const memberExternalId = requireValue(
-    row,
-    ["member_external_id", "member_id"],
-    "member_external_id",
-    issues,
-  );
-  const planExternalId = requireValue(
-    row,
-    ["membership_plan_external_id", "plan_external_id", "plan_id"],
-    "membership_plan_external_id",
-    issues,
-  );
-
-  const membershipStatus = normalizeMembershipStatus(readValue(row, ["status", "membership_status"]));
-  if (!membershipStatus) issues.push({severity:"ERROR",code:"UNKNOWN_STATUS",message:"Map an explicit supported membership status; missing or unknown values cannot become active.",fieldName:"status"});
-  for (const [field,aliases] of [["started_at",["started_at","start_date"]],["next_billing_date",["next_billing_date","billing_date"]]] as const) if (!parseDateOnly(readValue(row,[...aliases]))) issues.push({severity:"ERROR",code:"BILLING_DATE_REQUIRED",message:`${field} must preserve the verified source billing boundary.`,fieldName:field});
-  return {
-    externalId,
-    mappedData: jsonObject({
-      externalId,
-      memberExternalId,
-      membershipPlanExternalId: planExternalId,
-      status: membershipStatus,
-      startedAt:
-        parseDateOnly(
-          readValue(row, ["started_at", "start_date"]),
-        )?.toISOString() ?? null,
-      nextBillingDate:
-        parseDateOnly(
-          readValue(row, ["next_billing_date", "billing_date"]),
-        )?.toISOString() ?? null,
-    }),
-    rawData: jsonObject(row),
-    issues,
-  };
-}
-
-function buildPunchCardBalanceStagedRow(
-  row: Record<string, string>,
-): StagedRow {
-  const issues: StagedRow["issues"] = [];
-  const externalId = getExternalId(row, issues);
-  const memberExternalId = requireValue(
-    row,
-    ["member_external_id", "member_id"],
-    "member_external_id",
-    issues,
-  );
-  const productName = requireValue(
-    row,
-    ["product_name", "punch_card_name", "name"],
-    "product_name",
-    issues,
-  );
-  const originalPunches = parseRequiredInt(
-    readValue(row, ["original_punches", "punches_included", "total_punches"]),
-    "original_punches",
-    issues,
-  );
-  const remainingPunches = parseRequiredInt(
-    readValue(row, ["remaining_punches", "balance", "punches_remaining"]),
-    "remaining_punches",
-    issues,
-  );
-
-  return {
-    externalId,
-    mappedData: jsonObject({
-      externalId,
-      memberExternalId,
-      productExternalId:
-        readValue(row, ["product_external_id", "punch_card_external_id"]) ??
-        `name:${productName}`,
-      productName,
-      originalPunches,
-      remainingPunches,
-      priceCents:
-        parseOptionalPositiveInt(
-          readValue(row, ["price_cents", "purchase_price_cents"]),
-        ) ?? 0,
-      currency: (readValue(row, ["currency"]) ?? "usd").toLowerCase(),
-      purchasedAt:
-        parseDateOnly(
-          readValue(row, ["purchased_at", "purchase_date"]),
-        )?.toISOString() ?? null,
-    }),
-    rawData: jsonObject(row),
-    issues,
-  };
-}
-
 function buildDropInProductStagedRow(row: Record<string, string>): StagedRow {
   const issues: StagedRow["issues"] = [];
   const externalId = getExternalId(row, issues);
@@ -1191,14 +1076,18 @@ function buildStagedRow(
   row: Record<string, string>,
 ): StagedRow {
   switch (recordKind) {
+    case "BILLING_HISTORY":
+    case "SOURCE_SIGNATURE":
+      return buildSourceStagedRow(recordKind,row);
     case "MEMBER":
       return buildMemberStagedRow(row);
     case "MEMBERSHIP_PLAN":
       return buildMembershipPlanStagedRow(row);
     case "MEMBER_MEMBERSHIP":
-      return buildMemberMembershipStagedRow(row);
     case "PUNCH_CARD_BALANCE":
-      return buildPunchCardBalanceStagedRow(row);
+    case "ALLOWANCE_USAGE":
+    case "FUTURE_BOOKING":
+      return buildEntitlementStagedRow(recordKind, row);
     case "DROP_IN_PRODUCT":
       return buildDropInProductStagedRow(row);
     case "SCHEDULE_TEMPLATE":
@@ -1518,295 +1407,6 @@ async function importMembershipPlan(args: {
       importedAt: new Date(),
       importedModel: "MembershipPlan",
       importedRecordId: planId,
-    },
-  });
-
-  return result;
-}
-
-async function importMemberMembership(args: {
-  db: Prisma.TransactionClient;
-  workspaceId: string;
-  importJobId: string;
-  stagingRecord: {
-    id: string;
-    externalId: string | null;
-    mappedData: Prisma.JsonValue | null;
-  };
-}): Promise<"created" | "updated" | "skipped"> {
-  if (!args.stagingRecord.externalId || !args.stagingRecord.mappedData) {
-    return "skipped";
-  }
-
-  const data = mapped<{
-    memberExternalId?: string;
-    membershipPlanExternalId?: string;
-    status?: MemberMembershipStatus;
-    startedAt?: string | null;
-    nextBillingDate?: string | null;
-  }>(args.stagingRecord.mappedData);
-
-  if (!data.memberExternalId || !data.membershipPlanExternalId) {
-    return "skipped";
-  }
-
-  const [memberIdentity, planIdentity, membershipIdentity] = await Promise.all([
-    findIdentity({
-      db: args.db,
-      workspaceId: args.workspaceId,
-      recordKind: "MEMBER",
-      externalId: data.memberExternalId,
-    }),
-    findIdentity({
-      db: args.db,
-      workspaceId: args.workspaceId,
-      recordKind: "MEMBERSHIP_PLAN",
-      externalId: data.membershipPlanExternalId,
-    }),
-    findIdentity({
-      db: args.db,
-      workspaceId: args.workspaceId,
-      recordKind: "MEMBER_MEMBERSHIP",
-      externalId: args.stagingRecord.externalId,
-    }),
-  ]);
-
-  if (!memberIdentity || !planIdentity) {
-    return "skipped";
-  }
-
-  if (!data.status || !isMemberMembershipStatus(data.status) || !data.startedAt || !data.nextBillingDate) throw new Error("Imported membership needs explicit status and verified billing boundaries.");
-  const membershipData = {
-    memberId: memberIdentity.importedRecordId,
-    membershipPlanId: planIdentity.importedRecordId,
-    status: data.status,
-    startedAt: data.startedAt ? new Date(data.startedAt) : new Date(),
-    nextBillingDate: data.nextBillingDate
-      ? new Date(data.nextBillingDate)
-      : null,
-  };
-  let membershipId = membershipIdentity?.importedRecordId;
-  let result: "created" | "updated" = "updated";
-
-  if (membershipId) {
-    await args.db.memberMembership.updateMany({
-      where: {
-        id: membershipId,
-        workspaceId: args.workspaceId,
-      },
-      data: membershipData,
-    });
-  } else {
-    const existingCurrent = await args.db.memberMembership.findFirst({
-      where: {
-        workspaceId: args.workspaceId,
-        memberId: memberIdentity.importedRecordId,
-        currentMembershipSlot: "CURRENT",
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (existingCurrent) {
-      membershipId = existingCurrent.id;
-      await args.db.memberMembership.updateMany({
-        where: {
-          id: membershipId,
-          workspaceId: args.workspaceId,
-        },
-        data: membershipData,
-      });
-    } else {
-      const membership = await args.db.memberMembership.create({
-        data: {
-          workspaceId: args.workspaceId,
-          currentMembershipSlot: "CURRENT",
-          ...membershipData,
-        },
-        select: {
-          id: true,
-        },
-      });
-      membershipId = membership.id;
-      result = "created";
-    }
-  }
-
-  await upsertIdentity({
-    db: args.db,
-    workspaceId: args.workspaceId,
-    importJobId: args.importJobId,
-    stagingRecordId: args.stagingRecord.id,
-    recordKind: "MEMBER_MEMBERSHIP",
-    externalId: args.stagingRecord.externalId,
-    importedModel: "MemberMembership",
-    importedRecordId: membershipId,
-  });
-
-  await args.db.stagingRecord.update({
-    where: {
-      id: args.stagingRecord.id,
-    },
-    data: {
-      importedAt: new Date(),
-      importedModel: "MemberMembership",
-      importedRecordId: membershipId,
-    },
-  });
-
-  return result;
-}
-
-async function importPunchCardBalance(args: {
-  db: Prisma.TransactionClient;
-  workspaceId: string;
-  importJobId: string;
-  stagingRecord: {
-    id: string;
-    externalId: string | null;
-    mappedData: Prisma.JsonValue | null;
-  };
-}): Promise<"created" | "updated" | "skipped"> {
-  if (!args.stagingRecord.externalId || !args.stagingRecord.mappedData) {
-    return "skipped";
-  }
-
-  const data = mapped<{
-    memberExternalId?: string;
-    productExternalId?: string;
-    productName?: string;
-    originalPunches?: number;
-    remainingPunches?: number;
-    priceCents?: number;
-    currency?: string;
-    purchasedAt?: string | null;
-  }>(args.stagingRecord.mappedData);
-
-  if (!data.memberExternalId || !data.productExternalId || !data.productName) {
-    return "skipped";
-  }
-
-  const memberIdentity = await findIdentity({
-    db: args.db,
-    workspaceId: args.workspaceId,
-    recordKind: "MEMBER",
-    externalId: data.memberExternalId,
-  });
-
-  if (!memberIdentity) {
-    return "skipped";
-  }
-
-  const productExternalId = `product:${data.productExternalId}`;
-  const productIdentity = await findIdentity({
-    db: args.db,
-    workspaceId: args.workspaceId,
-    recordKind: "PUNCH_CARD_BALANCE",
-    externalId: productExternalId,
-  });
-  let productId = productIdentity?.importedRecordId;
-
-  if (productId) {
-    await args.db.punchCardProduct.updateMany({
-      where: {
-        id: productId,
-        workspaceId: args.workspaceId,
-      },
-      data: {
-        name: data.productName,
-        punchesIncluded: data.originalPunches ?? data.remainingPunches ?? 0,
-        priceCents: data.priceCents ?? 0,
-        currency: data.currency ?? "usd",
-      },
-    });
-  } else {
-    const product = await args.db.punchCardProduct.create({
-      data: {
-        workspaceId: args.workspaceId,
-        name: data.productName,
-        punchesIncluded: data.originalPunches ?? data.remainingPunches ?? 0,
-        priceCents: data.priceCents ?? 0,
-        currency: data.currency ?? "usd",
-      },
-      select: {
-        id: true,
-      },
-    });
-    productId = product.id;
-
-    await upsertIdentity({
-      db: args.db,
-      workspaceId: args.workspaceId,
-      importJobId: args.importJobId,
-      stagingRecordId: args.stagingRecord.id,
-      recordKind: "PUNCH_CARD_BALANCE",
-      externalId: productExternalId,
-      importedModel: "PunchCardProduct",
-      importedRecordId: productId,
-    });
-  }
-
-  const balanceExternalId = `balance:${args.stagingRecord.externalId}`;
-  const balanceIdentity = await findIdentity({
-    db: args.db,
-    workspaceId: args.workspaceId,
-    recordKind: "PUNCH_CARD_BALANCE",
-    externalId: balanceExternalId,
-  });
-  const balanceData = {
-    memberId: memberIdentity.importedRecordId,
-    punchCardProductId: productId,
-    originalPunches: data.originalPunches ?? data.remainingPunches ?? 0,
-    remainingPunches: data.remainingPunches ?? 0,
-    purchasePriceCents: data.priceCents ?? 0,
-    purchaseCurrency: data.currency ?? "usd",
-    purchasedAt: data.purchasedAt ? new Date(data.purchasedAt) : new Date(),
-  };
-  let balanceId = balanceIdentity?.importedRecordId;
-  let result: "created" | "updated" = "updated";
-
-  if (balanceId) {
-    await args.db.memberPunchCard.updateMany({
-      where: {
-        id: balanceId,
-        workspaceId: args.workspaceId,
-      },
-      data: balanceData,
-    });
-  } else {
-    const balance = await args.db.memberPunchCard.create({
-      data: {
-        workspaceId: args.workspaceId,
-        ...balanceData,
-      },
-      select: {
-        id: true,
-      },
-    });
-    balanceId = balance.id;
-    result = "created";
-  }
-
-  await upsertIdentity({
-    db: args.db,
-    workspaceId: args.workspaceId,
-    importJobId: args.importJobId,
-    stagingRecordId: args.stagingRecord.id,
-    recordKind: "PUNCH_CARD_BALANCE",
-    externalId: balanceExternalId,
-    importedModel: "MemberPunchCard",
-    importedRecordId: balanceId,
-  });
-
-  await args.db.stagingRecord.update({
-    where: {
-      id: args.stagingRecord.id,
-    },
-    data: {
-      importedAt: new Date(),
-      importedModel: "MemberPunchCard",
-      importedRecordId: balanceId,
     },
   });
 
@@ -2666,6 +2266,7 @@ export async function runMigrationImport(args: {
 
   try {
     return await runSerializableWithRetry(db, async (tx) => {
+      await lockClassSchedule(tx, args.workspaceId);
       const migration = await tx.workspaceMigration.findUnique({
         where: { workspaceId: args.workspaceId },
         select: {
@@ -2795,6 +2396,10 @@ export async function runMigrationImport(args: {
         let result: "created" | "updated" | "skipped";
 
         switch (stagingRecord.recordKind) {
+          case "BILLING_HISTORY":
+          case "SOURCE_SIGNATURE":
+            result=await importSourceRecord({db:tx,workspaceId:args.workspaceId,importJobId:job.id,actorId:getFlowstateOperatorId(args.actor)!,stagingRecord});
+            break;
           case "MEMBER":
             result = await importMember({
               db: tx,
@@ -2812,20 +2417,10 @@ export async function runMigrationImport(args: {
             });
             break;
           case "MEMBER_MEMBERSHIP":
-            result = await importMemberMembership({
-              db: tx,
-              workspaceId: args.workspaceId,
-              importJobId: job.id,
-              stagingRecord,
-            });
-            break;
           case "PUNCH_CARD_BALANCE":
-            result = await importPunchCardBalance({
-              db: tx,
-              workspaceId: args.workspaceId,
-              importJobId: job.id,
-              stagingRecord,
-            });
+          case "ALLOWANCE_USAGE":
+          case "FUTURE_BOOKING":
+            result = await importEntitlement({ db: tx, workspaceId: args.workspaceId, importJobId: job.id, actorId: getFlowstateOperatorId(args.actor)!, stagingRecord });
             break;
           case "DROP_IN_PRODUCT":
             result = await importDropInProduct({
@@ -2882,10 +2477,10 @@ export async function runMigrationImport(args: {
         message: `Imported ${summary.created} created, ${summary.updated} updated, and ${summary.skipped} skipped record${summary.skipped === 1 ? "" : "s"}.`,
       };
     });
-  } catch {
+  } catch (error) {
     return {
       status: "error",
-      message: "The import failed. Check the source data and retry.",
+      message: error instanceof MigrationEntitlementError ? error.message : "The import failed. Check the source data and retry.",
     };
   }
 }

@@ -72,6 +72,7 @@ export default async function MemberProfilePage({
       description="Profile details, internal notes, family links, and booked trial dates."
       actions={
         <>
+          <Link className="text-link" href={`/dashboard/members/${member.id}/records`}>Export records</Link>
           {progress.length ? <Link className="button button-secondary" href={`/dashboard/members/${member.id}/progress`}>Progress</Link> : null}
           <Link className="button" href={`/dashboard/members/${member.id}/billing`}>
             Open billing

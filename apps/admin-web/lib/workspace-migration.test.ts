@@ -35,6 +35,39 @@ describe("workspace migration helpers", () => {
     vi.unstubAllEnvs();
   });
 
+  it("retries a rolled-back import beyond brief serialization contention and remains bounded", async () => {
+    vi.useFakeTimers();
+    try {
+      const transaction = vi.fn();
+      for (let n = 0; n < 7; n++)
+        transaction.mockRejectedValueOnce({ code: "P2034" });
+      transaction.mockResolvedValueOnce({ status: "ok" });
+      const args = {
+        workspaceId: "gym",
+        locationId: "room",
+        importJobId: "job",
+        actor: { type: "FLOWSTATE_OPERATOR" as const, actorId: "operator" },
+        db: { $transaction: transaction } as unknown as ImportDb,
+      };
+      const recovered = runMigrationImport(args);
+      await vi.runAllTimersAsync();
+      await expect(recovered).resolves.toEqual({ status: "ok" });
+      expect(transaction).toHaveBeenCalledTimes(8);
+      transaction.mockReset().mockRejectedValue({ code: "P2034" });
+      const exhausted = runMigrationImport(args);
+      await vi.runAllTimersAsync();
+      await expect(exhausted).resolves.toMatchObject({ status: "error" });
+      expect(transaction).toHaveBeenCalledTimes(12);
+      transaction.mockReset().mockRejectedValue({ code: "P2028" });
+      await expect(runMigrationImport(args)).resolves.toMatchObject({
+        status: "error",
+      });
+      expect(transaction).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("sanitizes initial intake and keeps new workspaces pre-operational", () => {
     expect(
       buildInitialMigrationData({
@@ -907,7 +940,7 @@ describe("workspace migration helpers", () => {
     });
   });
 
-  it("keeps historical records staged for review instead of production import", async () => {
+  it("keeps unmapped historical attendance staged for review instead of production import", async () => {
     const db = {
       workspaceMigration: {
         findUnique: vi.fn().mockResolvedValue({
@@ -923,8 +956,8 @@ describe("workspace migration helpers", () => {
           stagingRecords: [
             {
               id: "staging_1",
-              recordKind: "BILLING_HISTORY",
-              externalId: "bill_1",
+              recordKind: "ATTENDANCE",
+              externalId: "attendance_1",
               mappedData: {},
             },
           ],

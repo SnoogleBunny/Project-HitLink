@@ -4,15 +4,16 @@ import {
   confirmWorkspaceExportReceipt,
   saveWorkspaceOffboarding,
   confirmWorkspaceOffboarding,
-  finalizeWorkspaceOffboarding,
   grantWorkspaceSupportAccess,
   revokeWorkspaceSupportAccess,
   WorkspaceDataError,
+  saveWorkspaceRetentionCase,
 } from "@flowstate/db";
 import {
   registerWorkspacePlatformBilling,
   stopWorkspacePlatformBilling,
   verifyWorkspaceCustomerBilling,
+  finalizeWorkspaceOffboardingWithBillingChecks,
 } from "@flowstate/payments";
 import { revalidatePath } from "next/cache";
 import { requireOwnerWorkspaceContext } from "../../../../lib/owner-workspace";
@@ -33,6 +34,20 @@ export async function workspaceDataAction(
   try {
     let success = "Saved.";
     switch (value("intent")) {
+      case "retention-plan":
+        await saveWorkspaceRetentionCase(actor.userId, {
+          workspaceId: actor.workspaceId,
+          expectedVersion: Number(value("caseVersion")),
+          custodianUserId: value("custodianUserId"),
+          backupCustodianUserId: value("backupCustodianUserId"),
+          retentionAt: value("retentionAt"),
+          backupDeletionAfter: value("backupDeletionAfter"),
+          retentionBasis: value("retentionBasis"),
+          holdResolutionEvidence: value("holdResolutionEvidence"),
+        });
+        success =
+          "Records case prepared. Open it to review and approve the dates and responsibilities.";
+        break;
       case "export":
         await createWorkspaceDataExport(actor, value("purpose"));
         success =
@@ -87,14 +102,14 @@ export async function workspaceDataAction(
       }
       case "customers":
         await verifyWorkspaceCustomerBilling(actor, Number(value("version")));
-        success = "Customer renewal stops verified with the processor.";
+        success = "The current customer billing disposition was verified with the processor.";
         break;
       case "finalize":
         if (form.get("confirmed") !== "on")
           throw new WorkspaceDataError(
             "Confirm access revocation after reviewing the blockers.",
           );
-        await finalizeWorkspaceOffboarding(actor, Number(value("version")));
+        await finalizeWorkspaceOffboardingWithBillingChecks(actor, Number(value("version")));
         success =
           "Gym access has ended. Records remain subject to the agreed retention plan.";
         break;

@@ -7,6 +7,7 @@ export default defineConfig({
     "browser-diagnostics.spec.ts",
   ],
   fullyParallel: false,
+  outputDir: "../../test-results/browser-diagnostics",
   reporter: "list",
   use: {
     trace: "off",

@@ -102,9 +102,9 @@ export default async function DataPage() {
         <p>
           Keep access available through all promised record-retrieval windows.
           Customer memberships must follow their accepted cancellation terms.
-          This workflow verifies a stop; moving live billing to another provider
-          requires a separately reconciled handover.
+          Review renewal stops or prepare a handover to a named receiving account.
         </p>
+        <Link className="text-link" href="/dashboard/settings/data/handover">Review customer billing handover</Link>
         <Notice tone="warning">
           A retention review date does not delete records or backups. The named
           records contact must resolve holds and verify deletion separately.
@@ -218,7 +218,7 @@ export default async function DataPage() {
             >
               {version}
             </DataForm>
-            <DataForm intent="customers" label="Check customer renewal stops">
+            <DataForm intent="customers" label={plan.customerBillingDisposition === "HANDOVER" ? "Check agreed billing handover" : "Check customer renewal stops"}>
               {version}
             </DataForm>
             <DataForm intent="finalize" label="End gym access">
@@ -230,6 +230,67 @@ export default async function DataPage() {
             </DataForm>
           </>
         ) : null}
+      </section>
+      <section className="management-card form-stack">
+        <h2>Retained records</h2>
+        <p>
+          Name the accounts responsible for database and backup removal. Every
+          owner must approve the case. The removal controls remain available to
+          those accounts after gym access ends.
+        </p>
+        {data.retention ? (
+          <Link className="text-link" href={`/records/${data.retention.id}`}>
+            Open records case
+          </Link>
+        ) : plan ? (
+          <DataForm intent="retention-plan" label="Prepare records case">
+            <input type="hidden" name="caseVersion" value="0" />
+            <label className="field">
+              <span>Records custodian account ID</span>
+              <input className="input" name="custodianUserId" required />
+            </label>
+            <label className="field">
+              <span>Backup custodian account ID</span>
+              <input className="input" name="backupCustodianUserId" required />
+            </label>
+            <label className="field">
+              <span>Database removal date (ISO timestamp)</span>
+              <input
+                className="input"
+                name="retentionAt"
+                required
+                defaultValue={plan.retentionUntil.toISOString()}
+              />
+            </label>
+            <label className="field">
+              <span>Earliest backup removal date (ISO timestamp)</span>
+              <input className="input" name="backupDeletionAfter" required />
+            </label>
+            <label className="field">
+              <span>Retention basis and record classes</span>
+              <textarea
+                className="input"
+                name="retentionBasis"
+                required
+                maxLength={1000}
+                defaultValue={plan.retentionReason}
+              />
+            </label>
+            {plan.retentionHoldReason ? (
+              <label className="field">
+                <span>Evidence resolving the existing hold</span>
+                <textarea
+                  className="input"
+                  name="holdResolutionEvidence"
+                  required
+                  maxLength={1000}
+                />
+              </label>
+            ) : null}
+          </DataForm>
+        ) : (
+          <p>Prepare the offboarding plan first.</p>
+        )}
       </section>
       <section className="management-card form-stack">
         <h2>Temporary support access</h2>

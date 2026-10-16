@@ -1,3 +1,7 @@
+import { formatMemberBillingDate as formatDate } from "../../../../../lib/member-billing-dates";
+import { randomUUID } from "node:crypto";
+import { getSourceBillingRenewalReview } from "../../../../../lib/source-billing-renewals";
+import { SourceRenewalForm } from "./source-renewal-form";
 import { MembershipLifecyclePanel } from "@flowstate/ui";
 import { ownerLifecycleAction } from "./lifecycle-actions";
 import { VerifiedMembershipEnrollment } from "./verified-enrollment";
@@ -25,20 +29,11 @@ import {
   OwnerPunchCardGrantForm,
 } from "./billing-forms";
 
-function formatDate(value: Date | null): string {
-  if (!value) {
-    return "Not set";
-  }
-
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-  }).format(value);
-}
-
-function formatDateTime(value: Date): string {
+function formatDateTime(value: Date, timeZone: string): string {
   return new Intl.DateTimeFormat("en-CA", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone,
   }).format(value);
 }
 
@@ -58,7 +53,7 @@ export default async function MemberBillingPage({
   }>;
 }) {
   const { memberId } = await params;
-  const { session, workspace } = await requireOwnerWorkspaceContext();
+  const { session, workspace, workspaceUserId } = await requireOwnerWorkspaceContext();
   const [profile, punchCardBalances, punchCardProducts, activationForms] = await Promise.all([
     getMemberBillingProfile({
       workspaceId: workspace.id,
@@ -83,9 +78,11 @@ export default async function MemberBillingPage({
   }
 
   const membership = profile.currentMembership;
+  const sourceRenewal=membership ? await getSourceBillingRenewalReview({workspaceId:workspace.id,workspaceUserId,userId:session.userId},membership.id) : null;
   const lifecycle = membership ? await getMembershipLifecycle({ workspaceId: workspace.id, userId: session.userId }, membership.id) : null;
-  const contract = membership ? await prisma.memberMembership.findUnique({ where: { id: membership.id }, select: { acceptedTerms: true, allowanceAnchorDate: true, startedAt: true } }) : null;
+  const contract = membership ? await prisma.memberMembership.findUnique({ where: { id: membership.id }, select: { acceptedTerms: true, allowanceAnchorDate: true, startedAt: true, allowanceTimezone: true } }) : null;
   const terms = readAcceptedMembershipTerms(contract?.acceptedTerms);
+  const billingTimezone = contract?.allowanceTimezone ?? workspace.location.timezone;
   const allowanceDate = getWorkspaceDateString(new Date(), workspace.location.timezone);
   const [allowance, adjustments] = await Promise.all([getMembershipAllowanceSummary({ workspaceId: workspace.id, memberId, scheduledForDate: allowanceDate, timezone: workspace.location.timezone }), prisma.membershipAllowanceAdjustment.findMany({ where: { workspaceId: workspace.id, memberId }, orderBy: { createdAt: "desc" }, take: 20 })]);
   const grantableProducts = punchCardProducts.activeProducts;
@@ -105,10 +102,12 @@ export default async function MemberBillingPage({
           className="button button-secondary"
           href={`/dashboard/members/${profile.member.id}`}
         >
+
           Back to profile
         </Link>
       }
     >
+      {sourceRenewal ? <SourceRenewalForm review={sourceRenewal} operationKey={randomUUID()}/> : null}
       <div className="management-grid">
         <section className="management-card">
           <p className="dashboard-card-label">Activation forms</p>
@@ -192,7 +191,7 @@ export default async function MemberBillingPage({
                 </div>
                 <div>
                   <dt>Next billing date</dt>
-                  <dd>{formatDate(membership.nextBillingDate)}</dd>
+                  <dd>{formatDate(membership.nextBillingDate, billingTimezone)}</dd>
                 </div>
                 <div>
                   <dt>Cancel at period end</dt>
@@ -271,7 +270,7 @@ export default async function MemberBillingPage({
                       </div>
                       <div>
                         <dt>Purchased</dt>
-                        <dd>{formatDate(card.purchasedAt)}</dd>
+                        <dd>{formatDate(card.purchasedAt, workspace.location.timezone)}</dd>
                       </div>
                       <div>
                         <dt>Recorded price</dt>
@@ -301,7 +300,7 @@ export default async function MemberBillingPage({
         </section>
       </div>
 
-      {membership && lifecycle && contract ? <section className="management-card"><MembershipLifecyclePanel memberId={memberId} membershipId={membership.id} memberName={profile.member.fullName} owner={lifecycle.owner} currency={terms?.currency ?? membership.membershipPlan.currency} billingAnchor={toDateOnlyString(contract.allowanceAnchorDate ?? contract.startedAt)} policyKnown={!!lifecycle.policy} allowCancellation={true} allowFreeze={!!lifecycle.policy?.freezeEnabled} action={ownerLifecycleAction} requests={lifecycle.requests.map((request) => ({ id: request.id, kind: request.kind, state: request.state, receivedAt: request.receivedAt.toISOString(), effectiveOn: request.effectiveOn ? toDateOnlyString(request.effectiveOn) : null, resumeOn: request.resumeOn ? toDateOnlyString(request.resumeOn) : null, providerOperationId: request.providerOperationId, active: request.activeSlot === "ACTIVE" }))} /></section> : null}
+      {membership && lifecycle && contract ? <section className="management-card"><MembershipLifecyclePanel sourceBillingManaged={lifecycle.sourceBillingManaged} memberId={memberId} membershipId={membership.id} memberName={profile.member.fullName} owner={lifecycle.owner} currency={terms?.currency ?? membership.membershipPlan.currency} billingAnchor={toDateOnlyString(contract.allowanceAnchorDate ?? contract.startedAt)} policyKnown={!!lifecycle.policy} allowCancellation={true} allowFreeze={!!lifecycle.policy?.freezeEnabled} action={ownerLifecycleAction} requests={lifecycle.requests.map((request) => ({ id: request.id, kind: request.kind, state: request.state, receivedAt: request.receivedAt.toISOString(), effectiveOn: request.effectiveOn ? toDateOnlyString(request.effectiveOn) : null, resumeOn: request.resumeOn ? toDateOnlyString(request.resumeOn) : null, providerOperationId: request.providerOperationId, active: request.activeSlot === "ACTIVE" }))} /></section> : null}
 
       <section className="management-card form-stack"><h3>Class allowance</h3>
         {allowance?.unlimited ? <p>Unlimited classes under the accepted membership terms.</p> : allowance ? <div className="stack-list">{allowance.windows.map((window) => <div className="stack-item" key={window.kind}><div><strong>{window.kind === "WEEK" ? "Billing week" : "Billing month"}: {window.remaining} of {window.limit} available</strong><p>{window.used} used · {window.reserved} reserved · resets {window.endsOn}</p></div></div>)}</div> : <p className="management-copy">No current membership allowance. Pack balances appear above.</p>}
@@ -329,7 +328,7 @@ export default async function MemberBillingPage({
                       {formatMembershipStatus(record.status)}
                     </span>
                   </div>
-                  <p>{formatDateTime(record.occurredAt)}</p>
+                  <p>{formatDateTime(record.occurredAt, workspace.location.timezone)}</p>
                   <dl className="inline-meta">
                     <div>
                       <dt>Amount</dt>

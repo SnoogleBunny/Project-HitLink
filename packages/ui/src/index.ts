@@ -19,3 +19,4 @@ export {
 } from "./workspace-shell";
 
 export { MembershipLifecyclePanel, type LifecyclePanelProps, type LifecycleFormState, type LifecycleReviewView } from "./membership-lifecycle";
+export { RecordsExportPanel, type RecordsExportPanelProps, type RecordsExportState, type RecordsExportJob } from "./records-export";

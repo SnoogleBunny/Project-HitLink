@@ -1,3 +1,4 @@
+import { sourceBillingCoversDate } from "./source-billing.js";
 import { checkMemberClassEligibility } from "./program-progress.js";
 import { financialEntitlementHoldReason } from "./entitlement-holds.js";
 import { readPunchCardTerms, ensurePunchCardLedger, recordPunchCardReservation, settlePunchCardBooking } from "./punch-card-ledger.js";
@@ -36,6 +37,9 @@ interface AccessRestrictionRecord {
 }
 
 interface AccessMembershipRecord {
+  sourceBillingManaged?: boolean;
+  sourceAccessHeld?: boolean;
+  sourceBillingEvidence?: Array<{ paidFrom: Date; paidThrough: Date }>;
   id: string;
   status: MemberMembershipStatus;
   acceptedTerms?: unknown;
@@ -48,6 +52,7 @@ interface AccessMembershipRecord {
 }
 
 interface AccessPunchCardRecord {
+  expiresOn?: Date | null;
   id: string;
   acceptedTerms?: unknown;
   remainingPunches: number;
@@ -487,6 +492,7 @@ async function getCurrentMembership(args: {
     },
     include: {
       billingState: true,
+      sourceBillingEvidence: true,
       membershipPlan: {
         include: {
           programRestrictions: {
@@ -507,6 +513,7 @@ function isPunchCardProgramAllowed(card: AccessPunchCardRecord, programId: strin
 }
 
 export async function pickOldestEligiblePunchCard(args: {
+  scheduledForDate?: string;
   workspaceId: string;
   memberId: string;
   programId: string;
@@ -544,7 +551,7 @@ export async function pickOldestEligiblePunchCard(args: {
   });
 
   return (
-    punchCards.find((card) => isPunchCardProgramAllowed(card, args.programId)) ?? null
+    punchCards.find((card) => isPunchCardProgramAllowed(card, args.programId) && (!card.expiresOn || (!!args.scheduledForDate && args.scheduledForDate < toDateOnlyString(card.expiresOn)))) ?? null
   );
 }
 
@@ -588,12 +595,12 @@ export async function findEligibleDropInProduct(args: {
   );
 }
 
-function membershipCanFundDate(membership: Pick<AccessMembershipRecord, "status" | "frozenFrom" | "frozenUntil" | "billingState">, date: string | undefined, now: Date): boolean {
+function membershipCanFundDate(membership: Pick<AccessMembershipRecord, "status" | "frozenFrom" | "frozenUntil" | "billingState" | "sourceBillingManaged" | "sourceBillingEvidence" | "sourceAccessHeld">, date: string | undefined, now: Date): boolean {
   const outsideFreeze = membership.status === "FROZEN" && !!date && !!membership.frozenFrom && !!membership.frozenUntil && (date < toDateOnlyString(membership.frozenFrom) || date >= toDateOnlyString(membership.frozenUntil));
   const billing = membership.billingState;
   const debtAllowed = billing?.gracePeriodEndsAt ? billing.gracePeriodEndsAt > now : !billing || !["GRACE_PERIOD", "PAST_DUE", "PAYMENT_FAILED"].includes(billing.status);
   const statusAllowed = membership.status === "ACTIVE" || (membership.status === "PAST_DUE" && !!billing?.gracePeriodEndsAt && billing.gracePeriodEndsAt > now) || outsideFreeze;
-  return statusAllowed && debtAllowed;
+  return statusAllowed && debtAllowed && sourceBillingCoversDate(membership, date);
 }
 
 async function resolveBookingAccessForProgramWithDb(args: {
@@ -623,6 +630,7 @@ async function resolveBookingAccessForProgramWithDb(args: {
   }
 
   const punchCard = await pickOldestEligiblePunchCard({
+    scheduledForDate: args.scheduledForDate,
     workspaceId: args.workspaceId,
     memberId: args.memberId,
     programId: args.programId,
@@ -717,15 +725,16 @@ export type AccessResolutionDatabase = Pick<
 >;
 
 async function debitPunchCard(args: {
+  scheduledForDate: string;
   punchCardId?: string;
   workspaceId: string;
   memberId: string;
   programId: string;
   db: AccessTransactionDatabase;
 }): Promise<{ memberPunchCardId: string } | null> {
-  const punchCard = args.punchCardId ? await args.db.memberPunchCard.findFirst({ where: { id: args.punchCardId, workspaceId: args.workspaceId, memberId: args.memberId, status: "ACTIVE", remainingPunches: { gt: 0 } }, include: { punchCardProduct: { include: { programRestrictions: true } } } }) : await pickOldestEligiblePunchCard({ workspaceId: args.workspaceId, memberId: args.memberId, programId: args.programId, db: args.db });
+  const punchCard = args.punchCardId ? await args.db.memberPunchCard.findFirst({ where: { id: args.punchCardId, workspaceId: args.workspaceId, memberId: args.memberId, status: "ACTIVE", remainingPunches: { gt: 0 } }, include: { punchCardProduct: { include: { programRestrictions: true } } } }) : await pickOldestEligiblePunchCard({ workspaceId: args.workspaceId, memberId: args.memberId, programId: args.programId, scheduledForDate: args.scheduledForDate, db: args.db });
 
-  if (!punchCard || !isPunchCardProgramAllowed(punchCard, args.programId)) {
+  if (!punchCard || !isPunchCardProgramAllowed(punchCard, args.programId) || (punchCard.expiresOn && args.scheduledForDate >= toDateOnlyString(punchCard.expiresOn))) {
     return null;
   }
 
@@ -1035,7 +1044,8 @@ async function createAccessBackedBookingWithDb(args: {
     const held = await financialEntitlementHoldReason({ workspaceId: args.workspaceId, targets: [{ targetKind: "PUNCH_CARD", targetId: access.memberPunchCardId }], db: args.db });
     if (held) return { status: "error", code: "NO_ACCESS", message: held };
     const debit = await debitPunchCard({
-      punchCardId: args.punchCardOverrideId,
+      scheduledForDate: occurrence.dateString,
+      punchCardId: args.punchCardOverrideId ?? access.memberPunchCardId,
       workspaceId: args.workspaceId,
       memberId,
       programId: template.programId,
@@ -1951,7 +1961,7 @@ export async function moveAccessBackedBooking(args: {
       await lockClassSchedule(tx, args.workspaceId);
       const prior = await tx.classBookingMove.findFirst({ where: { id: mutationId, workspaceId: args.workspaceId, memberId: args.memberId, originalBookingId: args.bookingId } });
       if (prior) return { status: "moved" as const, bookingId: prior.targetBookingId };
-      const original = await tx.classBooking.findFirst({ where: { id: args.bookingId, workspaceId: args.workspaceId, memberId: args.memberId }, include: { classTemplate: { include: classOccurrenceInclude }, fundingMembership: { include: { billingState: true } } } });
+      const original = await tx.classBooking.findFirst({ where: { id: args.bookingId, workspaceId: args.workspaceId, memberId: args.memberId }, include: { classTemplate: { include: classOccurrenceInclude }, fundingMembership: { include: { sourceBillingEvidence: true, billingState: true } } } });
       if (!original || original.status !== "BOOKED") throw new BookingMoveFailure("This booking can no longer be moved. Refresh your classes.");
       const held = await financialEntitlementHoldReason({ workspaceId: args.workspaceId, targets: [{ targetKind: "BOOKING", targetId: original.id }, { targetKind: "BOOKING", targetId: original.fundedByBookingId }, { targetKind: "PUNCH_CARD", targetId: original.memberPunchCardId }, { targetKind: "MEMBERSHIP", targetId: original.fundingMembershipId }], db: tx });
       if (held) throw new BookingMoveFailure(held);
@@ -2001,4 +2011,35 @@ export async function moveAccessBackedBooking(args: {
 /** The verified public registration transaction owns the schedule lock and identity checks. */
 export async function createVerifiedTrialBookingTx(args: { workspaceId: string; memberId: string; guardianId?: string | null; classTemplateId: string; scheduledForDate: string; timezone: string; db: Prisma.TransactionClient; now: Date }): Promise<CreateAccessBackedBookingResult> {
   return createAccessBackedBookingWithDb({ ...args, source: "PUBLIC_TRIAL", trial: true, allowDropIn: false, db: args.db as unknown as AccessTransactionDatabase });
+}
+
+/** Only the authorized staging importer calls this inside its locked transaction. Funding is explicit. */
+export async function createImportedClassBookingTx(args: {
+  workspaceId: string; memberId: string; guardianId?: string | null; classTemplateId: string;
+  scheduledForDate: string; timezone: string; db: Prisma.TransactionClient; now: Date;
+  funding: { type: "MEMBERSHIP" | "PUNCH_CARD" | "TRIAL" | "SOURCE_PAYMENT"; id?: string; productId?: string; amountCents?: number; currency?: string };
+}): Promise<CreateAccessBackedBookingResult> {
+  const reject = (message: string): CreateAccessBackedBookingResult => ({ status: "error", code: "NO_ACCESS", message });
+  const workspace = await args.db.workspace.findUnique({ where: { id: args.workspaceId }, include: { migration: true } });
+  if (!workspace || workspace.status === "ACTIVE" || !workspace.migration || workspace.migration.stage === "COMPLETE" || workspace.migration.ownerReviewAcknowledgedAt) return reject("Import reservations only while the workspace is in reviewed staging.");
+  const template = await getActiveTemplate({ ...args, db: args.db as unknown as AccessTransactionDatabase });
+  if (!template || getOccurrenceStartsAt({ scheduledForDate: args.scheduledForDate, startTimeMinutes: template.startTimeMinutes, timezone: args.timezone }) <= args.now) return reject("The source reservation must be for an active future class.");
+  if (await args.db.classBooking.findFirst({ where: { workspaceId: args.workspaceId, memberId: args.memberId, classTemplateId: args.classTemplateId, scheduledForDate: dateOnlyStringToUtcDate(args.scheduledForDate) } })) return reject("A destination booking already exists. Reconcile its source identity; do not recreate or overwrite it.");
+  let fundingOverride: AccessResolution | undefined;
+  if (args.funding.type === "MEMBERSHIP") {
+    const membership = await getCurrentMembership({ ...args, db: args.db as unknown as AccessTransactionDatabase });
+    if (!membership || membership.id !== args.funding.id || !membershipCanFundDate(membership, args.scheduledForDate, args.now) || !isMembershipProgramAllowed({ programId: template.programId, membership })) return reject("The named source contract does not cover this participant, program and class date.");
+    fundingOverride = { type: "membership", membershipId: membership.id };
+  } else if (args.funding.type === "PUNCH_CARD") {
+    if (!args.funding.id) return reject("Name the source class pack funding this reservation.");
+    fundingOverride = { type: "punch_card", memberPunchCardId: args.funding.id, productName: "Imported pack" };
+  } else if(args.funding.type === "SOURCE_PAYMENT") {
+    const product=await args.db.dropInProduct.findFirst({where:{id:args.funding.productId ?? "",workspaceId:args.workspaceId},include:{programRestrictions:true}});
+    const evidence=await args.db.importedFinancialEvidence.findFirst({where:{id:args.funding.id ?? "",workspaceId:args.workspaceId,beneficiaryMemberId:args.memberId,sourceRecordKind:"PAYMENT",sourceStatus:"SUCCEEDED",billingOwner:"SOURCE",refundOwner:"SOURCE"}});
+    if(!evidence || !product || !isProgramAllowed({programId:template.programId,restrictionMode:product.restrictionMode,restrictions:product.programRestrictions}) || !args.funding.amountCents || args.funding.amountCents<=0 || evidence.currency!==args.funding.currency) return reject("The mapped source payment and drop-in product do not cover this class.");
+    const allocated=await args.db.importedBookingFunding.aggregate({where:{workspaceId:args.workspaceId,evidenceId:evidence.id},_sum:{amountCents:true}});
+    if((allocated._sum.amountCents??0)+args.funding.amountCents>evidence.paidCents-evidence.refundedCents) return reject("Source paid funding is already allocated.");
+    fundingOverride={type:"drop_in",dropInProductId:product.id,productName:product.name,priceCents:args.funding.amountCents,currency:args.funding.currency!};
+  } else if (await args.db.classBooking.findFirst({ where: { workspaceId: args.workspaceId, memberId: args.memberId, bookingType: "TRIAL", status: { in: ["BOOKED", "ATTENDED", "NO_SHOW"] }, classTemplate: { programId: template.programId } } })) return reject("The participant already has a trial in this program. Review the source reservation.");
+  return createAccessBackedBookingWithDb({ ...args, source: "ADMIN", trial: args.funding.type === "TRIAL", allowDropIn: args.funding.type === "SOURCE_PAYMENT", fundingOverride, punchCardOverrideId: args.funding.type === "PUNCH_CARD" ? args.funding.id : undefined, db: args.db as unknown as AccessTransactionDatabase });
 }

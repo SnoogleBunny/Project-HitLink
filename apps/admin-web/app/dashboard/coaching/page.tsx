@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
-import { getCoachingWorkspace } from "@flowstate/db";
+import { getCoachingWorkspace, getCoachingReviewInbox } from "@flowstate/db";
 import { Badge, Money, Notice } from "@flowstate/ui";
 import { AdminShell } from "../../_components/admin-shell";
 import { requireOperationsWorkspaceContext } from "../../../lib/operations-workspace";
@@ -24,6 +24,10 @@ export default async function CoachingPage({
     userId: context.session.userId,
   });
   const feedback = await searchParams;
+  const reviews = await getCoachingReviewInbox({
+    workspaceId: context.workspace.id,
+    userId: context.session.userId,
+  });
   return (
     <AdminShell
       session={context.session}
@@ -35,6 +39,20 @@ export default async function CoachingPage({
         <Notice tone="danger">{feedback.error}</Notice>
       ) : feedback.saved ? (
         <Notice tone="success">Saved.</Notice>
+      ) : null}
+      {reviews.length ? (
+        <section className="management-card">
+          <h2>Restricted review requests</h2>
+          {reviews.map((review) => (
+            <p key={review.id}>
+              <Link href={`/dashboard/coaching/reviews/${review.id}`}>
+                {review.purpose}
+              </Link>{" "}
+              · expires{" "}
+              {coachingTime(review.expiresAt, context.location.timezone)}
+            </p>
+          ))}
+        </section>
       ) : null}
       <section className="management-card">
         <h2>Clients</h2>

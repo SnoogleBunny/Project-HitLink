@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import { runGuardedDemoAction } from "./demo-database-safety.mjs";
 
 const demoMemberImportCsv = [
   "external_id,full_name,email,phone,status,tags,notes",
@@ -13,10 +14,10 @@ const demoMemberImportSha256 = createHash("sha256")
   .update(demoMemberImportBytes)
   .digest("hex");
 
-const prisma = new PrismaClient();
+let prisma;
 
 const demo = {
-  workspaceName: "Demo Flowstate Gym",
+  workspaceName: "Demo HitLink Gym",
   ownerEmail: "demo-owner@flowstate.local",
   memberEmail: "demo-member@flowstate.local",
   importStartedAt: "2026-05-30T11:30:00.000Z",
@@ -28,8 +29,8 @@ const demo = {
     nextOwnerAction:
       "No further owner review is pending. Daily operations are active.",
     flowstateResponsibility:
-      "Flowstate completed the reviewed handoff and recorded the workspace as ready for daily operations.",
-    expectedNextMilestone: "Daily operations are active in Flowstate.",
+      "HitLink completed the reviewed handoff and recorded the workspace as ready for daily operations.",
+    expectedNextMilestone: "Daily operations are active in HitLink.",
   },
   ids: {
     workspace: "demo-workspace-flowstate",
@@ -65,6 +66,7 @@ const demo = {
 };
 
 async function main() {
+  prisma = new PrismaClient();
   const workspaces = await prisma.workspace.findMany({
     where: {
       name: demo.workspaceName,
@@ -574,7 +576,7 @@ async function main() {
     workspaceId: demo.ids.workspace,
     programId: demo.ids.program,
     roomId: demo.ids.room,
-    coachWorkspaceUserId: demo.ids.ownerWorkspaceUser,
+    coachWorkspaceUserId: null,
   });
   assert.deepEqual(membershipPlan, {
     workspaceId: demo.ids.workspace,
@@ -751,12 +753,12 @@ async function main() {
     demoUsers: 2,
     workspaceMigrations: 1,
     locations: 1,
-    rooms: 1,
+    rooms: 2,
     workspaceUsers: 2,
     workspaceSettings: 1,
     stripeSettings: 1,
-    programs: 1,
-    classTemplates: 1,
+    programs: 3,
+    classTemplates: 5,
     membershipPlans: 1,
     punchCardProducts: 1,
     dropInProducts: 1,
@@ -775,6 +777,49 @@ async function main() {
     reconciliationReportCount: 1,
     migrationImportedRecordCount: 1,
   });
+
+  const [{ classOccurrenceInclude, resolveClassOccurrence }, { addDays, toDateOnlyString }, { readAcceptedMembershipTerms }, { readPunchCardTerms }, { parseMembershipLifecyclePolicy, defaultMembershipLifecyclePolicy }] = await Promise.all([
+    import("../src/class-occurrences.js"), import("../src/occurrences.js"), import("../src/membership-allowances.js"), import("../src/punch-card-ledger.js"), import("../src/membership-lifecycle-policy.js"),
+  ]);
+  const templates = await prisma.classTemplate.findMany({ where: { workspaceId }, include: classOccurrenceInclude });
+  const firstDay = toDateOnlyString(templates[0].scheduleStartsOn);
+  const expectedSchedule = [
+    ["HIIT Bootcamp", 435, 510], ["HIIT/Hyrox", 990, 1050], ["Beginner Padwork", 1050, 1110], ["Beginner Muay Thai", 1110, 1170], ["Advanced Muay Thai", 1110, 1170],
+  ].sort((a, b) => a[0].localeCompare(b[0]));
+  for (const offset of [0, 1, 2, 3, 4, 5, 6, 400]) {
+    const occurrences = templates.map((template) => resolveClassOccurrence({ template, scheduledForDate: addDays(firstDay, offset) })).filter(Boolean);
+    assert.equal(occurrences.length, 5, "the five classes must recur every day without a fixed demo horizon");
+    assert.deepEqual(occurrences.map((item) => [item.displayTitle, item.startTimeMinutes, item.endTimeMinutes]).sort((a, b) => a[0].localeCompare(b[0])), expectedSchedule);
+    for (const item of occurrences) {
+      assert.equal(item.coachWorkspaceUserId, null, "unassigned coaching must not invent staff availability");
+      assert.equal(occurrences.some((other) => other.id !== item.id && other.roomId === item.roomId && other.startTimeMinutes < item.endTimeMinutes && other.endTimeMinutes > item.startTimeMinutes), false, "simultaneous classes must use separate rooms");
+    }
+  }
+  assert.equal(await prisma.classScheduleRevision.count({ where: { workspaceId, recurrence: "DAILY", endDate: null } }), 5);
+  const contract = await prisma.memberMembership.findUniqueOrThrow({ where: { id: demo.ids.memberMembership } });
+  const accepted = readAcceptedMembershipTerms(contract.acceptedTerms);
+  assert.ok(accepted);
+  assert.deepEqual(parseMembershipLifecyclePolicy(accepted.lifecyclePolicy), defaultMembershipLifecyclePolicy);
+  assert.equal(accepted.monthlyPriceCents, 12900);
+  assert.equal(accepted.currency, "cad");
+  assert.equal(toDateOnlyString(contract.allowanceAnchorDate), firstDay);
+  assert.equal(contract.allowanceTimezone, "America/Vancouver");
+  assert.equal(contract.stripeSubscriptionId, null);
+  assert.equal(contract.stripeCustomerId, null);
+  assert.equal(contract.status, "PENDING_PAYMENT_METHOD", "a demo contract must not imply a successful provider payment");
+  const card = await prisma.memberPunchCard.findUniqueOrThrow({ where: { id: demo.ids.memberPunchCard } });
+  const packPolicy = readPunchCardTerms(card.acceptedTerms);
+  assert.ok(packPolicy);
+  assert.equal(packPolicy.originalPunches, 10);
+  assert.equal(packPolicy.priceCents, 25000);
+  const ledger = await prisma.punchCardEntry.findMany({ where: { memberPunchCardId: card.id } });
+  assert.equal(ledger.length, 1);
+  assert.equal(ledger[0].operationKey, `opening:${card.id}`);
+  assert.equal(ledger.reduce((total, entry) => total + entry.delta, 0), card.remainingPunches);
+  assert.match(ledger[0].reason, /demo grant; no payment was collected/);
+  assert.equal(await prisma.payment.count({ where: { workspaceId } }), 0);
+  assert.equal(await prisma.refund.count({ where: { workspaceId } }), 0);
+  assert.equal(await prisma.financialOperation.count({ where: { workspaceId } }), 0);
 
   globalThis.console.log(
     JSON.stringify(
@@ -798,7 +843,7 @@ async function main() {
 }
 
 try {
-  await main();
+  await runGuardedDemoAction({ actionName: "verify demo seed", action: main });
 } finally {
-  await prisma.$disconnect();
+  await prisma?.$disconnect();
 }

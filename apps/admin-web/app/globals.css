@@ -166,6 +166,12 @@ textarea:focus-visible {
   outline-offset: 3px;
 }
 
+.records-shell {
+  width: min(100%, 58rem);
+  margin-inline: auto;
+  padding: clamp(1rem, 3vw, 1.5rem);
+}
+
 .auth-page {
   align-items: center;
   display: grid;

@@ -1143,6 +1143,7 @@ export async function resolveRequiredFormStatusesForMember(args: {
   workspaceId: string;
   memberId: string;
   targets?: RequirementTarget[];
+  ensureRequests?: boolean;
   db?: FormsDatabase;
   now?: Date;
 }): Promise<ResolvedRequiredFormStatusResult> {
@@ -1161,6 +1162,7 @@ export async function resolveRequiredFormStatusesForMember(args: {
     };
   }
 
+  if (args.ensureRequests !== false) {
   await expireOpenMagicLinkRequests({
     workspaceId: args.workspaceId,
     db,
@@ -1181,6 +1183,7 @@ export async function resolveRequiredFormStatusesForMember(args: {
     now,
   });
 
+  }
   const assignments = (await listActiveAssignments({
     workspaceId: args.workspaceId,
     targets: args.targets,

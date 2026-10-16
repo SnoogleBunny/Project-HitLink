@@ -10,13 +10,24 @@ export default async function MemberLayout({
   children: ReactNode;
 }) {
   const context = await requireMemberPortalContext();
-  const hasCoaching =
-    (await prisma.coachingEnrollment.count({
+  const [coachingEnrollments, coachingPayerGrants] = await Promise.all([
+    prisma.coachingEnrollment.count({
       where: {
         workspaceId: context.workspace.id,
         memberId: (context.accountMember ?? context.member).id,
       },
-    })) > 0;
+    }),
+    prisma.coachingPayerGrant.count({
+      where: {
+        workspaceId: context.workspace.id,
+        payerUserId: context.session.userId,
+        payerMemberId: (context.accountMember ?? context.member).id,
+        activeSlot: "ACTIVE",
+        revokedAt: null,
+      },
+    }),
+  ]);
+  const hasCoaching = coachingEnrollments > 0 || coachingPayerGrants > 0;
   const members = context.authorizedMembers ?? [
     { id: context.member.id, fullName: context.member.fullName },
   ];

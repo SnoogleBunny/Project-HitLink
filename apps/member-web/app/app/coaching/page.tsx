@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getCoachingWorkspace } from "@flowstate/db";
+import { getCoachingWorkspace, getCoachingPayerRequests } from "@flowstate/db";
 import { Badge } from "@flowstate/ui";
 import { MemberShell } from "../../_components/member-shell";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
@@ -10,12 +10,28 @@ export default async function CoachingPage() {
     workspaceId: context.workspace.id,
     userId: context.session.userId,
   });
+  const paymentRequests = await getCoachingPayerRequests({
+    workspaceId: context.workspace.id,
+    userId: context.session.userId,
+  });
   return (
     <MemberShell
       context={context}
       title="My coaching"
       description="Your programs and notes are private to your own account."
     >
+      {paymentRequests.length ? (
+        <section className="member-card">
+          <h2>Payment requests</h2>
+          {paymentRequests.map((request) => (
+            <p key={request.id}>
+              <Link href={`/app/coaching/payments/${request.id}`}>
+                Review coaching payment request
+              </Link>
+            </p>
+          ))}
+        </section>
+      ) : null}
       <section className="member-card">
         <h2>My programs</h2>
         {data.enrollments.length ? (

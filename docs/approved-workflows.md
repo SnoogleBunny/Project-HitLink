@@ -2,7 +2,7 @@
 
 Martial arts and adult life coaching
 
-Version 1.3  |  October 15, 2026
+Version 1.3  |  October 16, 2026
 
 Prepared for the founder and product delivery team.
 
@@ -1357,28 +1357,62 @@ Can a Muay Thai, jiu jitsu or taekwondo gym run family and member self-service b
 
 ### Status on October 16 2026
 
-This record supplements the requirements without removing unmet acceptance criteria or certifying production activation. Persisted scheduling, family access, allowances, membership lifecycle, coaching, website publication, public enrollment, payment reconciliation, exports and temporary support access now have implementation and isolated verification. Live Stripe settlement, outbound email and production deployment remain separate checks. No live payment or email was performed for this verification.
+This record supplements the requirements without removing acceptance criteria or certifying production activation. Persisted scheduling, family access, allowances, membership lifecycle, coaching, website publication, public enrollment, payment reconciliation, scoped exports, retention and temporary support access have implementation and isolated verification. Browser checks cover the actual owner and member pages at desktop and phone sizes in light and dark themes. Live Stripe settlement, outbound email and production deployment remain separate checks. No live payment, email or production deletion was performed for this verification.
 
-### Membership enrollment and review
+### Membership enrollment and payment review
 
 Owners share current published offers. The adult payer or verified guardian completes account and email verification, current forms, accepted terms and hosted payment. The old owner action that directly created and charged a subscription has been retired. Assigning a plan does not authorize a charge. Existing contract, allowance and accepted cancellation or freeze workflows remain available.
 
 Activation requires the canonical paid first invoice and matching active subscription, payer, beneficiary and accepted terms. Money can be recorded while access remains under review. Restored family permission or completed forms do not clear an unresolved review automatically. Reviewed checkouts withhold payable links. An unknown processor outcome beyond the safe idempotency window requires reconciliation before another checkout.
 
-### Exports and offboarding
+Accepted cancellation terms preserve the original notice receipt and policy. The default stops automatic collection of old debt at termination; owners can explicitly offer a different policy, and existing accepted terms remain unchanged. Future notice periods do not stop collection early. At the effective boundary, a separate durable operation verifies the processor's invoice collection flags. Remaining debt enters review; an uncertain stop is not reported complete.
 
-Records and access provides an owner archive containing selected relational records, CSV copies, a data dictionary and exact form files with checksums. Stable identifiers preserve household, booking, payment and signed-version links. CSV values resist spreadsheet formula interpretation; JSON retains source values. New database fields are not exported automatically.
+### Staff availability
 
-Every product export excludes private coaching notes and unpublished drafts. General gym exports also omit coaching intake and published client content. The named client's separate export includes the current accepted plan, submitted intake, milestones, published note revisions and appointments. Export acceptance must still verify the required accepted-version, agreement and transaction relationships for that service. Exceptional private-content review remains separately authorized work and is not enabled by operational support access.
+Owners record leave in the gym timezone, with ambiguous daylight-saving times rejected. Before saving, HitLink checks dated class assignments, private lessons, published events, coaching appointments and published appointment availability, including buffers. Owners must resolve those conflicts first; recording leave cannot silently remove services, seats or funding. Date-specific substitutes and unassigned dates are respected. Future recurring edits and assignments check every affected leave date, including ongoing series. Publishing, booking and moving appointments recheck leave under the shared schedule lock; a failed move retains the original appointment and held unit. Withdrawing leave preserves its audit history and opens time for new assignments without restoring cancelled services.
 
-Temporary archives expire after 24 hours; maintenance removes their bytes. The owner downloads and checks the archive, then confirms its checksum and receipt. Access revocation checks every active owner's agreement, unresolved money, future services, coaching retrieval windows, fresh billing evidence and export freshness. Changed records require a fresh archive and review. Revocation retains history and cancels pending workspace notices.
+### Coaching delivery and records
 
-Customer renewal stops are verified against the connected processor after accepted membership lifecycle actions. Transferring live billing requires separately reconciled handover evidence; copying records does not transfer payment authority. HitLink platform billing is verified independently against a subscription bound to the gym. An absent platform subscription, including an unspecified free-pilot arrangement, remains review-required. No fee-free policy has been invented.
+Adult clients accept a named coach and a versioned plan from their own account. Accepted-plan snapshots retain agreement, date and intake-version evidence. Daily private notes remain author-only in ordinary use. The client sees published revisions and withdrawal notices. A corrected publication cannot restore withdrawn text or its old revisions. Owners can contain a publication after closure or a coach's departure without reading its content; queued notices and prepared archives are invalidated, and a named reviewer records recipient follow-up.
 
-The plan names a records contact, access end, retention review date, retention basis and holds. Termination does not delete the database, files or backups. Final deletion and backup lifecycle verification remain separate authorized retention work. A scheduled review is not proof of deletion; completed-deletion promises remain subject to those release gates.
+Exceptional private-note review is a separate path: exact note IDs, a named reviewer, a stated purpose, owner approval, explicit client and author consent, and an expiry of at most one hour. Every authorized read is audited. Revocation or lost account authority takes effect on the next request. This permission never enables a product export of private text.
 
-### Support and operating configuration
+Appointments capture the accepted cancellation deadline and no-show grace. A timely move transfers the reserved unit. A late move consumes the old unit and reserves another atomically; a failed replacement retains the original booking. Owners may record a reasoned waiver. Immutable events retain the earlier time and unit outcome. A coach confirms no-show only after the accepted grace period; elapsed time alone does not consume a unit. Provider cancellation returns it. Inactive-coach recovery returns future holds, queues an owner review and requires client acceptance of a replacement. Missing promised notes enter a named delivery-review queue. Revised plans preserve earlier accepted delivery dates for settlement.
 
-Owners can grant an existing named account read-only diagnostics for up to 24 hours and revoke it immediately. Each read logs access and rechecks expiry, revocation and owner authority. Support sees aggregate status and counts, without impersonation, mutations, exports, coaching content, form contents or payment details.
+An optional adult third-party payer receives only the client's name and the agreed amount and terms. The client consents, the payer verifies their own account contact and explicitly accepts the terms, and dispatch rechecks current authority. Payment permission never grants intake, goals, appointments or notes. A payment received after revocation or service change is recorded without automatic activation and stays in review.
 
-Before a live pilot, verify actual Stripe accounts, webhook signatures, hosted-return origins, the email provider and the maintenance scheduler. Suppress expired or superseded identity challenges and withdrawn publications. Complete the legal business and contact placeholders in Terms and Privacy. Provider-dependent and review-required states remain visible until actual evidence resolves them.
+Closure stops delivery independently of money and record retrieval. The owner proposes a settlement against a fresh snapshot of unused units and undelivered notes; the client accepts it. Final settlement requires resolved delivery/record cases and exact verified refund or credit evidence when money is owed. A note saying that a refund was agreed is insufficient. Settled programs cannot silently reopen or reuse refunded funding.
+
+### Scoped archives and receipts
+
+The owner archive contains reviewed relational records, CSV copies, a data dictionary and exact form/source files with checksums. Separate MEMBER and PAYER archives enforce the requesting account's current authority. Member records include exact signed-form versions and imported signature receipts; payer records include only the account's transactions and their beneficiary links. CSV values resist spreadsheet formula interpretation; JSON retains source values. New database fields are not exported automatically.
+
+Every product export excludes private coaching notes and unpublished drafts. General gym, member and payer archives also omit coaching intake and client-note content. The named adult client's separate program archive contains accepted plan versions, submitted intake/history, agreement evidence, milestones, published note revisions or withdrawal tombstones, appointment history, settlement and that program's transactions. It excludes other people's financial details. Older records without captured acceptance snapshots are identified as legacy evidence; missing historical agreements are not invented.
+
+Prepared archives expire after 24 hours and maintenance removes their bytes. Downloads recheck identity, current permission and checksum. Receipt requires the recipient to confirm the downloaded checksum or archive explicitly; an HTTP download alone is insufficient. Failed, oversized or withdrawn archives remain visible to a named records reviewer and are not marked received.
+
+### Billing handover and account closure
+
+Access revocation checks every active owner's agreement, unresolved money, future services, coaching retrieval windows, fresh billing evidence and export freshness. Changed records require a fresh archive and review. Revocation retains history and cancels pending workspace notices.
+
+Customer renewal stops are verified against the connected processor after accepted lifecycle actions. Billing handover either stops old renewals and requires separate payer authorization at the new provider, or retains the gym's existing connected processor with exact account, subscription, customer, payer and accepted-authority bindings. A named existing receiver accepts the immutable handover snapshot. Changed contracts, packs, balances or source evidence invalidate it and clear prior approvals. Remaining packs and credits retain their balances while an explicit agreement transfers responsibility. Copying records does not move cards or authorize a new charge. Actual external-system transfers and business agreements remain outside HitLink.
+
+HitLink platform billing is checked independently against a subscription bound to the gym. An absent platform subscription, including an unspecified free-pilot arrangement, remains review-required. No fee-free business policy has been invented.
+
+### Retention and restricted support
+
+Termination does not itself delete records. A separate versioned retention case names custodians, purpose, scope, due date, retrieval requirements and holds. Every active owner approves its current scope. The designated account can use the restricted post-exit route after ordinary workspace access ends. Execution rechecks permissions, inventory, schema, foreign-key boundaries, retrieval and financial blockers under locks. Authorized database records and stored file bytes are removed transactionally, with an aggregate durable receipt and safe replay. Shared global user identities and authentication sessions are intentionally retained.
+
+Current application file bytes are stored in the database. If an inventory names external storage, exact external deletion receipts are required; no unconfigured storage adapter is presented as automated. Backup handling remains a separate custodian/provider attestation with its own evidence. A database purge does not prove backup deletion, and a scheduled review is not proof that anything was deleted. Verification used fictional isolated fixtures only.
+
+Owners can grant an existing named account read-only diagnostics for up to 24 hours and revoke it immediately. Each read logs access and rechecks expiry, revocation and owner authority. Support sees aggregate status and counts, without impersonation, mutations, exports, coaching content, form contents or payment details. Exceptional private-content review has the separate consent path described above.
+
+### Import boundaries and operating configuration
+
+Source imports preserve immutable accepted contracts, bounded paid-through evidence, original-system financial receipt chains, opening packs and allowance usage, explicitly funded future bookings, and exact current consent documents with original signed receipts. Owner acknowledgment and activation recheck funding, dates, forms, payer/guardian authority and the complete reviewed snapshot. Source financial rows remain labelled imported and do not acquire fabricated Stripe identifiers. A recorded source-system receipt is external evidence, not a Stripe-confirmed action. Unknown contract states, missing terms and ambiguous funding stay quarantined. Historical attendance, rank-history and private-note migrations are not automatic imports.
+
+Source-billed cancellation and freeze use owner-recorded original PDF receipts, exact file bytes and checksums, matching source account and contract, and the original confirmation time. The owner attests to evidence against the immutable accepted policy and reviewed change. A configured future change applies the agreed access dates and booking consequences; at its boundary, it still requires evidence of completion rather than claiming that billing stopped. Completed receipts confirm the external action. A frozen contract blocks bookings after its proposed resume date until a supported resume receipt is recorded, and access still requires paid-through coverage. Withdrawal before cancellation and resumption use the same evidence path. A missing legacy account binding requires explicit owner evidence without rewriting the existing paid interval. These actions make no Stripe calls, create no Stripe identifiers and never restore cancelled seats. Business archives retain the source receipts and checksums.
+
+The isolated demo seed contains the five approved daily classes: HIIT Bootcamp 7:15–8:30 a.m.; HIIT/Hyrox 4:30–5:30 p.m.; Beginner Padwork 5:30–6:30 p.m.; Beginner Muay Thai and Advanced Muay Thai 6:30–7:30 p.m. The simultaneous classes use separate rooms. Coaches may remain unassigned. The recurring demo membership remains pending payment; the usable class pack is an explicit fictional demo grant with an opening ledger. The seed has no fixed production date horizon or simulated provider payment, and it was checked for repeatability in a separate disposable database.
+
+Before a live pilot, verify actual Stripe accounts, webhook signatures, hosted-return origins, the email provider, scheduled maintenance and backups. Suppress expired or superseded identity challenges and withdrawn publications. Complete the legal business and contact placeholders in Terms and Privacy. Configure and test the selected processor, retention and handover policies with the gym. Provider-dependent and review-required states remain visible until actual evidence resolves them.

@@ -84,6 +84,12 @@ export function ProgramFields() {
         value={24}
       />
       <CoachingField
+        label="No-show grace after the appointment starts, in minutes"
+        name="noShowGraceMinutes"
+        type="number"
+        value={15}
+      />
+      <CoachingField
         label="Upfront price in cents (for example, 15000 = 150.00)"
         name="priceCents"
         type="number"

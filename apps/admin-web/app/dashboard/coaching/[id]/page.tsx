@@ -3,6 +3,8 @@ import Link from "next/link";
 import {
   getCoachingDetail,
   getCoachingWorkspace,
+  getCoachingSettlement,
+  getCoachingExportHistory,
   getWorkspaceDateString,
 } from "@flowstate/db";
 import { Badge, Money, Notice } from "@flowstate/ui";
@@ -15,6 +17,7 @@ import {
   coachingTime,
 } from "../../../../lib/coaching-fields";
 import { CoachingForm } from "../form";
+import { CoachingRecordsPanel } from "./records-panel";
 
 export default async function CoachingClientPage({
   params,
@@ -29,10 +32,12 @@ export default async function CoachingClientPage({
     workspaceId: context.workspace.id,
     userId: context.session.userId,
   };
-  const [data, list, feedback] = await Promise.all([
+  const [data, list, feedback, settlement, exports] = await Promise.all([
     getCoachingDetail(actor, id),
     getCoachingWorkspace(actor),
     searchParams,
+    getCoachingSettlement(actor, id),
+    getCoachingExportHistory(actor, id),
   ]);
   const form = { enrollmentId: id, version: data.version };
   return (
@@ -136,7 +141,7 @@ export default async function CoachingClientPage({
                     <Badge>{coachingLabel(note.status)}</Badge>
                   </h3>
                   <p style={{ whiteSpace: "pre-wrap" }}>{note.draftBody}</p>
-                  {!data.closedAt && !note.withdrawnAt ? (
+                  {!data.closedAt ? (
                     <>
                       <details>
                         <summary>Edit draft</summary>
@@ -393,6 +398,62 @@ export default async function CoachingClientPage({
                 {appointment.status === "BOOKED" ? (
                   <>
                     <details>
+                      <summary>Move appointment</summary>
+                      <p>
+                        Late moves consume the old unit and reserve another. An
+                        owner can record a reasoned waiver. The current booking
+                        stays unchanged if the new slot fails.
+                      </p>
+                      <CoachingForm
+                        {...form}
+                        kind="moveAppointment"
+                        operationId={randomUUID()}
+                        submit="Confirm move"
+                      >
+                        <input
+                          type="hidden"
+                          name="appointmentId"
+                          value={appointment.id}
+                        />
+                        <input
+                          type="hidden"
+                          name="appointmentVersion"
+                          value={appointment.version}
+                        />
+                        <Field
+                          name="availabilityId"
+                          label="New appointment time"
+                        >
+                          <option value="">Choose a time</option>
+                          {data.availability.map((slot) => (
+                            <option value={slot.id} key={slot.id}>
+                              {coachingTime(slot.startsAt, data.timezone)}
+                            </option>
+                          ))}
+                        </Field>
+                        <Field name="reason" label="Reason for this move" />
+                        <label className="field-checkbox">
+                          <input
+                            name="confirmConsequences"
+                            type="checkbox"
+                            required
+                          />
+                          <span>
+                            I reviewed the deadline and resulting unit use.
+                          </span>
+                        </label>
+                        {data.owner ? (
+                          <label className="field-checkbox">
+                            <input name="waiveLatePenalty" type="checkbox" />
+                            <span>
+                              Owner exception: return the original unit for the
+                              reason above.
+                            </span>
+                          </label>
+                        ) : null}
+                      </CoachingForm>
+                    </details>
+                    <details>
                       <summary>Cancel appointment</summary>
                       <CoachingForm
                         {...form}
@@ -471,6 +532,18 @@ export default async function CoachingClientPage({
                       name="reason"
                     />
                   </CoachingForm>
+                ) : null}
+                {appointment.events.length ? (
+                  <details>
+                    <summary>Appointment history</summary>
+                    {appointment.events.map((event) => (
+                      <p key={event.id}>
+                        {coachingTime(event.createdAt, data.timezone)} ·{" "}
+                        {coachingLabel(event.kind)}
+                        {event.reason ? ` · ${event.reason}` : ""}
+                      </p>
+                    ))}
+                  </details>
                 ) : null}
               </div>
             </article>
@@ -582,7 +655,110 @@ export default async function CoachingClientPage({
               />
             </CoachingForm>
           </details>
-          {data.closedAt || data.status === "END_REVIEW" ? (
+          {exports.length ? (
+            <div>
+              <h3>Client record delivery</h3>
+              {exports.map((job) => (
+                <p key={job.id}>
+                  {coachingLabel(job.status)} ·{" "}
+                  {coachingTime(job.createdAt, data.timezone)}
+                  {job.failureCode
+                    ? ` · Assigned records review: ${job.id}`
+                    : ""}
+                  {job.receiptConfirmedAt ? " · Client confirmed receipt" : ""}
+                </p>
+              ))}
+              <p>
+                Only the adult client downloads this archive from their own
+                portal. Failed jobs retain the assigned records reviewer and can
+                be prepared again after the cause is resolved.
+              </p>
+            </div>
+          ) : null}
+          {data.closedAt && settlement ? (
+            <div className="form-stack">
+              <h3>Final settlement</h3>
+              <p>
+                {settlement.snapshot.unusedUnits} unused appointment units and{" "}
+                {settlement.snapshot.undeliveredDays.length} undelivered note
+                days remain in the review. Closing delivery does not forfeit
+                these obligations.
+              </p>
+              <CoachingForm
+                {...form}
+                operationId={randomUUID()}
+                kind="proposeSettlement"
+                submit="Propose settlement"
+              >
+                <input
+                  type="hidden"
+                  name="obligationHash"
+                  value={settlement.obligationHash}
+                />
+                <Field label="Settlement" name="settlementKind">
+                  <option value="NO_ADJUSTMENT">
+                    No money adjustment; client accepts the stated outcome
+                  </option>
+                  <option value="REFUND">Verified refund</option>
+                  <option value="ACCOUNT_CREDIT">Account credit</option>
+                </Field>
+                <Field
+                  label="Agreed amount in cents (zero for no adjustment)"
+                  name="amountCents"
+                  type="number"
+                  value={0}
+                />
+                <Field
+                  label="Commercial decision and how unused obligations are resolved (no private content)"
+                  name="reason"
+                  type="textarea"
+                />
+                <p>
+                  The client must accept this proposal. A refund or credit is
+                  completed through Billing, then verified here.
+                </p>
+              </CoachingForm>
+              {settlement.decisions.map((decision) => (
+                <article key={decision.id} className="member-stack-item">
+                  <div>
+                    <h4>
+                      {coachingLabel(decision.kind)} ·{" "}
+                      {coachingLabel(decision.status)}
+                    </h4>
+                    <p>{decision.reason}</p>
+                    <Money
+                      amountMinor={decision.amountCents}
+                      currency={decision.currency}
+                    />
+                    {decision.status === "ACCEPTED" ? (
+                      <CoachingForm
+                        {...form}
+                        operationId={randomUUID()}
+                        kind="confirmSettlement"
+                        submit="Verify final settlement"
+                      >
+                        <input
+                          type="hidden"
+                          name="decisionId"
+                          value={decision.id}
+                        />
+                        <Field
+                          label="Refund IDs or credit operation IDs (leave blank for no adjustment)"
+                          name="evidenceIds"
+                          required={false}
+                        />
+                        <p>
+                          Only completed records for this program or its
+                          authorized payer can satisfy the accepted amount.
+                        </p>
+                      </CoachingForm>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
+          {data.status === "END_REVIEW" ? (
             <CoachingForm
               {...form}
               operationId={randomUUID()}
@@ -602,6 +778,47 @@ export default async function CoachingClientPage({
           ) : null}
         </section>
       ) : null}
+      {data.deliveryExceptions.length ? (
+        <section className="management-card">
+          <h2>Delivery needs review</h2>
+          {data.deliveryExceptions.map((issue) => (
+            <article key={issue.id}>
+              <h3>
+                {coachingDay(issue.localDate)} · {coachingLabel(issue.kind)}
+              </h3>
+              <p>{coachingLabel(issue.status)}</p>
+              {issue.status === "OPEN" ? (
+                <CoachingForm
+                  {...form}
+                  kind="resolveDeliveryException"
+                  operationId={randomUUID()}
+                  submit="Record agreed recovery"
+                >
+                  <input type="hidden" name="exceptionId" value={issue.id} />
+                  <Field
+                    name="reason"
+                    label="Agreed replacement delivery or money review"
+                    type="textarea"
+                  />
+                  <p>
+                    This records the delivery review; it does not create a
+                    refund or mark a missing note delivered.
+                  </p>
+                </CoachingForm>
+              ) : (
+                <p>{issue.resolution}</p>
+              )}
+            </article>
+          ))}
+        </section>
+      ) : null}
+      <CoachingRecordsPanel
+        actor={actor}
+        enrollmentId={id}
+        version={data.version}
+        owner={data.owner}
+        coaches={list.coaches}
+      />
     </AdminShell>
   );
 }

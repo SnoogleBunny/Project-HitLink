@@ -20,7 +20,7 @@ const demoMemberImportSha256 = createHash("sha256")
   .digest("hex");
 
 const demo = {
-  workspaceName: "Demo Flowstate Gym",
+  workspaceName: "Demo HitLink Gym",
   ownerEmail: "demo-owner@flowstate.local",
   ownerPassword: "DemoPass123!",
   memberEmail: "demo-member@flowstate.local",
@@ -38,7 +38,10 @@ const demo = {
     workspaceSetting: "demo-workspace-setting",
     stripeSettings: "demo-stripe-settings",
     program: "demo-program-fundamentals",
+    fitnessProgram: "demo-program-fitness",
+    advancedProgram: "demo-program-advanced",
     room: "demo-room-main-mat",
+    secondRoom: "demo-room-second-mat",
     classTemplate: "demo-class-template-fundamentals",
     membershipPlan: "demo-membership-plan-unlimited",
     punchCardProduct: "demo-punch-card-product-10",
@@ -65,14 +68,12 @@ const demoImportStartedAt = new Date("2026-05-30T11:30:00.000Z");
 const demoImportCompletedAt = new Date("2026-05-30T11:45:00.000Z");
 const demoOwnerReviewAcknowledgedAt = new Date("2026-05-30T12:00:00.000Z");
 const demoOperationallyReadyAt = new Date("2026-05-30T12:05:00.000Z");
-const weekdays = [
-  "SUNDAY",
-  "MONDAY",
-  "TUESDAY",
-  "WEDNESDAY",
-  "THURSDAY",
-  "FRIDAY",
-  "SATURDAY",
+const dailyClasses = [
+  { id: "demo-class-template-hiit-bootcamp", title: "HIIT Bootcamp", programId: demo.ids.fitnessProgram, roomId: demo.ids.room, startTimeMinutes: 435, endTimeMinutes: 510 },
+  { id: "demo-class-template-hiit-hyrox", title: "HIIT/Hyrox", programId: demo.ids.fitnessProgram, roomId: demo.ids.room, startTimeMinutes: 990, endTimeMinutes: 1050 },
+  { id: "demo-class-template-padwork", title: "Beginner Padwork", programId: demo.ids.program, roomId: demo.ids.room, startTimeMinutes: 1050, endTimeMinutes: 1110 },
+  { id: demo.ids.classTemplate, title: "Beginner Muay Thai", programId: demo.ids.program, roomId: demo.ids.room, startTimeMinutes: 1110, endTimeMinutes: 1170 },
+  { id: "demo-class-template-advanced", title: "Advanced Muay Thai", programId: demo.ids.advancedProgram, roomId: demo.ids.secondRoom, startTimeMinutes: 1110, endTimeMinutes: 1170 },
 ];
 
 const pdfBytes = Buffer.from(`%PDF-1.4
@@ -102,19 +103,17 @@ function dateOnly(value) {
   return new Date(`${value}T00:00:00.000Z`);
 }
 
-function getDemoWeekday() {
-  const weekdayLabel = new Intl.DateTimeFormat("en-US", {
-    timeZone: demoTimezone,
-    weekday: "long",
-  })
-    .format(new Date())
-    .toUpperCase();
-
-  return weekdays.includes(weekdayLabel) ? weekdayLabel : "SATURDAY";
-}
-
 async function main() {
   prisma = new PrismaClient();
+  // Domain helpers load only after the disposable-database guard has passed.
+  const [{ snapshotMembershipTerms }, { defaultMembershipLifecyclePolicy }, { snapshotPunchCardTerms }] = await Promise.all([
+    import("../src/membership-allowances.js"), import("../src/membership-lifecycle-policy.js"), import("../src/punch-card-ledger.js"),
+  ]);
+  const now = new Date();
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: demoTimezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  const startDate = dateOnly(today);
+  const planTerms = { monthlyPriceCents: 12900, currency: "cad", lifecyclePolicy: defaultMembershipLifecyclePolicy, cancellationPolicyReference: "Two calendar months; next billing boundary", freezePolicyReference: "Owner-approved finite billing-cycle freeze" };
+  const packTerms = { priceCents: 25000, currency: "cad", punchesIncluded: 10, restrictionMode: "GENERAL" };
 
   const [ownerPasswordHash, memberPasswordHash] = await Promise.all([
     hash(demo.ownerPassword, 12),
@@ -123,9 +122,11 @@ async function main() {
   const fileSha256 = createHash("sha256").update(pdfBytes).digest("hex");
 
   await prisma.$transaction([
+    // Revisions restrict template deletion; remove only the canonical demo's schedule history first.
+    prisma.classScheduleRevision.deleteMany({ where: { workspaceId: demo.ids.workspace } }),
     prisma.workspace.deleteMany({
       where: {
-        name: demo.workspaceName,
+        id: demo.ids.workspace,
       },
     }),
     prisma.user.deleteMany({
@@ -205,8 +206,8 @@ async function main() {
         nextOwnerAction:
           "No further owner review is pending. Daily operations are active.",
         flowstateResponsibility:
-          "Flowstate completed the reviewed handoff and recorded the workspace as ready for daily operations.",
-        expectedNextMilestone: "Daily operations are active in Flowstate.",
+          "HitLink completed the reviewed handoff and recorded the workspace as ready for daily operations.",
+        expectedNextMilestone: "Daily operations are active in HitLink.",
       },
     }),
     prisma.workspaceUser.create({
@@ -245,6 +246,8 @@ async function main() {
         levelLabel: "Beginner",
       },
     }),
+    prisma.program.create({ data: { id: demo.ids.fitnessProgram, workspaceId: demo.ids.workspace, name: "HIIT", description: "Fitness and conditioning.", ageGroupLabel: "Adults", levelLabel: "All levels" } }),
+    prisma.program.create({ data: { id: demo.ids.advancedProgram, workspaceId: demo.ids.workspace, name: "Advanced Muay Thai", description: "Advanced training.", ageGroupLabel: "Adults", levelLabel: "Advanced" } }),
     prisma.room.create({
       data: {
         id: demo.ids.room,
@@ -254,32 +257,16 @@ async function main() {
         isActive: true,
       },
     }),
-    prisma.classTemplate.create({
-      data: {
-        id: demo.ids.classTemplate,
-        workspaceId: demo.ids.workspace,
-        programId: demo.ids.program,
-        roomId: demo.ids.room,
-        coachWorkspaceUserId: demo.ids.ownerWorkspaceUser,
-        title: "Today Fundamentals",
-        weekday: getDemoWeekday(),
-        startTimeMinutes: 1380,
-        endTimeMinutes: 1439,
-        capacityOverride: 20,
-        bookingCutoffMinutes: 0,
-        cancellationCutoffMinutes: 0,
-      },
-    }),
+    prisma.room.create({ data: { id: demo.ids.secondRoom, locationId: demo.ids.location, name: "Second Mat", capacity: 24, isActive: true } }),
+    ...dailyClasses.map((entry) => prisma.classTemplate.create({ data: { ...entry, workspaceId: demo.ids.workspace, coachWorkspaceUserId: null, weekday: "MONDAY", scheduleStartsOn: startDate, scheduleVersion: 1, capacityOverride: 20, bookingCutoffMinutes: 0, cancellationCutoffMinutes: 0 } })),
+    ...dailyClasses.map(({ id, ...entry }) => prisma.classScheduleRevision.create({ data: { ...entry, id: `${id}-revision-1`, classTemplateId: id, workspaceId: demo.ids.workspace, effectiveFrom: startDate, startDate, endDate: null, recurrence: "DAILY", weekdays: [], coachWorkspaceUserId: null, capacityOverride: 20, bookingCutoffMinutes: 0, cancellationCutoffMinutes: 0 } })),
     prisma.membershipPlan.create({
       data: {
         id: demo.ids.membershipPlan,
         workspaceId: demo.ids.workspace,
         name: "Unlimited Monthly",
         description: "All regular classes.",
-        monthlyPriceCents: 12900,
-        currency: "cad",
-        cancellationPolicyReference: "30-day notice",
-        freezePolicyReference: "Owner-approved freezes",
+        ...planTerms,
       },
     }),
     prisma.punchCardProduct.create({
@@ -408,7 +395,11 @@ async function main() {
         memberId: demo.ids.member,
         membershipPlanId: demo.ids.membershipPlan,
         status: "PENDING_PAYMENT_METHOD",
-        nextBillingDate: dateOnly("2026-06-01"),
+        startedAt: now,
+        allowanceAnchorDate: startDate,
+        allowanceTimezone: demoTimezone,
+        acceptedTerms: snapshotMembershipTerms(planTerms, now),
+        nextBillingDate: startDate,
       },
     }),
     prisma.membershipBillingState.create({
@@ -418,7 +409,7 @@ async function main() {
         memberId: demo.ids.member,
         memberMembershipId: demo.ids.memberMembership,
         status: "PENDING_PAYMENT_METHOD",
-        nextBillingDate: dateOnly("2026-06-01"),
+        nextBillingDate: startDate,
         failureMessage: "Stripe is not connected or ready for charges yet.",
       },
     }),
@@ -446,8 +437,10 @@ async function main() {
         status: "ACTIVE",
         purchasePriceCents: 25000,
         purchaseCurrency: "cad",
+        acceptedTerms: snapshotPunchCardTerms(packTerms, now),
       },
     }),
+    prisma.punchCardEntry.create({ data: { id: "demo-punch-card-opening", workspaceId: demo.ids.workspace, memberId: demo.ids.member, memberPunchCardId: demo.ids.memberPunchCard, operationKey: `opening:${demo.ids.memberPunchCard}`, delta: 10, reason: "Fictional demo grant; no payment was collected.", actorWorkspaceUserId: demo.ids.ownerWorkspaceUser } }),
     prisma.billingRecord.create({
       data: {
         id: demo.ids.punchCardBillingRecord,
@@ -457,6 +450,7 @@ async function main() {
         status: "INFO",
         amountCents: 25000,
         currency: "cad",
+        failureMessage: "Fictional demo grant; no payment was collected.",
       },
     }),
     prisma.formDocument.create({

@@ -248,6 +248,10 @@ export async function resolveIneligibleClassBookingsTx(args: {
           })
         : booking;
       if (original?.dropInPaidAt) {
+        const sourceFunding = await args.db.importedBookingFunding.findUnique({
+          where: { bookingId: original.id },
+          include: { evidence: { include: { payment: true } } },
+        });
         const payment = original.dropInPaymentIntentId
           ? await args.db.payment.findFirst({
               where: {
@@ -255,7 +259,7 @@ export async function resolveIneligibleClassBookingsTx(args: {
                 stripePaymentIntentId: original.dropInPaymentIntentId,
               },
             })
-          : null;
+          : sourceFunding?.evidence.payment;
         await args.db.financialReviewCase.upsert({
           where: {
             workspaceId_sourceKey: {
@@ -267,7 +271,9 @@ export async function resolveIneligibleClassBookingsTx(args: {
           create: {
             workspaceId: args.actor.workspaceId,
             sourceKey: `eligibility-cancel:${booking.id}:${booking.fundingRevision}`,
-            reason: "Gym changed eligibility — arrange refund or agreed credit",
+            reason: sourceFunding
+              ? "Gym changed eligibility — arrange source-system refund or agreed credit"
+              : "Gym changed eligibility — arrange refund or agreed credit",
             memberId: booking.memberId,
             bookingId: booking.id,
             paymentId: payment?.id,
@@ -286,8 +292,12 @@ export async function resolveIneligibleClassBookingsTx(args: {
         },
       });
     }
-    const recipients = await memberNotificationRecipients(args.db, args.actor.workspaceId, [item.memberId]);
-    for (const {email, name} of recipients)
+    const recipients = await memberNotificationRecipients(
+      args.db,
+      args.actor.workspaceId,
+      [item.memberId],
+    );
+    for (const { email, name } of recipients)
       await args.db.notificationJob.create({
         data: {
           workspaceId: args.actor.workspaceId,
@@ -448,7 +458,14 @@ export async function saveProgramRankPolicy(
       },
     });
     if (replay) {
-      if (replay.programId !== args.programId || JSON.stringify({mode: parseProgramRankPolicy(replay.after)?.mode,ranks: parseProgramRankPolicy(replay.after)?.ranks}) !== JSON.stringify({mode: args.policy.mode,ranks: args.policy.ranks}))
+      if (
+        replay.programId !== args.programId ||
+        JSON.stringify({
+          mode: parseProgramRankPolicy(replay.after)?.mode,
+          ranks: parseProgramRankPolicy(replay.after)?.ranks,
+        }) !==
+          JSON.stringify({ mode: args.policy.mode, ranks: args.policy.ranks })
+      )
         throw new ProgramProgressError(
           "This request belongs to another program.",
         );
@@ -669,7 +686,11 @@ export async function getMemberProgramProgress(
         memberId,
         userId: actor.userId,
         revokedAt: null,
-        guardian: { familyLinks: { some: { workspaceId: actor.workspaceId, childMemberId: memberId } } },
+        guardian: {
+          familyLinks: {
+            some: { workspaceId: actor.workspaceId, childMemberId: memberId },
+          },
+        },
       },
     }),
   ]);

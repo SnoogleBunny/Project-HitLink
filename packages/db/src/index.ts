@@ -228,4 +228,14 @@ export * from "./public-trials.js";
 export * from "./program-progress-policy.js";
 export * from "./program-progress.js";
 export * from "./workspace-data.js";
+export * from "./workspace-retention.js";
+export * from "./coaching-records.js";
+export * from "./coaching-appointments.js";
+export * from "./coaching-payer.js";
 export * from "./member-notification-recipients.js";
+
+export { sourceBillingCoversDate } from "./source-billing.js";
+export { createImportedClassBookingTx } from "./class-access.js";
+export * from "./member-data.js";
+export * from "./workspace-billing-handover.js";
+export * from "./staff-leave.js";

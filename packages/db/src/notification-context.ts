@@ -16,12 +16,114 @@ export async function shouldDeliverNotification(
         revisionNumber?: number;
         bookingId?: string;
         memberId?: string;
+        grantId?: string;
         verificationHash?: string;
         issuedAt?: string;
       }
     | null
     | undefined;
   if (!context?.kind) return true;
+  if (context.kind === "COACHING_UPDATE")
+    return (
+      !!context.enrollmentId &&
+      !!(await db.coachingEnrollment.findFirst({
+        where: {
+          id: context.enrollmentId,
+          workspaceId: job.workspaceId,
+          workspace: { status: { not: "DISABLED" } },
+          member: {
+            user: {
+              email: job.recipientEmail,
+              workspaceUsers: {
+                some: {
+                  workspaceId: job.workspaceId,
+                  role: "CUSTOMER",
+                  isActive: true,
+                },
+              },
+            },
+          },
+        },
+        select: { id: true },
+      }))
+    );
+  if (context.kind === "COACHING_PAYER_VERIFICATION") {
+    if (
+      !context.grantId ||
+      !context.verificationHash ||
+      !context.issuedAt ||
+      !Number.isFinite(Date.parse(context.issuedAt))
+    )
+      return false;
+    const grant = await db.coachingPayerGrant.findFirst({
+      where: {
+        id: context.grantId,
+        workspaceId: job.workspaceId,
+        revokedAt: null,
+        activeSlot: "ACTIVE",
+        payerContactVerifiedAt: null,
+        verificationHash: context.verificationHash,
+        verificationExpiresAt: { gt: now },
+        verificationSentAt: new Date(context.issuedAt),
+        workspace: { status: { not: "DISABLED" } },
+        enrollment: {
+          workspaceId: job.workspaceId,
+          closedAt: null,
+          acceptedAt: { not: null },
+          contactVerifiedAt: { not: null },
+        },
+      },
+      select: {
+        id: true,
+        payerUserId: true,
+        payerMemberId: true,
+        clientUserId: true,
+        enrollment: {
+          select: {
+            currentPayerGrantId: true,
+            member: { select: { userId: true } },
+          },
+        },
+      },
+    });
+    if (
+      !grant ||
+      grant.enrollment.currentPayerGrantId !== grant.id ||
+      grant.enrollment.member.userId !== grant.clientUserId ||
+      grant.payerUserId === grant.clientUserId
+    )
+      return false;
+    const [payer, client] = await Promise.all([
+      db.member.findFirst({
+        where: {
+          id: grant.payerMemberId,
+          workspaceId: job.workspaceId,
+          userId: grant.payerUserId,
+          user: {
+            email: job.recipientEmail,
+            workspaceUsers: {
+              some: {
+                workspaceId: job.workspaceId,
+                role: "CUSTOMER",
+                isActive: true,
+              },
+            },
+          },
+        },
+        select: { id: true },
+      }),
+      db.workspaceUser.findFirst({
+        where: {
+          workspaceId: job.workspaceId,
+          userId: grant.clientUserId,
+          role: "CUSTOMER",
+          isActive: true,
+        },
+        select: { id: true },
+      }),
+    ]);
+    return !!payer && !!client;
+  }
   if (context.kind === "PUBLIC_VERIFICATION")
     return (
       !!context.enrollmentId &&
@@ -89,7 +191,7 @@ export async function shouldDeliverNotification(
         revisions: {
           orderBy: { number: "desc" },
           take: 1,
-          select: { id: true, number: true },
+          select: { id: true, number: true, withdrawnAt: true },
         },
         enrollment: { select: { member: { select: { userId: true } } } },
       },
@@ -98,6 +200,7 @@ export async function shouldDeliverNotification(
       userId = note?.enrollment.member.userId;
     return (
       !!revision &&
+      !revision.withdrawnAt &&
       revision.id === context.revisionId &&
       revision.number === context.revisionNumber &&
       !!userId &&

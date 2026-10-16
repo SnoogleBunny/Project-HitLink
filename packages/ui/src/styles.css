@@ -1942,6 +1942,41 @@ time {
 .hl-payment-review dt {
   color: var(--hl-muted);
 }
+.hl-records-export,
+.hl-records-list,
+.hl-records-job {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+.hl-records-job {
+  padding: 18px;
+  background: var(--hl-soft);
+  border: 1px solid var(--hl-line);
+  border-radius: 12px;
+}
+.hl-records-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.hl-records-heading h3 { font-size: 15px; }
+.hl-records-export p { margin: 0; }
+.hl-records-job .checkbox-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.hl-records-job .checkbox-field input {
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
+.hl-handover-scroll { max-width: 100%; overflow-x: auto; }
+.hl-handover-scroll table { width: 100%; border-collapse: collapse; }
+.hl-handover-scroll :is(th, td) { padding: 10px; text-align: left; border-bottom: 1px solid var(--hl-line); }
+.hl-handover-json { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; font-size: 12px; }
 @media (max-width: 640px) {
   .hl-financial-card > .detail-list, .hl-adjustment-form .detail-list { grid-template-columns: 1fr; gap: 4px; }
   .hl-payment-record-heading {

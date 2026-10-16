@@ -8,6 +8,17 @@ import { PrismaClient } from "@prisma/client";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { prepareCleanEvidence } from "./support/clean-evidence";
+import {
+  cancelMigrationImport,
+  markMigrationOperationallyReady,
+  runMigrationImport,
+  updateMigrationStage,
+  uploadAndStageMigrationCsv,
+} from "../../apps/admin-web/lib/workspace-migration";
+import {
+  captureCutoverState,
+  recordMigrationCutoverEvidence,
+} from "../../apps/admin-web/lib/migration-cutover";
 
 process.env.DATABASE_URL ??=
   "postgresql://postgres:postgres@localhost:5432/flowstate_dev?schema=public";
@@ -116,20 +127,14 @@ const forbiddenOwnerPhrases = [
 ] as const;
 
 const ownerNavigationLabels = [
-  "Dashboard",
-  "Migration",
-  "Programs",
-  "Rooms",
-  "Schedule",
-  "Bookings",
-  "Today roster",
+  "Today",
+  "Classes",
   "Members",
-  "Forms",
-  "Membership plans",
-  "Access products",
   "Billing",
-  "Billing settings",
-  "Staff invites",
+  "Plans",
+  "Forms",
+  "Website",
+  "Settings",
 ] as const;
 
 async function expectMinimumTargetSize(
@@ -183,8 +188,8 @@ async function expectNoHorizontalOverflow(
 }
 
 async function expectNavigationAndAccountHidden(page: Page): Promise<void> {
-  const desktopSidebar = page.locator(".shell-desktop-sidebar");
-  const mobileMenuContent = page.locator(".shell-mobile-menu-content");
+  const desktopSidebar = page.locator(".hl-workspace-sidebar");
+  const mobileMenuContent = page.locator("dialog.hl-workspace-menu");
 
   await expect(desktopSidebar).toBeHidden();
   await expect(mobileMenuContent).toBeHidden();
@@ -192,14 +197,14 @@ async function expectNavigationAndAccountHidden(page: Page): Promise<void> {
   const hiddenState = await page
     .locator(
       [
-        ".shell-desktop-sidebar .shell-nav",
-        ".shell-desktop-sidebar .shell-nav *",
-        ".shell-desktop-sidebar .shell-sidebar-footer",
-        ".shell-desktop-sidebar .shell-sidebar-footer *",
-        ".shell-mobile-menu-content .shell-nav",
-        ".shell-mobile-menu-content .shell-nav *",
-        ".shell-mobile-menu-content .shell-sidebar-footer",
-        ".shell-mobile-menu-content .shell-sidebar-footer *",
+        ".hl-workspace-sidebar .hl-nav",
+        ".hl-workspace-sidebar .hl-nav *",
+        ".hl-workspace-sidebar .hl-workspace-account",
+        ".hl-workspace-sidebar .hl-workspace-account *",
+        ".hl-workspace-menu .hl-nav",
+        ".hl-workspace-menu .hl-nav *",
+        ".hl-workspace-menu .hl-workspace-account",
+        ".hl-workspace-menu .hl-workspace-account *",
       ].join(", "),
     )
     .evaluateAll((elements) => ({
@@ -221,12 +226,17 @@ async function expectDesktopOwnerNavigation(
   page: Page,
   ownerEmail: string,
 ): Promise<void> {
-  await expect(page.locator(".shell-mobile-header")).toBeHidden();
-  await expect(page.locator(".shell-mobile-menu > summary")).toBeHidden();
-  await expect(page.locator(".shell-desktop-sidebar")).toBeVisible();
+  await expect(page.locator(".hl-mobile-brand")).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Open workspace menu" }),
+  ).toBeHidden();
+  await expect(page.locator(".hl-workspace-sidebar")).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Quick navigation" }),
+  ).toBeHidden();
 
   const visibleNavigation = page.locator(
-    'nav[aria-label="Primary admin navigation"]:visible',
+    'nav[aria-label="Workspace navigation"]:visible',
   );
   await expect(visibleNavigation).toHaveCount(1);
 
@@ -240,13 +250,13 @@ async function expectDesktopOwnerNavigation(
 
   const currentLinks = visibleNavigation.locator('[aria-current="page"]');
   await expect(currentLinks).toHaveCount(1);
-  await expect(currentLinks).toHaveText("Migration");
+  await expect(currentLinks).toHaveText("Settings");
   const accountName = page.locator(
-    ".shell-desktop-sidebar .shell-sidebar-value",
+    ".hl-workspace-sidebar .hl-workspace-account > strong",
   );
-  const accountEmail = page
-    .locator(".shell-desktop-sidebar .shell-sidebar-caption")
-    .last();
+  const accountEmail = page.locator(
+    ".hl-workspace-sidebar .hl-workspace-account > span",
+  );
   await expect(accountName).toBeVisible();
   await expect(accountName).toHaveText("Codex Migration Owner");
   await expect(accountEmail).toBeVisible();
@@ -558,13 +568,6 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     ).toHaveCount(0);
     await capture(page, "dashboard-gates-to-migration");
 
-    const {
-      cancelMigrationImport,
-      markMigrationOperationallyReady,
-      runMigrationImport,
-      updateMigrationStage,
-      uploadAndStageMigrationCsv,
-    } = await import("../../apps/admin-web/lib/workspace-migration");
     const operator = {
       type: "FLOWSTATE_OPERATOR" as const,
       actorId: `e2e-operator-${runStamp}`,
@@ -612,8 +615,8 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     const validCsvPath = await writeCsvFixture(
       "valid-members.csv",
       [
-        "external_id,full_name,email,guardian_full_name,guardian_email,relationship",
-        "m_1,Ada Migration,ada.migration@example.com,Pat Migration,pat.migration@example.com,Parent",
+        "external_id,full_name,status,email,guardian_full_name,guardian_email,relationship",
+        "m_1,Ada Migration,ACTIVE,ada.migration@example.com,Pat Migration,pat.migration@example.com,Parent",
       ].join("\n"),
     );
     const validCsv = await fs.readFile(validCsvPath);
@@ -683,6 +686,46 @@ test.describe.serial("migration-first onboarding integration flow", () => {
         },
       }),
     ).resolves.toEqual({ status: "ok" });
+    const state = await captureCutoverState(prisma, workspace.id);
+    // This fixture migrates contacts only. No service, money, or authority is
+    // inferred from the imported email or family contact.
+    expect(state.totals).toMatchObject({
+      members: 1,
+      currentMemberships: 0,
+      packUnits: 0,
+      futureBookings: 0,
+      verifiedPortalGrants: 0,
+    });
+    await recordMigrationCutoverEvidence({
+      workspaceId: workspace.id,
+      actor: operator,
+      evidence: {
+        version: 1,
+        sourceTotals: state.totals,
+        sourceReferences: {
+          people: "Reviewed contact export: one contact",
+          contracts: "Source fixture has no contracts",
+          money: "No source balances",
+          units: "No source packs or allowance usage",
+          futureBookings: "No source reservations",
+          familyAuthority:
+            "Contact link only; no portal or payer authority granted",
+          consent: "No transferred consent or service entitlements",
+        },
+        recordDisposition: {
+          sourceCount: state.importedSourceCount,
+          importedCount: state.importedSourceCount,
+          excluded: [],
+          quarantinedCount: 0,
+        },
+        billingOwners: [],
+        backupReference: "Isolated E2E source fixture backup",
+        restoreRehearsalReference:
+          "Contact source replay verified by import suite",
+        finalDeltaReference: "Final one-row contact fixture",
+        supportContact: "migration-corrections@example.test",
+      },
+    });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
     await expect(
@@ -725,11 +768,15 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     await expect(page).toHaveURL(eligibleUrl);
     await preLockCorrectionLink.focus();
     await preLockCorrectionLink.press("Tab");
+    const cutoverDisclosure = page
+      .locator("summary")
+      .filter({ hasText: "Final cutover evidence" });
+    await expect(cutoverDisclosure).toBeFocused();
+    await cutoverDisclosure.press("Tab");
     await expect(snapshotLockConfirmation).toBeFocused();
     await snapshotLockConfirmation.check();
     await expect(acknowledgeButton).toBeEnabled();
-    await preLockCorrectionLink.focus();
-    await preLockCorrectionLink.press("Tab");
+    await snapshotLockConfirmation.focus();
     await snapshotLockConfirmation.press("Tab");
     await expect(acknowledgeButton).toBeFocused();
 
@@ -861,7 +908,7 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     await page.goto("/dashboard");
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect(
-      page.getByRole("heading", { name: "Today's readiness" }),
+      page.getByRole("heading", { name: "Today", exact: true }),
     ).toBeVisible();
     await expectHealthyPage(page);
     await capture(page, "normal-dashboard-after-readiness");
@@ -923,13 +970,6 @@ test.describe.serial("migration-first onboarding integration flow", () => {
       where: { workspaceId: workspace.id, status: "COMPLETED" },
       select: { id: true },
     });
-    const {
-      cancelMigrationImport,
-      markMigrationOperationallyReady,
-      runMigrationImport,
-      updateMigrationStage,
-      uploadAndStageMigrationCsv,
-    } = await import("../../apps/admin-web/lib/workspace-migration");
     const operator = {
       type: "FLOWSTATE_OPERATOR" as const,
       actorId: `e2e-operator-${runStamp}`,
@@ -1057,28 +1097,46 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     await expect(page.getByText("Active", { exact: true })).toBeVisible();
     await expectHealthyPage(page);
 
-    const mobileMenu = page.locator("details.shell-mobile-menu");
-    const mobileMenuSummary = mobileMenu.locator(":scope > summary");
-    const routeHeading = page.locator(".shell-header h2");
+    const mobileMenu = page.getByRole("dialog", {
+      name: "Workspace menu",
+      includeHidden: true,
+    });
+    const mobileMenuTrigger = page.getByRole("button", {
+      name: "Open workspace menu",
+    });
+    const routeHeading = page.locator(".hl-page-heading h1");
+    const quickNavigation = page.getByRole("navigation", {
+      name: "Quick navigation",
+    });
 
-    await expect(page.locator(".shell-brand-label:visible")).toHaveCount(1);
-    await expect(page.locator(".shell-brand-label:visible")).toHaveText(
-      "Flowstate Admin",
+    await expect(page.locator(".hl-mobile-brand .hl-brand")).toBeVisible();
+    await expect(page.locator(".hl-workspace-breadcrumb")).toHaveText(
+      "Gym workspace",
     );
-    await expect(
-      page.locator(".shell-mobile-menu > summary:visible"),
-    ).toHaveCount(1);
-    await expect(mobileMenuSummary).toHaveText("Menu");
+    await expect(mobileMenuTrigger).toHaveCount(1);
+    await expect(mobileMenuTrigger).toHaveAttribute("aria-expanded", "false");
     await expect(mobileMenu).not.toHaveAttribute("open", "");
-    await expectMinimumTargetSize(mobileMenuSummary, "Mobile Menu summary");
+    await expectMinimumTargetSize(mobileMenuTrigger, "Open workspace menu");
     await expectNavigationAndAccountHidden(page);
-    await expect(page.locator("h2")).toHaveCount(1);
+    await expect(page.locator("h1")).toHaveCount(1);
     await expect(page.locator("main")).toHaveCount(1);
     await expect(routeHeading).toHaveText("Migration handoff");
+    await expect(quickNavigation).toBeVisible();
+    await expect(quickNavigation.getByRole("link")).toHaveText([
+      "Today",
+      "Classes",
+      "Members",
+    ]);
+    const moreDestinations = quickNavigation.getByRole("button", {
+      name: "More destinations",
+    });
+    for (const target of await quickNavigation.locator("a, button").all()) {
+      await expectMinimumTargetSize(target, "Quick navigation destination");
+    }
 
     const migrationCurrentLinks = page.locator(
-      '.shell-nav-link[aria-current="page"]',
-      { hasText: /^Migration$/ },
+      '.hl-nav-link[aria-current="page"]',
+      { hasText: /^Settings$/ },
     );
     await expect(migrationCurrentLinks).toHaveCount(2);
     for (const currentLink of await migrationCurrentLinks.all()) {
@@ -1086,8 +1144,13 @@ test.describe.serial("migration-first onboarding integration flow", () => {
       await expect(currentLink).toBeHidden();
     }
 
+    await page.locator("main").evaluate((main) => {
+      main.scrollTop = 0;
+    });
     const firstViewportOrder = await page.evaluate(() => {
-      const heading = document.querySelector<HTMLElement>(".shell-header h2");
+      const heading = document.querySelector<HTMLElement>(
+        ".hl-page-heading h1",
+      );
       const main = document.querySelector<HTMLElement>("main");
       if (!heading || !main) {
         throw new Error("Expected route heading and main content landmark.");
@@ -1105,32 +1168,44 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     expect(firstViewportOrder.headingBottom).toBeLessThanOrEqual(
       firstViewportOrder.viewportHeight,
     );
-    expect(firstViewportOrder.headingTop).toBeLessThan(
+    expect(firstViewportOrder.headingTop).toBeGreaterThanOrEqual(
       firstViewportOrder.mainTop,
     );
     await expectNoHorizontalOverflow(page, "390px closed mobile navigation");
     await capture(page, "migration-dashboard-complete-mobile-390");
 
-    await mobileMenuSummary.focus();
-    await expect(mobileMenuSummary).toBeFocused();
-    await mobileMenuSummary.press("Enter");
+    await mobileMenuTrigger.focus();
+    await expect(mobileMenuTrigger).toBeFocused();
+    await mobileMenuTrigger.press("Enter");
     await expect(mobileMenu).toHaveAttribute("open", "");
+    await expect(mobileMenuTrigger).toHaveAttribute("aria-expanded", "true");
 
-    const visibleNavigation = page.locator(
-      'nav[aria-label="Mobile admin navigation"]:visible',
-    );
+    const visibleNavigation = mobileMenu.getByRole("navigation", {
+      name: "Workspace navigation",
+    });
     await expect(visibleNavigation).toHaveCount(1);
     const visibleNavigationLinks = visibleNavigation.getByRole("link");
     await expect(visibleNavigationLinks).toHaveCount(
       ownerNavigationLabels.length,
     );
-    await mobileMenuSummary.press("Tab");
+    const closeMenu = mobileMenu.getByRole("button", {
+      name: "Close workspace menu",
+    });
+    const logOut = mobileMenu.getByRole("button", { name: "Log out" });
+    await expect(closeMenu).toBeFocused();
+    await closeMenu.press("Tab");
     await expect(visibleNavigationLinks.first()).toBeFocused();
-    await mobileMenuSummary.focus();
-    await mobileMenuSummary.press("Space");
+    await closeMenu.focus();
+    await closeMenu.press("Shift+Tab");
+    await expect(logOut).toBeFocused();
+    await logOut.press("Tab");
+    await expect(closeMenu).toBeFocused();
+    await closeMenu.press("Enter");
     await expect(mobileMenu).not.toHaveAttribute("open", "");
-    await expect(mobileMenuSummary).toBeFocused();
-    await mobileMenuSummary.press("Enter");
+    await expect(mobileMenuTrigger).toBeFocused();
+    await expect(mobileMenuTrigger).toHaveAttribute("aria-expanded", "false");
+    await moreDestinations.focus();
+    await moreDestinations.press("Space");
     await expect(mobileMenu).toHaveAttribute("open", "");
     for (const label of ownerNavigationLabels) {
       const destination = visibleNavigation.getByRole("link", {
@@ -1145,36 +1220,39 @@ test.describe.serial("migration-first onboarding integration flow", () => {
       '[aria-current="page"]',
     );
     await expect(visibleCurrentLinks).toHaveCount(1);
-    await expect(visibleCurrentLinks).toHaveText("Migration");
-    const mobileAccountName = page.locator(
-      ".shell-mobile-menu-content .shell-sidebar-value",
+    await expect(visibleCurrentLinks).toHaveText("Settings");
+    const mobileAccountName = mobileMenu.locator(
+      ".hl-workspace-account > strong",
     );
-    const mobileAccountEmail = page
-      .locator(".shell-mobile-menu-content .shell-sidebar-caption")
-      .last();
+    const mobileAccountEmail = mobileMenu.locator(
+      ".hl-workspace-account > span",
+    );
     await expect(mobileAccountName).toBeVisible();
     await expect(mobileAccountName).toHaveText("Codex Migration Owner");
     await expect(mobileAccountEmail).toBeVisible();
     await expect(mobileAccountEmail).toHaveText(ownerEmail);
 
-    const visibleSummaryAndLinks = page.locator("summary:visible, a:visible");
-    expect(await visibleSummaryAndLinks.count()).toBeGreaterThan(
+    const menuControls = mobileMenu.locator("button:visible, a:visible");
+    expect(await menuControls.count()).toBeGreaterThan(
       ownerNavigationLabels.length,
     );
-    for (const target of await visibleSummaryAndLinks.all()) {
-      const targetLabel = (await target.innerText()).trim();
+    for (const target of await menuControls.all()) {
+      const targetLabel =
+        (await target.getAttribute("aria-label")) ??
+        (await target.innerText()).trim();
       await expectMinimumTargetSize(
         target,
-        `Visible summary/link ${JSON.stringify(targetLabel)}`,
+        `Workspace menu control ${JSON.stringify(targetLabel)}`,
       );
     }
     await expectNoHorizontalOverflow(page, "390px open mobile navigation");
     await capture(page, "migration-dashboard-complete-mobile-menu-open-390");
 
-    await mobileMenuSummary.focus();
-    await mobileMenuSummary.press("Space");
+    await closeMenu.focus();
+    await closeMenu.press("Escape");
     await expect(mobileMenu).not.toHaveAttribute("open", "");
-    await expect(mobileMenuSummary).toBeFocused();
+    await expect(moreDestinations).toBeFocused();
+    await expect(moreDestinations).toHaveAttribute("aria-expanded", "false");
     await expectNavigationAndAccountHidden(page);
     await expectNoHorizontalOverflow(page, "390px re-closed mobile navigation");
 

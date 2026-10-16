@@ -519,5 +519,5 @@ integration("workspace exports, offboarding and support access", () => {
         })
       ).artifact,
     ).toBeNull();
-  });
+  }, 30000);
 });

@@ -4,6 +4,9 @@ import {
   prisma,
   readAcceptedMembershipTerms,
   readPunchCardTerms,
+  sourceBillingCoversDate,
+  membershipAllowanceWindows,
+  resolveRequiredFormStatusesForMember,
   type PrismaClient,
 } from "@flowstate/db";
 const digest = (value: unknown) =>
@@ -71,6 +74,13 @@ export async function captureCutoverState(
     allocations,
     entries,
     identities,
+    sourceEvidence,
+    openings,
+    formAssignments,
+    formVersions,
+    moneyEvidence,
+    bookingFunding,
+    sourceSignatures,
   ] = await Promise.all([
     db.workspaceMigration.findUnique({
       where: { workspaceId },
@@ -115,6 +125,18 @@ export async function captureCutoverState(
     db.familyLink.findMany({ where: { workspaceId }, orderBy: { id: "asc" } }),
     db.memberPortalGrant.findMany({
       where: { workspaceId },
+      include: {
+        guardian: { select: { workspaceId: true } },
+        user: {
+          select: {
+            id: true,
+            workspaceUsers: {
+              where: { workspaceId },
+              select: { id: true, role: true, isActive: true },
+            },
+          },
+        },
+      },
       orderBy: { id: "asc" },
     }),
     db.signedDocument.findMany({
@@ -124,6 +146,12 @@ export async function captureCutoverState(
         memberId: true,
         signedFromRequestId: true,
         createdAt: true,
+        formVersionId: true,
+        guardianId: true,
+        signerKind: true,
+        signedAt: true,
+        signatureMethod: true,
+        providerReference: true,
       },
       orderBy: { id: "asc" },
     }),
@@ -138,6 +166,58 @@ export async function captureCutoverState(
     }),
     db.migrationImportedRecord.findMany({
       where: { workspaceId },
+      orderBy: { id: "asc" },
+    }),
+    db.sourceBillingEvidence.findMany({
+      where: { workspaceId },
+      orderBy: { id: "asc" },
+    }),
+    db.membershipAllowanceOpeningBalance.findMany({
+      where: { workspaceId },
+      orderBy: { id: "asc" },
+    }),
+    db.requiredFormAssignment.findMany({
+      where: { workspaceId },
+      include: { formDocument: true },
+      orderBy: { id: "asc" },
+    }),
+    db.formVersion.findMany({
+      where: { workspaceId },
+      select: {
+        id: true,
+        formDocumentId: true,
+        versionNumber: true,
+        fileSha256: true,
+      },
+      orderBy: { id: "asc" },
+    }),
+    db.importedFinancialEvidence.findMany({
+      where: { workspaceId },
+      orderBy: { id: "asc" },
+    }),
+    db.importedBookingFunding.findMany({
+      where: { workspaceId },
+      orderBy: { id: "asc" },
+    }),
+    db.importedSignatureEvidence.findMany({
+      where: { workspaceId },
+      select: {
+        id: true,
+        sourceSystem: true,
+        sourceExternalId: true,
+        memberId: true,
+        guardianId: true,
+        formVersionId: true,
+        signedDocumentId: true,
+        sourceDocumentHash: true,
+        signatureReceiptHash: true,
+        sourceSignerReference: true,
+        sourceBeneficiaryReference: true,
+        signerAuthorityEvidence: true,
+        sourceSignedAt: true,
+        sourceFileHash: true,
+        sourceRowHash: true,
+      },
       orderBy: { id: "asc" },
     }),
   ]);
@@ -155,6 +235,10 @@ export async function captureCutoverState(
         (invoiceBalances[invoice.currency] ?? 0) +
         Math.max(0, invoice.totalCents - invoice.amountPaidCents);
   const activeAllocations = allocations.filter((a) => a.periodEnd > live);
+  const currentGrant = (g: (typeof grants)[number]) =>
+    !g.revokedAt &&
+    g.guardian.workspaceId === workspaceId &&
+    g.user.workspaceUsers.some((a) => a.role === "CUSTOMER" && a.isActive);
   const totals: CutoverTotals = {
     members: members.length,
     currentMemberships: current.length,
@@ -163,13 +247,201 @@ export async function captureCutoverState(
       .reduce((sum, p) => sum + p.remainingPunches, 0),
     futureBookings: future.length,
     familyLinks: links.length,
-    verifiedPortalGrants: grants.filter((g) => !g.revokedAt).length,
+    verifiedPortalGrants: grants.filter(currentGrant).length,
     allowanceReserved: activeAllocations.filter((a) => a.state === "RESERVED")
       .length,
-    allowanceUsed: activeAllocations.filter((a) => a.state === "USED").length,
+    allowanceUsed:
+      activeAllocations.filter((a) => a.state === "USED").length +
+      openings
+        .filter((o) => o.periodEnd > live)
+        .reduce((sum, o) => sum + o.usedCount, 0),
     invoiceBalances: Object.fromEntries(Object.entries(invoiceBalances).sort()),
   };
   const problems: string[] = [];
+  const liveDate = live.toISOString().slice(0, 10);
+  for (const record of moneyEvidence) {
+    if (
+      record.billingOwner === "UNRESOLVED" ||
+      record.refundOwner === "UNRESOLVED"
+    )
+      problems.push(
+        `Resolve source billing/refund ownership for ${record.sourceRecordKind} ${record.sourceExternalId}.`,
+      );
+    const children = moneyEvidence.filter(
+      (e) => e.parentEvidenceId === record.id,
+    );
+    if (
+      record.sourceRecordKind === "INVOICE" &&
+      children
+        .filter((e) => e.sourceRecordKind === "PAYMENT")
+        .reduce((sum, e) => sum + e.paidCents, 0) !== record.paidCents
+    )
+      problems.push(
+        `Source invoice ${record.sourceExternalId} paid total needs its exact payment chain.`,
+      );
+    if (
+      record.sourceRecordKind === "PAYMENT" &&
+      children
+        .filter((e) => e.sourceRecordKind === "REFUND")
+        .reduce((sum, e) => sum + e.amountCents, 0) !== record.refundedCents
+    )
+      problems.push(
+        `Source payment ${record.sourceExternalId} refunded total needs its exact receipt chain.`,
+      );
+    if (
+      record.sourceRecordKind === "PAYMENT" &&
+      bookingFunding
+        .filter((f) => f.evidenceId === record.id)
+        .reduce((sum, f) => sum + f.amountCents, 0) >
+        record.paidCents - record.refundedCents
+    )
+      problems.push(
+        `Source payment ${record.sourceExternalId} is overallocated to classes.`,
+      );
+  }
+  if (
+    formAssignments.some(
+      (a) =>
+        a.isActive &&
+        !a.formDocument.archivedAt &&
+        !a.formDocument.currentVersionId,
+    )
+  )
+    problems.push(
+      "A required form has no current document version. Publish the exact form before cutover.",
+    );
+  for (const contract of current) {
+    const evidence = sourceEvidence.filter(
+      (r) => r.memberMembershipId === contract.id,
+    );
+    if (
+      contract.sourceBillingManaged &&
+      !sourceBillingCoversDate(
+        { ...contract, sourceBillingEvidence: evidence },
+        liveDate,
+      )
+    )
+      problems.push(
+        `Membership ${contract.id} needs reviewed source payment evidence covering go-live.`,
+      );
+    const terms = readAcceptedMembershipTerms(contract.acceptedTerms);
+    if (contract.importSnapshot && terms && contract.allowanceAnchorDate) {
+      for (const window of membershipAllowanceWindows({
+        anchorDate: contract.allowanceAnchorDate.toISOString().slice(0, 10),
+        scheduledForDate: liveDate,
+        ...terms,
+      })) {
+        if (
+          !openings.some(
+            (o) =>
+              o.memberMembershipId === contract.id &&
+              o.kind === window.kind &&
+              o.periodStart.toISOString().slice(0, 10) === window.startsOn &&
+              o.asOfDate.toISOString().slice(0, 10) === liveDate,
+          )
+        )
+          problems.push(
+            `Membership ${contract.id} needs explicit source opening usage (including zero) for ${window.kind} at go-live.`,
+          );
+      }
+    }
+  }
+  for (const pack of packs) {
+    const snapshot = pack.importSnapshot as {
+      data?: { available?: number; reserved?: number };
+    } | null;
+    if (snapshot?.data) {
+      const reserved = future.filter(
+        (b) =>
+          b.memberPunchCardId === pack.id &&
+          b.status === "BOOKED" &&
+          b.consumedPunchCount === 1,
+      ).length;
+      if (
+        pack.remainingPunches !== snapshot.data.available ||
+        reserved !== snapshot.data.reserved
+      )
+        problems.push(
+          `Pack ${pack.id} source available and reserved balances need final reconciliation.`,
+        );
+    }
+  }
+  for (const booking of future) {
+    if (booking.bookingType === "DROP_IN" && booking.importSnapshot) {
+      const allocation = bookingFunding.find(
+        (f) => f.bookingId === (booking.fundedByBookingId ?? booking.id),
+      );
+      const evidence = moneyEvidence.find(
+        (e) => e.id === allocation?.evidenceId,
+      );
+      if (
+        !allocation ||
+        !evidence ||
+        evidence.sourceStatus !== "SUCCEEDED" ||
+        evidence.beneficiaryMemberId !== booking.memberId ||
+        allocation.currency !== booking.dropInCurrency ||
+        allocation.amountCents !== booking.dropInPriceCents
+      )
+        problems.push(
+          `Booking ${booking.id} needs its exact reviewed source cash allocation.`,
+        );
+    }
+    if (booking.bookingType === "MEMBERSHIP") {
+      const contract = current.find(
+        (m) =>
+          m.id === booking.fundingMembershipId &&
+          m.memberId === booking.memberId,
+      );
+      if (
+        !contract ||
+        !sourceBillingCoversDate(
+          {
+            ...contract,
+            sourceBillingEvidence: sourceEvidence.filter(
+              (r) => r.memberMembershipId === contract.id,
+            ),
+          },
+          booking.scheduledForDate.toISOString().slice(0, 10),
+        )
+      )
+        problems.push(
+          `Booking ${booking.id} is outside verified contract funding.`,
+        );
+    }
+    if (booking.memberPunchCardId) {
+      const pack = packs.find(
+        (p) =>
+          p.id === booking.memberPunchCardId && p.memberId === booking.memberId,
+      );
+      if (
+        !pack ||
+        (pack.expiresOn && booking.scheduledForDate >= pack.expiresOn)
+      )
+        problems.push(
+          `Booking ${booking.id} is outside its named pack's access dates.`,
+        );
+    }
+  }
+  const consent = [];
+  for (const member of members.filter(
+    (m) =>
+      current.some((c) => c.memberId === m.id) ||
+      future.some((b) => b.memberId === m.id),
+  )) {
+    const status = await resolveRequiredFormStatusesForMember({
+      workspaceId,
+      memberId: member.id,
+      db: db as PrismaClient,
+      now: live,
+      ensureRequests: false,
+    });
+    consent.push({ memberId: member.id, items: status.items });
+    if (status.items.some((item) => item.status !== "SIGNED"))
+      problems.push(
+        `Member ${member.id} needs current required-form signatures before cutover.`,
+      );
+  }
+
   if (
     current.some(
       (m) =>
@@ -208,7 +480,7 @@ export async function captureCutoverState(
       !grants.some(
         (g) =>
           g.memberId === member.id &&
-          !g.revokedAt &&
+          currentGrant(g) &&
           g.canBook &&
           g.canSign &&
           links.some(
@@ -236,13 +508,28 @@ export async function captureCutoverState(
       allocations,
       entries,
       identities,
+      sourceEvidence,
+      openings,
+      formAssignments,
+      formVersions,
+      consent,
+      moneyEvidence,
+      bookingFunding,
+      sourceSignatures,
     }),
     totals,
     problems,
     currentMemberships: current,
     importedSourceCount: new Set(
       identities
-        .filter((i) => i.recordKind !== "GUARDIAN")
+        .filter(
+          (i) =>
+            i.recordKind !== "GUARDIAN" &&
+            !(
+              i.recordKind === "PUNCH_CARD_BALANCE" &&
+              i.importedModel === "PunchCardProduct"
+            ),
+        )
         .map((i) => `${i.recordKind}:${i.externalId}`),
     ).size,
   };
@@ -346,9 +633,14 @@ export function validateCutoverEvidence(
       errors.push(
         `Verify source stop or transfer for ${contract.id} before HitLink charges.`,
       );
-    if (owner.owner === "SOURCE" && contract.stripeSubscriptionId)
+    if (
+      (owner.owner === "SOURCE" &&
+        (!contract.sourceBillingManaged || contract.stripeSubscriptionId)) ||
+      (owner.owner === "HITLINK" &&
+        (contract.sourceBillingManaged || !contract.stripeSubscriptionId))
+    )
       errors.push(
-        `Membership ${contract.id} has a destination subscription but names the source as billing owner.`,
+        `Membership ${contract.id} does not have verified billing consistent with its named billing owner.`,
       );
   }
   if (e.billingOwners.length !== state.currentMemberships.length)

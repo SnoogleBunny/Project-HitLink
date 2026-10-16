@@ -2,6 +2,7 @@
 import {
   CoachingError,
   runCoachingCommand,
+  confirmCoachingExportReceipt,
   type CoachingCommand,
 } from "@flowstate/db";
 import { revalidatePath } from "next/cache";
@@ -19,7 +20,11 @@ export async function coachingAction(formData: FormData): Promise<void> {
     workspaceId: context.workspace.id,
     userId: context.session.userId,
   };
-  let destination = `/app/coaching/${encodeURIComponent(enrollmentId)}`;
+  const payerGrantId = String(formData.get("returnPayerGrantId") ?? "");
+  const returnPath = payerGrantId
+    ? `/app/coaching/payments/${encodeURIComponent(payerGrantId)}`
+    : `/app/coaching/${encodeURIComponent(enrollmentId)}`;
+  let destination = returnPath;
   try {
     const kind = String(formData.get("kind"));
     if (kind === "pay")
@@ -27,6 +32,18 @@ export async function coachingAction(formData: FormData): Promise<void> {
     else if (kind === "checkPayment") {
       const status = await checkCoachingPayment(actor, enrollmentId);
       destination += `?payment=${status.toLowerCase()}`;
+    } else if (kind === "confirmExportReceipt") {
+      if (formData.get("confirmConsequences") !== "on")
+        throw new CoachingError(
+          "Check your downloaded archive before confirming receipt.",
+        );
+      await confirmCoachingExportReceipt(
+        actor,
+        enrollmentId,
+        String(formData.get("exportId")),
+        String(formData.get("checksum")),
+      );
+      destination += "?saved=1";
     } else {
       const input: Record<string, unknown> = Object.fromEntries(
         formData.entries(),
@@ -43,7 +60,7 @@ export async function coachingAction(formData: FormData): Promise<void> {
       destination += "?saved=1";
     }
   } catch (error) {
-    destination = `/app/coaching/${encodeURIComponent(enrollmentId)}?error=${encodeURIComponent(error instanceof CoachingError ? error.message : "The change could not be saved. Reload the page and try again.")}`;
+    destination = `${returnPath}?error=${encodeURIComponent(error instanceof CoachingError ? error.message : "The change could not be saved. Reload the page and try again.")}`;
   }
   revalidatePath("/app/coaching", "layout");
   redirect(destination);

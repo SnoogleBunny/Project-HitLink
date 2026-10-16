@@ -44,14 +44,15 @@ async function loginMember(page: Page): Promise<void> {
   await page.goto(`${memberBaseURL}/login`, { waitUntil: "networkidle" });
   const email = page.getByLabel("Email");
   if (!(await email.isVisible())) {
-    await expect(page).toHaveURL(/\/app$/);
+    await expect(page).toHaveURL(/\/app\/schedule$/);
+    await page.waitForLoadState("networkidle");
     return;
   }
 
   await email.fill("demo-member@flowstate.local");
   await page.getByLabel("Password").fill("MemberPass123!");
   await page.getByRole("button", { name: "Log in" }).click();
-  await expect(page).toHaveURL(/\/app$/);
+  await expect(page).toHaveURL(/\/app\/schedule$/);
   await page.waitForLoadState("networkidle");
 }
 
@@ -187,12 +188,17 @@ async function copyCookiesToAdminHost(
   source: BrowserContext,
   target: BrowserContext,
 ): Promise<void> {
-  const cookies = await source.cookies(memberBaseURL);
+  const cookies = (await source.cookies()).filter(
+    (cookie) =>
+      cookie.domain === new URL(memberBaseURL).hostname &&
+      cookie.name === "flowstate_member_session",
+  );
+  expect(cookies).toHaveLength(1);
   await target.addCookies(
     cookies.map((cookie) => ({
       expires: cookie.expires,
       httpOnly: cookie.httpOnly,
-      name: cookie.name,
+      name: "flowstate_admin_session",
       sameSite: cookie.sameSite,
       secure: cookie.secure,
       url: adminBaseURL,
@@ -255,7 +261,14 @@ async function expectFailClosedPdfRequest(
   url: string,
   forbidden: string[],
 ): Promise<void> {
-  const response = await context.request.get(url, { maxRedirects: 0 });
+  const cookie = (await context.cookies())
+    .filter((item) => item.domain === new URL(url).hostname)
+    .map((item) => `${item.name}=${item.value}`)
+    .join("; ");
+  const response = await context.request.get(url, {
+    maxRedirects: 0,
+    headers: { cookie },
+  });
   await expectNoTenantDisclosure(response, forbidden);
 }
 
@@ -275,8 +288,7 @@ test.afterAll(async () => {
   await prisma.$disconnect();
 });
 
-test.describe
-  .serial("RP-20 every-visible-feature certification evidence", () => {
+test.describe("RP-20 every-visible-feature certification evidence", () => {
   test.setTimeout(900_000);
 
   test("EVF-FORMS-PDF: authenticated bytes, fail-closed IDs, and exact Chromium viewer allowance", async ({
@@ -298,15 +310,21 @@ test.describe
     const exactPath = `/dashboard/forms/${document.id}/versions/${version.id}/file`;
     const exactUrl = `${adminBaseURL}${exactPath}`;
 
-    const direct = await page.request.get(exactUrl);
-    expect(direct.status()).toBe(200);
-    expect(direct.headers()["content-type"]).toMatch(
-      /^application\/pdf(?:;|$)/i,
-    );
-    expect(direct.headers()["content-disposition"]).toBe(
-      `inline; filename="${version.fileName}"`,
-    );
-    const directBytes = await direct.body();
+    // Chromium sends secure localhost cookies; APIRequestContext deliberately
+    // does not emulate that browser-specific loopback exception.
+    const direct = await page.evaluate(async (url) => {
+      const response = await fetch(url, { credentials: "include" });
+      return {
+        status: response.status,
+        type: response.headers.get("content-type"),
+        disposition: response.headers.get("content-disposition"),
+        bytes: Array.from(new Uint8Array(await response.arrayBuffer())),
+      };
+    }, exactUrl);
+    expect(direct.status).toBe(200);
+    expect(direct.type).toMatch(/^application\/pdf(?:;|$)/i);
+    expect(direct.disposition).toBe(`inline; filename="${version.fileName}"`);
+    const directBytes = Buffer.from(direct.bytes);
     expectCoherentPdf(directBytes);
     expect(createHash("sha256").update(directBytes).digest("hex")).toBe(
       version.fileSha256,
@@ -328,6 +346,10 @@ test.describe
       foreign.formVersionId,
       foreign.workspaceName,
     ];
+    const cookie = (await page.context().cookies())
+      .filter((item) => item.domain === new URL(exactUrl).hostname)
+      .map((item) => `${item.name}=${item.value}`)
+      .join("; ");
 
     try {
       for (const pathName of [
@@ -340,6 +362,7 @@ test.describe
       ]) {
         const response = await page.request.get(`${adminBaseURL}${pathName}`, {
           maxRedirects: 0,
+          headers: { cookie },
         });
         await expectNoTenantDisclosure(response, forbidden);
       }
@@ -354,7 +377,9 @@ test.describe
         await wrongRoleContext.close();
       }
 
-      const ownerCookies = await page.context().cookies(adminBaseURL);
+      const ownerCookies = (await page.context().cookies()).filter(
+        (item) => item.domain === new URL(adminBaseURL).hostname,
+      );
       const authCookie = ownerCookies.find((cookie) =>
         cookie.name.includes("session"),
       );
@@ -430,7 +455,7 @@ test.describe
         programs: true,
         punchCardProducts: true,
       },
-      where: { name: "Demo Flowstate Gym" },
+      where: { name: "Demo HitLink Gym" },
     });
     const adminRoutes = [
       "/dashboard",
@@ -455,6 +480,10 @@ test.describe
       `/dashboard/schedule/${workspace.classTemplates[0].id}/edit`,
       "/dashboard/schedule/new",
       "/dashboard/settings/billing",
+      "/dashboard/settings/data",
+      "/dashboard/staff",
+      "/dashboard/coaching",
+      `/dashboard/members/${workspace.members[0].id}/records`,
       "/dashboard/staff-invites",
     ];
     const memberRoutes = [
@@ -465,6 +494,9 @@ test.describe
       "/app/forms",
       "/app/membership",
       "/app/schedule",
+      "/app/account",
+      "/app/account/records",
+      "/app/coaching",
     ];
 
     await fs.mkdir(evidenceDir, { recursive: true });
@@ -519,6 +551,15 @@ test.describe
     browserDiagnostics,
     page,
   }) => {
+    // Opening the member screen reconciles the pending demonstration contract
+    // into the payment-method-needed queue without inventing an invoice.
+    await loginMember(page);
+    await page.goto(`${memberBaseURL}/app/billing`, {
+      waitUntil: "networkidle",
+    });
+    await expect(
+      page.getByRole("button", { name: "Payment method unavailable" }),
+    ).toBeDisabled();
     await loginAdmin(page);
     await page.goto(`${adminBaseURL}/dashboard/settings/billing`, {
       waitUntil: "networkidle",
@@ -542,9 +583,11 @@ test.describe
       page.getByText("1 billing item", { exact: true }),
     ).toBeVisible();
     const retryNow = page.getByRole("button").filter({ hasText: "Retry now" });
-    await expect(retryNow).toBeVisible();
+    await expect(retryNow).toHaveCount(1);
     await expect(retryNow).toBeDisabled();
-    await expect(retryNow).toHaveAttribute("aria-describedby", /\S/);
+    await expect(
+      page.getByText("No invoice is available to retry."),
+    ).toBeVisible();
 
     await page.goto(`${adminBaseURL}/dashboard/migration`, {
       waitUntil: "networkidle",
@@ -582,12 +625,16 @@ test.describe
       waitUntil: "networkidle",
     });
     await expect(
-      page.getByRole("heading", { name: "Checkout status not verified" }),
+      page.getByRole("heading", { name: "Payment request not found" }),
     ).toBeVisible();
-    await expect(page.getByText("Payment status unknown")).toBeVisible();
     await expect(
-      page.getByRole("link", { name: "Open bookings" }),
-    ).toHaveAttribute("href", "/app/bookings");
+      page.getByText("Open Payments to find your current requests."),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("status")
+        .getByRole("link", { name: "Classes", exact: true }),
+    ).toHaveAttribute("href", "/app/schedule");
 
     await page.goto(landingBaseURL, { waitUntil: "networkidle" });
     for (const name of ["Book a Demo", "Contact"]) {

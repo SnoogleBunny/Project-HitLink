@@ -1,3 +1,5 @@
+import { SourceRefundForm } from "./source-refund-form";
+import { getSourceRefundReview } from "../../../../../lib/source-refund-receipts";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, Money, Notice } from "@flowstate/ui";
@@ -17,6 +19,14 @@ export default async function FinancialReviewPage({
     caseId,
   });
   if (!item) notFound();
+  const sourceRefund = await getSourceRefundReview(
+    {
+      workspaceId: context.workspace.id,
+      workspaceUserId: context.workspaceUserId,
+      userId: context.session.userId,
+    },
+    caseId,
+  );
   const date = (value: Date) =>
     new Intl.DateTimeFormat("en-CA", {
       dateStyle: "medium",
@@ -37,7 +47,7 @@ export default async function FinancialReviewPage({
     >
       <section className="management-card hl-payment-review">
         <div className="hl-payment-record-heading">
-          <h3>{item.payerAccount?.member.fullName ?? "Payer not recorded"}</h3>
+          <h3>{item.payerAccount?.member.fullName ?? sourceRefund?.payerName ?? "Payer not recorded"}</h3>
           <Badge tone={item.resolvedAt ? "success" : "warning"}>
             {item.resolvedAt ? "Resolved" : "Needs review"}
           </Badge>
@@ -93,7 +103,7 @@ export default async function FinancialReviewPage({
               Open financial request
             </Link>
           ) : null}
-          {item.paymentId ? (
+          {item.paymentId && !sourceRefund ? (
             <Link
               className="text-link"
               href={`/dashboard/billing/refunds/${item.paymentId}`}
@@ -119,6 +129,9 @@ export default async function FinancialReviewPage({
           ) : null}
         </div>
       </section>
+      {sourceRefund ? (
+        <SourceRefundForm caseId={caseId} review={sourceRefund} />
+      ) : null}
     </AdminShell>
   );
 }

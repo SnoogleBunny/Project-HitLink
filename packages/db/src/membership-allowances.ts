@@ -1,3 +1,4 @@
+import { sourceBillingCoversDate } from "./source-billing.js";
 import { memberNotificationRecipients } from "./member-notification-recipients.js";
 import { financialEntitlementHoldReason } from "./entitlement-holds.js";
 import { lockClassSchedule } from "./class-occurrences.js";
@@ -65,8 +66,9 @@ type Db = Prisma.TransactionClient | PrismaClient;
 export interface AllowanceWindowSummary extends AllowanceWindow { reserved: number; used: number; remaining: number }
 export interface MembershipAllowanceSummary { membershipId: string; countingMode: "RESERVATION" | "ATTENDANCE"; unlimited: boolean; windows: AllowanceWindowSummary[] }
 export async function prepareMembershipAllowance(args: { workspaceId: string; memberId: string; membershipId: string; scheduledForDate: string; timezone: string; db: Db; ignoreBookingId?: string }) {
-  const membership = await args.db.memberMembership.findFirst({ where: { id: args.membershipId, workspaceId: args.workspaceId, memberId: args.memberId }, include: { membershipPlan: { include: { programRestrictions: true } } } });
+  const membership = await args.db.memberMembership.findFirst({ where: { id: args.membershipId, workspaceId: args.workspaceId, memberId: args.memberId }, include: { sourceBillingEvidence: true, membershipPlan: { include: { programRestrictions: true } } } });
   if (!membership) return { error: "Membership not found." } as const;
+  if (!sourceBillingCoversDate(membership, args.scheduledForDate)) return { error: "The source payment or resume evidence does not cover this class date. Ask the gym to check the original-system receipts." } as const;
   // Null snapshots from imports are treated as the legacy unlimited contract, never as today's changed catalog cap.
   if (membership.acceptedTerms !== null && !readAcceptedMembershipTerms(membership.acceptedTerms)) return { error: "The accepted membership terms need owner review before booking." } as const;
   const terms = readAcceptedMembershipTerms(membership.acceptedTerms) ?? snapshotMembershipTerms({ ...membership.membershipPlan, weeklyClassLimit: null, monthlyClassLimit: null });
@@ -79,7 +81,8 @@ export async function prepareMembershipAllowance(args: { workspaceId: string; me
   const summaries: AllowanceWindowSummary[] = [];
   for (const window of windows) {
     const allocations = await args.db.membershipAllowanceAllocation.findMany({ where: { workspaceId: args.workspaceId, memberId: args.memberId, memberMembershipId: membership.id, kind: window.kind, periodStart: dateOnlyStringToUtcDate(window.startsOn), state: { not: "RELEASED" }, ...(args.ignoreBookingId ? { bookingId: { not: args.ignoreBookingId } } : {}) }, select: { state: true } });
-    const reserved = allocations.filter((a) => a.state === "RESERVED").length, used = allocations.filter((a) => a.state === "USED").length;
+    const opening = await args.db.membershipAllowanceOpeningBalance?.findFirst({ where: { workspaceId: args.workspaceId, memberMembershipId: membership.id, kind: window.kind, periodStart: dateOnlyStringToUtcDate(window.startsOn) } });
+    const reserved = allocations.filter((a) => a.state === "RESERVED").length, used = allocations.filter((a) => a.state === "USED").length + (opening?.usedCount ?? 0);
     const adjustment = await args.db.membershipAllowanceAdjustment.aggregate({ where: { workspaceId: args.workspaceId, memberMembershipId: membership.id, kind: window.kind, periodStart: dateOnlyStringToUtcDate(window.startsOn) }, _sum: { delta: true } });
     const limit = window.limit + (adjustment._sum.delta ?? 0);
     summaries.push({ ...window, limit, reserved, used, remaining: Math.max(0, limit - reserved - used) });

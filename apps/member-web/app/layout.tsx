@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import localFont from "next/font/local";
 import { ThemeScript } from "@flowstate/ui";
+import { publicMemberOrigin } from "../lib/gym-website";
 import "./globals.css";
 import "@flowstate/ui/styles.css";
 
@@ -29,6 +30,7 @@ const barlow = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(publicMemberOrigin()),
   title: { default: "HitLink Member Portal", template: "%s · HitLink" },
   description: "Book classes and manage your membership.",
   robots: { index: false, follow: false },

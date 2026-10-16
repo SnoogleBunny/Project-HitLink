@@ -8,6 +8,8 @@ import {
   requireWorkspaceDataOwner,
   WorkspaceDataError,
   type WorkspaceDataActor,
+  recordWorkspaceBillingHandoverVerification,
+  finalizeWorkspaceOffboarding,
 } from "@flowstate/db";
 import { paymentProvider } from "./index.js";
 
@@ -21,6 +23,9 @@ export interface OffboardingSubscription {
   openInvoiceCount: number;
 }
 export interface WorkspaceOffboardingGateway {
+  retrieveConnectedAccount?(
+    accountId: string,
+  ): Promise<{ id: string; deleted: boolean; chargesEnabled?: boolean }>;
   retrievePlatform(subscriptionId: string): Promise<OffboardingSubscription>;
   stopPlatform(
     subscriptionId: string,
@@ -51,6 +56,14 @@ export function createStripeWorkspaceOffboardingGateway(
     openInvoiceCount,
   });
   return {
+    async retrieveConnectedAccount(accountId) {
+      const account = await stripe.accounts.retrieve(accountId);
+      return {
+        id: account.id,
+        deleted: Boolean("deleted" in account && account.deleted),
+        chargesEnabled: account.charges_enabled,
+      };
+    },
     async retrievePlatform(subscriptionId) {
       const sub = await stripe.subscriptions.retrieve(subscriptionId);
       let count = 0;
@@ -395,6 +408,32 @@ export async function verifyWorkspaceCustomerBilling(
   const subscriptions = await gateway.listCustomerSubscriptions(
     settings.stripeAccountId,
   );
+  if (plan.customerBillingDisposition === "HANDOVER") {
+    if (!gateway.retrieveConnectedAccount)
+      throw new WorkspaceDataError(
+        "Fresh connected-account evidence is required for a billing handover.",
+      );
+    const account = await gateway.retrieveConnectedAccount(
+      settings.stripeAccountId,
+    );
+    const handover = await db.workspaceBillingHandover.findUnique({
+      where: { id: plan.customerBillingHandoverId ?? "" },
+    });
+    return recordWorkspaceBillingHandoverVerification(
+      actor,
+      version,
+      {
+        accountId: settings.stripeAccountId,
+        accountVerified:
+          account.id === settings.stripeAccountId &&
+          !account.deleted &&
+          (handover?.processorMode !== "RETAIN_GYM_PROCESSOR" ||
+            account.chargesEnabled === true),
+        subscriptions,
+      },
+      { db, now },
+    );
+  }
   if (
     subscriptions.some(
       (sub) =>
@@ -469,5 +508,19 @@ export async function verifyWorkspaceCustomerBilling(
       },
     });
     return { status: "VERIFIED", count: subscriptions.length };
+  });
+}
+
+/** Re-read both processor scopes immediately before the locked exit inventory check. */
+export async function finalizeWorkspaceOffboardingWithBillingChecks(
+  actor: WorkspaceDataActor,
+  version: number,
+  options: Options = {},
+) {
+  await stopWorkspacePlatformBilling(actor, version, options);
+  await verifyWorkspaceCustomerBilling(actor, version, options);
+  return finalizeWorkspaceOffboarding(actor, version, {
+    db: options.db,
+    now: options.now,
   });
 }
