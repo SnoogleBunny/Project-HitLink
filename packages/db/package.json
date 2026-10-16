@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./program-progress-policy": "./src/program-progress-policy.ts"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",

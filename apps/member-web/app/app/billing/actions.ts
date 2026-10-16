@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { retryMembershipInvoice } from "@flowstate/payments";
 import {
   emptyBillingActionState,
   type BillingActionState,
@@ -10,7 +11,6 @@ import {
 import { requireMemberPortalContext } from "../../../lib/member-auth";
 import {
   createMemberPaymentMethodUpdateSession,
-  retryOwnFailedPayment,
 } from "../../../lib/member-billing";
 
 async function getBillingReturnUrl(): Promise<string> {
@@ -33,7 +33,7 @@ export async function startPaymentMethodUpdateAction(
   void _previousState;
   void _formData;
 
-  const context = await requireMemberPortalContext();
+  const context = await requireMemberPortalContext({ scope: "account" });
   const result = await createMemberPaymentMethodUpdateSession({
     workspaceId: context.workspace.id,
     memberId: context.member.id,
@@ -58,9 +58,10 @@ export async function retryOwnFailedPaymentAction(
   void _previousState;
   void _formData;
 
-  const context = await requireMemberPortalContext();
-  const result = await retryOwnFailedPayment({
+  const context = await requireMemberPortalContext({ scope: "account" });
+  const result = await retryMembershipInvoice({
     workspaceId: context.workspace.id,
+    actorUserId: context.session.userId,
     memberId: context.member.id,
   });
 

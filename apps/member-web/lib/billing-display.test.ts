@@ -121,7 +121,7 @@ describe("billing display dates and amounts", () => {
   });
 
   it("preserves valid amounts and uses truthful unknown/null fallbacks", () => {
-    expect(formatMoney(12900, "cad")).toBe("$129.00");
+    expect(formatMoney(12900, "cad")).toBe("CAD\u202f129.00");
     expect(formatMoney(12900, "zzz")).toBe("12900 ZZZ amount units");
     expect(formatMoney(12900, null)).toBe(
       "12900 amount units (currency not recorded)",

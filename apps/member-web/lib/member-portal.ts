@@ -2,6 +2,7 @@ import {
   formatMinutesAsTime,
   getWorkspaceDateString,
   prisma,
+  readAcceptedMembershipTerms,
   toDateOnlyString,
   type AttendanceState,
   type ClassBookingStatus,
@@ -52,6 +53,7 @@ interface DashboardAttendanceRecord {
 }
 
 interface MemberPortalDatabase extends MemberMembershipDatabase {
+  program?: { findMany(args: Record<string, unknown>): Promise<Array<{id: string; name: string}>> };
   classBooking: {
     findMany(args: Record<string, unknown>): Promise<DashboardBookingRecord[]>;
   };
@@ -139,9 +141,11 @@ export async function getMemberMembershipSummary(args: {
     db,
   });
 
+  const accepted = readAcceptedMembershipTerms(currentMembership?.acceptedTerms);
+  const programs = accepted && db.program ? await db.program.findMany({ where: { workspaceId: args.workspaceId, id: { in: accepted.programIds } }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : null;
   return {
     currentMembership,
-    allowedProgramNames:
+    allowedProgramNames: programs?.map((program) => program.name) ??
       currentMembership?.membershipPlan.programRestrictions.map(
         (restriction) => restriction.program.name,
       ) ?? [],

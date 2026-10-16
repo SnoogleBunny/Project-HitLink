@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { recordLocalFormSignature } from "@flowstate/db";
 import type { SignatureFormState } from "../../../_components/form-signature-form";
 import { requireMemberPortalContext } from "../../../../lib/member-auth";
@@ -18,7 +19,10 @@ export async function signPortalFormAction(
   _previousState: SignatureFormState,
   formData: FormData,
 ): Promise<SignatureFormState> {
-  const context = await requireMemberPortalContext();
+  const context = await requireMemberPortalContext({
+    permission: "sign",
+    memberId: String(formData.get("memberId") ?? "") || undefined,
+  });
 
   if (formData.get("acceptedConsent") !== "on") {
     return {
@@ -30,7 +34,9 @@ export async function signPortalFormAction(
   const headerList = await headers();
   const result = await recordLocalFormSignature({
     workspaceId: context.workspace.id,
+    actorUserId: context.session.userId,
     memberId: context.member.id,
+    guardianId: context.permissions?.guardianId,
     requestId: String(formData.get("requestId") ?? ""),
     signerName: String(formData.get("signerName") ?? ""),
     signerEmail: String(formData.get("signerEmail") ?? ""),
@@ -43,6 +49,9 @@ export async function signPortalFormAction(
       success: false,
     };
   }
+
+  revalidatePath(`/app/forms/${String(formData.get("requestId") ?? "")}`);
+  revalidatePath("/app/forms");
 
   return {
     error: null,

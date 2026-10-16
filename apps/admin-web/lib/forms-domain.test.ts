@@ -121,7 +121,7 @@ function createFormsDb(args?: {
     },
     signatureRequest: {
       updateMany: signatureRequestUpdateMany,
-      findMany: vi.fn().mockImplementation(async () => state.openRequests),
+      findMany: vi.fn().mockImplementation(async () => [...state.openRequests]),
       create: vi.fn().mockImplementation(async ({ data }) => {
         const created = {
           id: `request_${state.openRequests.length + 1}`,
@@ -284,12 +284,19 @@ describe("forms domain helpers", () => {
   it("records the first guardian signature and cancels sibling open requests", async () => {
     const now = new Date("2026-04-10T13:00:00.000Z");
     const tx = {
+      $executeRaw: vi.fn(),
+      $queryRaw: vi.fn(),
+      member: { findFirst: vi.fn().mockResolvedValue({ ...createBaseMember(), familyLinks: [{ guardian: { id: "guardian_1", fullName: "Alex Lee", email: "alex@example.com" } }] }) },
+      memberPortalGrant: { findFirst: vi.fn().mockResolvedValue({ id: "grant_1" }) },
+      formDocument: { findFirst: vi.fn().mockResolvedValue({ currentVersionId: "version_current" }) },
       signedDocument: {
+        findFirst: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockResolvedValue({
           id: "signed_1",
         }),
       },
       signatureRequest: {
+        findFirst: vi.fn(),
         updateMany: vi.fn().mockResolvedValue({
           count: 1,
         }),
@@ -358,10 +365,26 @@ describe("forms domain helpers", () => {
       ),
     } as unknown as FormsDatabase;
 
+    tx.signatureRequest.findFirst.mockImplementation((input) => db.signatureRequest.findFirst(input));
+
+    const denied = await recordLocalFormSignature({
+      workspaceId: "workspace_1", memberId: "member_1", requestId: "request_1",
+      signerName: "Alex Lee", db, now,
+    });
+    expect(denied.status).toBe("error");
+    const wrongGuardian = await recordLocalFormSignature({
+      workspaceId: "workspace_1", memberId: "member_1", requestId: "request_1", guardianId: "guardian_other",
+      actorUserId: "user_parent",
+      signerName: "Alex Lee", db, now,
+    });
+    expect(wrongGuardian.status).toBe("error");
+    expect(tx.signedDocument.create).not.toHaveBeenCalled();
     const result = await recordLocalFormSignature({
       workspaceId: "workspace_1",
       memberId: "member_1",
+      guardianId: "guardian_1",
       requestId: "request_1",
+      actorUserId: "user_parent",
       signerName: "Alex Lee",
       signerEmail: "alex@example.com",
       db,

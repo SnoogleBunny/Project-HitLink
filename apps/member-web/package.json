@@ -14,6 +14,7 @@
   "dependencies": {
     "@flowstate/auth": "workspace:*",
     "@flowstate/db": "workspace:*",
+    "@flowstate/payments": "workspace:*",
     "@flowstate/ui": "workspace:*",
     "next": "16.2.12",
     "react": "^19.2.0",

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { HitLinkBrand, ThemeToggle } from "@flowstate/ui";
 
 interface EntryShellItem {
   label: string;
@@ -28,11 +29,11 @@ export function EntryShell({
 }: EntryShellProps) {
   return (
     <main className="entry-page" aria-labelledby="entry-title">
-      <section className="entry-identity" aria-label="Flowstate admin context">
+      <section className="entry-identity" aria-label="HitLink workspace">
         <div className="entry-identity-inner">
           <p className="entry-identity-eyebrow">{identityEyebrow}</p>
           <div className="entry-identity-copy">
-            <p className="entry-wordmark">Flowstate</p>
+            <HitLinkBrand />
             <h2>{identityTitle}</h2>
             <p>{identityDescription}</p>
           </div>
@@ -52,6 +53,9 @@ export function EntryShell({
 
       <section className="entry-task">
         <div className="entry-task-inner">
+          <div className="hl-entry-theme">
+            <ThemeToggle />
+          </div>
           <p className="entry-eyebrow">{eyebrow}</p>
           <div className="entry-heading">
             <h1 id="entry-title">{title}</h1>

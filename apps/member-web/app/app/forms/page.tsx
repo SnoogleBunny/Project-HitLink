@@ -19,6 +19,8 @@ export default async function MemberFormsPage() {
   const forms = await getMemberFormsPageData({
     workspaceId: context.workspace.id,
     memberId: context.member.id,
+    guardianId: context.permissions?.guardianId,
+    canSign: context.permissions?.canSign,
   });
 
   return (

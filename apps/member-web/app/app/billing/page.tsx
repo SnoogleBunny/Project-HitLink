@@ -2,6 +2,8 @@ import { MemberShell } from "../../_components/member-shell";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
 import { BillingActions } from "./billing-actions";
 import { getMemberBillingSummary } from "../../../lib/member-billing";
+import { getPayerBillingData } from "../../../lib/payer-billing";
+import { AccountPayments } from "./account-payments";
 import {
   formatBillingRecordStatus,
   formatBillingRecordType,
@@ -11,21 +13,39 @@ import {
   formatMoney,
 } from "../../../lib/billing-display";
 
-export default async function BillingPage() {
-  const context = await requireMemberPortalContext();
-  const billing = await getMemberBillingSummary({
-    workspaceId: context.workspace.id,
-    memberId: context.member.id,
-  });
+export default async function BillingPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+} = {}) {
+  const context = await requireMemberPortalContext({ scope: "account" });
+  const [billing, payer, params] = await Promise.all([
+    getMemberBillingSummary({
+      workspaceId: context.workspace.id,
+      memberId: context.member.id,
+    }),
+    getPayerBillingData({
+      workspaceId: context.workspace.id,
+      userId: context.session.userId,
+      payerMemberId: (context.accountMember ?? context.member).id,
+    }),
+    searchParams ??
+      Promise.resolve({} as Record<string, string | string[] | undefined>),
+  ]);
   const billingState = billing.currentMembership?.billingState;
   const billingStatus = billingState?.status ?? "NOT_READY";
 
   return (
     <MemberShell
       context={context}
-      title="Billing"
-      description="Review billing status, open the Stripe payment-method flow when available, and retry actionable payment failures."
+      title="Payments"
+      description="Payments and credits for your account, including purchases for family members."
     >
+      <AccountPayments
+        data={payer}
+        timezone={context.location.timezone}
+        history={params.view === "history"}
+      />
       <div className="member-grid">
         <section className="member-card">
           <p className="member-eyebrow">Current billing state</p>
@@ -92,7 +112,8 @@ export default async function BillingPage() {
         </section>
       </div>
 
-      <section className="member-card">
+      <details className="member-card hl-payment-legacy">
+        <summary>Membership billing activity</summary>
         <p className="member-eyebrow">Recent billing records</p>
         <h3>
           {billing.recentRecords.length} recent update
@@ -154,7 +175,7 @@ export default async function BillingPage() {
             ))}
           </div>
         )}
-      </section>
+      </details>
     </MemberShell>
   );
 }

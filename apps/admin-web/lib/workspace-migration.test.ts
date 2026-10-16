@@ -850,7 +850,7 @@ describe("workspace migration helpers", () => {
       $transaction: vi.fn((callback) => callback(tx)),
     };
     const csv =
-      "id,name,email,parent_name\nm_1,Ada Lovelace,ada@example.com,Ann Parent\n";
+      "id,name,email,parent_name,status\nm_1,Ada Lovelace,ada@example.com,Ann Parent,ACTIVE\n";
 
     const result = await uploadAndStageMigrationCsv({
       workspaceId: "workspace_1",

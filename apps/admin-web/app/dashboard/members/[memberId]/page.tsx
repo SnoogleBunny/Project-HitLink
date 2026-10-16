@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { resolveRequiredFormStatusesForMember } from "@flowstate/db";
+import { resolveRequiredFormStatusesForMember, getMemberProgramProgress } from "@flowstate/db";
 import { AdminShell } from "../../../_components/admin-shell";
 import { formatMinutesAsTime } from "../../../../lib/class-templates";
 import {
@@ -13,6 +13,8 @@ import { requireOwnerWorkspaceContext } from "../../../../lib/owner-workspace";
 import { GuardianLinkForm } from "../guardian-link-form";
 import { MemberEditForm } from "../member-form";
 import { PortalAccessForm } from "../portal-access-form";
+import { FamilyAccessForm } from "../family-access-form";
+import { getFamilyPortalAccess } from "../../../../lib/family-portal-access";
 
 function formatDate(value: Date | null): string {
   if (!value) {
@@ -44,7 +46,7 @@ export default async function MemberProfilePage({
 }) {
   const { memberId } = await params;
   const { session, workspace } = await requireOwnerWorkspaceContext();
-  const [member, forms] = await Promise.all([
+  const [member, forms, familyAccess, progress] = await Promise.all([
     getMemberProfile({
       workspaceId: workspace.id,
       memberId,
@@ -53,6 +55,8 @@ export default async function MemberProfilePage({
       workspaceId: workspace.id,
       memberId,
     }),
+    getFamilyPortalAccess(workspace.id, memberId),
+    getMemberProgramProgress({workspaceId:workspace.id,userId:session.userId},memberId),
   ]);
 
   if (!member) {
@@ -68,6 +72,7 @@ export default async function MemberProfilePage({
       description="Profile details, internal notes, family links, and booked trial dates."
       actions={
         <>
+          {progress.length ? <Link className="button button-secondary" href={`/dashboard/members/${member.id}/progress`}>Progress</Link> : null}
           <Link className="button" href={`/dashboard/members/${member.id}/billing`}>
             Open billing
           </Link>
@@ -77,6 +82,14 @@ export default async function MemberProfilePage({
         </>
       }
     >
+      <section className="management-card">
+        <h2>Family portal access</h2>
+        <FamilyAccessForm memberId={member.id}
+          accounts={familyAccess.accounts.filter((account) => account.userId && account.user).map((account) => ({ userId: account.userId!, label: `${account.fullName} · ${account.user!.email}` }))}
+          guardians={familyAccess.links.map((link) => ({ id: link.guardian.id, fullName: link.guardian.fullName }))}
+          grants={familyAccess.grants.map((grant) => ({ userId: grant.userId, guardianId: grant.guardianId, version: grant.version, canBook: grant.canBook, canSign: grant.canSign, canPay: grant.canPay, revoked: Boolean(grant.revokedAt) }))}
+        />
+      </section>
       <div className="management-grid">
         <section className="management-card">
           <p className="dashboard-card-label">Profile summary</p>

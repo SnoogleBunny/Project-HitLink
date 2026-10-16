@@ -131,6 +131,20 @@ describe("booking helpers", () => {
     });
   });
 
+  it("uses daily revisions, dated cancellations and substitute coaches in owner booking options", async () => {
+    const db = createMockDb();
+    const base = { ...buildTemplateRecord(), coachWorkspaceUser: null, coachWorkspaceUserId: null };
+    db.classTemplate.findMany = vi.fn().mockResolvedValue([{ ...base,
+      scheduleRevisions: [{ ...base, id: "revision", effectiveFrom: new Date("2026-04-01"), startDate: new Date("2026-04-01"), endDate: null, recurrence: "DAILY", weekdays: [] }],
+      classInstances: [{ ...base, id: "cancelled", scheduledForDate: new Date("2026-04-08"), status: "CANCELLED", isScheduleOverride: false, coachAssignmentMode: "INHERIT" }, { ...base, id: "substitute", scheduledForDate: new Date("2026-04-09"), status: "ACTIVE", isScheduleOverride: false, coachAssignmentMode: "ASSIGNED", coachWorkspaceUser: { user: { fullName: "Substitute Coach", email: "sub@example.com" } } }],
+    }]);
+    const result = await listBookingFormOptions({ workspaceId: "workspace_1", timezone: "America/Vancouver", now: new Date("2026-04-08T00:30:00Z"), db });
+    const dates = result.templates[0]!.dateOptions;
+    expect(dates.some((date) => date.scheduledForDate === "2026-04-08")).toBe(false);
+    expect(dates.find((date) => date.scheduledForDate === "2026-04-09")?.label).toContain("Substitute Coach");
+    expect(dates.find((date) => date.scheduledForDate === "2026-04-10")?.label).toContain("Coach to be confirmed");
+  });
+
   it("delegates membership-backed bookings to the shared access helper", async () => {
     const db = createMockDb();
     createAccessBackedBookingMock.mockResolvedValue({
@@ -166,6 +180,7 @@ describe("booking helpers", () => {
       timezone: "America/Vancouver",
       source: "ADMIN",
       allowDropIn: false,
+      trial: false,
       db,
       now: new Date("2026-04-08T00:30:00.000Z"),
     });
@@ -201,8 +216,9 @@ describe("booking helpers", () => {
     });
   });
 
-  it("rejects invalid trial occurrence dates before writing", async () => {
+  it("surfaces shared dated trial validation without writing directly", async () => {
     const db = createMockDb();
+    createAccessBackedBookingMock.mockResolvedValue({ status: "error", code: "INVALID", message: "Choose a valid upcoming date for this class." });
 
     await expect(
       createClassBooking({
@@ -222,7 +238,7 @@ describe("booking helpers", () => {
       message: "Choose a valid upcoming date for this class.",
     });
     expect(db.classBooking.create).not.toHaveBeenCalled();
-    expect(createAccessBackedBookingMock).not.toHaveBeenCalled();
+    expect(createAccessBackedBookingMock).toHaveBeenCalledWith(expect.objectContaining({ trial: true }));
   });
 
   it("rejects cross-workspace member selections", async () => {
@@ -249,10 +265,7 @@ describe("booking helpers", () => {
 
   it("rejects active duplicate trials and restores cancelled rows", async () => {
     const db = createMockDb();
-    db.classBooking.findFirst = vi.fn().mockResolvedValueOnce({
-      id: "booking_existing",
-      status: "BOOKED",
-    });
+    createAccessBackedBookingMock.mockResolvedValueOnce({ status: "error", code: "DUPLICATE", message: "This member already has an active booking for that class date." });
 
     await expect(
       createClassBooking({
@@ -273,10 +286,7 @@ describe("booking helpers", () => {
     });
     expect(db.classBooking.create).not.toHaveBeenCalled();
 
-    db.classBooking.findFirst = vi.fn().mockResolvedValueOnce({
-      id: "booking_cancelled",
-      status: "CANCELLED",
-    });
+    createAccessBackedBookingMock.mockResolvedValueOnce({ status: "restored", bookingId: "booking_1", bookingType: "TRIAL" });
 
     await expect(
       createClassBooking({
@@ -295,19 +305,6 @@ describe("booking helpers", () => {
       status: "restored",
       bookingId: "booking_1",
     });
-    expect(db.classBooking.update).toHaveBeenCalledWith({
-      where: {
-        id: "booking_cancelled",
-      },
-      data: {
-        guardianId: null,
-        bookingType: "TRIAL",
-        source: "ADMIN",
-        status: "BOOKED",
-      },
-      select: {
-        id: true,
-      },
-    });
+    expect(db.classBooking.update).not.toHaveBeenCalled();
   });
 });

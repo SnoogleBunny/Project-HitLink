@@ -1,37 +1,160 @@
+import {
+  addDays,
+  getMembershipAllowanceSummary,
+  getWorkspaceDateString,
+  parseDateOnlyString,
+} from "@flowstate/db";
+import { Notice } from "@flowstate/ui";
+import Link from "next/link";
 import { MemberShell } from "../../_components/member-shell";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
-import { listEligibleSelfServiceOccurrences } from "../../../lib/self-service-bookings";
+import {
+  listEligibleSelfServiceOccurrences,
+  listMemberBookings,
+} from "../../../lib/self-service-bookings";
+import { getMemberFormsPageData } from "../../../lib/forms";
+import { getCurrentMemberMembershipContext } from "../../../lib/member-membership";
 import { ScheduleList } from "./schedule-list";
 
-export default async function SchedulePage() {
+export default async function SchedulePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const context = await requireMemberPortalContext();
-  const schedule = await listEligibleSelfServiceOccurrences({
-    workspaceId: context.workspace.id,
-    memberId: context.member.id,
-    timezone: context.location.timezone,
-  });
-
+  const query = await searchParams;
+  const today = getWorkspaceDateString(new Date(), context.location.timezone);
+  const [bookings, forms, membership] = await Promise.all([
+    listMemberBookings({
+      workspaceId: context.workspace.id,
+      memberId: context.member.id,
+      timezone: context.location.timezone,
+    }),
+    getMemberFormsPageData({
+      workspaceId: context.workspace.id,
+      memberId: context.member.id,
+      guardianId: context.permissions?.guardianId,
+      canSign: context.permissions?.canSign,
+    }),
+    getCurrentMemberMembershipContext({
+      workspaceId: context.workspace.id,
+      memberId: context.member.id,
+    }),
+  ]);
+  const requestedBooking = [...bookings.upcoming, ...bookings.history].find(
+    (item) => item.bookingId === query.booking,
+  );
+  const normalMin = addDays(today, -30),
+    normalMax = addDays(today, 55);
+  const minDate =
+    requestedBooking && requestedBooking.scheduledForDate < normalMin
+      ? requestedBooking.scheduledForDate
+      : normalMin;
+  const maxDate =
+    requestedBooking && requestedBooking.scheduledForDate > normalMax
+      ? requestedBooking.scheduledForDate
+      : normalMax;
+  const requestedDate =
+    typeof query.date === "string"
+      ? query.date
+      : (requestedBooking?.scheduledForDate ?? today);
+  const date =
+    parseDateOnlyString(requestedDate).status !== "error" &&
+    requestedDate >= minDate &&
+    requestedDate <= maxDate
+      ? requestedDate
+      : today;
+  const outsideWindow = date < normalMin || date > normalMax;
+  const [schedule, allowance] = await Promise.all([
+    listEligibleSelfServiceOccurrences({
+      workspaceId: context.workspace.id,
+      memberId: context.member.id,
+      timezone: context.location.timezone,
+      fromDate: outsideWindow ? date : minDate,
+      toDate: outsideWindow ? addDays(date, 7) : maxDate,
+    }),
+    getMembershipAllowanceSummary({
+      workspaceId: context.workspace.id,
+      memberId: context.member.id,
+      scheduledForDate: date,
+      timezone: context.location.timezone,
+    }),
+  ]);
+  const unsigned = forms.items.filter(
+    (item) => item.status !== "SIGNED",
+  ).length;
+  const billingNeedsAttention =
+    membership?.billingState &&
+    [
+      "PENDING_PAYMENT_METHOD",
+      "PAST_DUE",
+      "PAYMENT_FAILED",
+      "ACTION_REQUIRED",
+    ].includes(membership.billingState.status);
+  const notice =
+    (query.notice === "booked" || query.notice === "moved") &&
+    requestedBooking?.status === "BOOKED"
+      ? query.notice
+      : query.notice === "cancelled" &&
+          bookings.history.some(
+            (item) =>
+              item.status === "CANCELLED" && item.scheduledForDate === date,
+          )
+        ? "cancelled"
+        : query.notice === "waitlisted" &&
+            bookings.waitlist.some((item) => item.scheduledForDate === date)
+          ? "waitlisted"
+          : undefined;
   return (
     <MemberShell
       context={context}
-      title="Class schedule"
-      description="Browse upcoming dated classes and use membership, punch-card, or member-portal drop-in access when available."
+      title="Classes"
+      description="Book your next class and manage your places."
     >
-      <section className="member-card">
-        <p className="member-eyebrow">Upcoming occurrences</p>
-        <h3>
-          {schedule.occurrences.length} visible class option
-          {schedule.occurrences.length === 1 ? "" : "s"}
-        </h3>
-        {schedule.occurrences.length === 0 ? (
-          <p className="member-copy">
-            No upcoming classes are available inside the current booking
-            windows for your access products.
-          </p>
-        ) : (
-          <ScheduleList occurrences={schedule.occurrences} />
-        )}
-      </section>
+      {unsigned ? (
+        <Notice
+          tone="warning"
+          actions={
+            <Link className="hl-text-link" href="/app/forms">
+              Review forms
+            </Link>
+          }
+        >
+          {unsigned} required {unsigned === 1 ? "form needs" : "forms need"}{" "}
+          attention before your next class.
+        </Notice>
+      ) : null}
+      {billingNeedsAttention ? (
+        <Notice
+          tone="warning"
+          actions={
+            <Link className="hl-text-link" href="/app/membership">
+              Review membership
+            </Link>
+          }
+        >
+          This membership has an unresolved payment or payment setup step.
+        </Notice>
+      ) : null}
+      <ScheduleList
+        key={context.member.id}
+        occurrences={schedule.occurrences}
+        memberId={context.member.id}
+        memberName={context.member.fullName}
+        date={date}
+        minDate={minDate}
+        maxDate={maxDate}
+        today={today}
+        program={typeof query.program === "string" ? query.program : ""}
+        bookingId={requestedBooking?.bookingId}
+        notice={notice}
+        upcoming={bookings.upcoming}
+        history={bookings.history}
+        waitlist={bookings.waitlist}
+        allowance={allowance}
+        canBook={context.permissions?.canBook !== false}
+        canPay={context.permissions?.canPay !== false}
+      />
     </MemberShell>
   );
 }

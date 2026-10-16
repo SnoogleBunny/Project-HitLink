@@ -31,6 +31,77 @@ const readyMigration = {
   operationallyReadyByUserId: "flowstate_operator_1",
 };
 
+describe("verified family account boundaries", () => {
+  const parent = { id: "parent", fullName: "Parent", email: "parent@example.test", status: "ACTIVE" as const };
+  const child = { id: "child", workspaceId: "gym", fullName: "Child", email: null, status: "ACTIVE" as const };
+  function fixture() {
+    const grant = {
+      id: "grant", workspaceId: "gym", userId: "parent_user", memberId: "child", guardianId: "guardian",
+      verifiedAt: new Date(), revokedAt: null as Date | null, canBook: true, canSign: false, canPay: false,
+      member: child, guardian: { workspaceId: "gym", familyLinks: [{ workspaceId: "gym", childMemberId: "child" }] },
+    };
+    return {
+      grant,
+      db: {
+        workspace: { findUnique: vi.fn().mockResolvedValue({ id: "gym", name: "Gym", status: "ACTIVE", migration: readyMigration, location: { id: "location", name: "Gym", timezone: "America/Vancouver" } }) },
+        member: { findFirst: vi.fn().mockResolvedValue(parent) },
+        memberPortalGrant: { findMany: vi.fn().mockImplementation(async () => [grant]) },
+      },
+    };
+  }
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getSessionMock.mockResolvedValue({ userId: "parent_user", workspaceId: "gym", email: parent.email, displayName: "Parent", role: "CUSTOMER" });
+    cookiesMock.mockResolvedValue({ get: vi.fn().mockReturnValue({ value: "gym:child" }), set: vi.fn() });
+  });
+  it("selects the child with an explicit booking grant and preserves the payer identity", async () => {
+    const { db } = fixture();
+    const context = await requireMemberPortalContext({ db, permission: "book" });
+    expect(context.member.id).toBe("child");
+    expect(context.accountMember?.id).toBe("parent");
+    expect(context.permissions).toMatchObject({ canBook: true, canSign: false, canPay: false, guardianId: "guardian" });
+  });
+  it("keeps account/payment scope on the signed-in adult despite a selected child", async () => {
+    const { db } = fixture();
+    const context = await requireMemberPortalContext({ db, scope: "account", permission: "pay" });
+    expect(context.member.id).toBe("parent");
+    expect(context.permissions?.grantId).toBeNull();
+  });
+  it.each(["sign", "pay"] as const)("does not infer %s permission from booking permission", async (permission) => {
+    const { db } = fixture();
+    await expect(requireMemberPortalContext({ db, permission })).rejects.toThrow("NEXT_REDIRECT:/unauthorized");
+  });
+  it("rejects revoked access on a submitted booking instead of booking for the adult", async () => {
+    const { db, grant } = fixture();
+    grant.revokedAt = new Date();
+    await expect(requireMemberPortalContext({ db, permission: "book" })).rejects.toThrow("NEXT_REDIRECT:/unauthorized");
+  });
+  it("recovers a stale selected-person cookie safely on a read", async () => {
+    const { db, grant } = fixture();
+    grant.revokedAt = new Date();
+    expect((await requireMemberPortalContext({ db })).member.id).toBe("parent");
+  });
+  it("does not authorize an arbitrary requested member", async () => {
+    const { db } = fixture();
+    await expect(requireMemberPortalContext({ db, memberId: "unknown" })).rejects.toThrow("NEXT_REDIRECT:/unauthorized");
+  });
+  it("rejects cross-workspace grants even if a database adapter returns one", async () => {
+    const { db, grant } = fixture();
+    grant.workspaceId = "other-gym";
+    await expect(requireMemberPortalContext({ db, memberId: "child", permission: "book" })).rejects.toThrow("NEXT_REDIRECT:/unauthorized");
+  });
+  it("rejects a grant after its verified relationship is removed", async () => {
+    const { db, grant } = fixture();
+    grant.guardian.familyLinks = [];
+    await expect(requireMemberPortalContext({ db, memberId: "child", permission: "book" })).rejects.toThrow("NEXT_REDIRECT:/unauthorized");
+  });
+  it("never infers family access when only the adult member exists", async () => {
+    const { db } = fixture();
+    db.memberPortalGrant.findMany.mockResolvedValue([]);
+    await expect(requireMemberPortalContext({ db, memberId: "child" })).rejects.toThrow("NEXT_REDIRECT:/unauthorized");
+  });
+});
+
 describe("requireMemberPortalContext", () => {
   beforeEach(() => {
     vi.clearAllMocks();

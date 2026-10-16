@@ -27,10 +27,13 @@ export async function startPunchCardCheckoutAction(
   _previousState: MembershipActionState,
   formData: FormData,
 ): Promise<MembershipActionState> {
-  const context = await requireMemberPortalContext();
+  const context = await requireMemberPortalContext({ permission: "pay", memberId: String(formData.get("memberId") ?? "") || undefined });
   const result = await startPunchCardCheckout({
     workspaceId: context.workspace.id,
+    actorUserId: context.session.userId,
+    payerMemberId: (context.accountMember ?? context.member).id,
     memberId: context.member.id,
+    requestId: String(formData.get("requestId") ?? "") || undefined,
     punchCardProductId: String(formData.get("punchCardProductId") ?? ""),
     successUrl: await getCheckoutUrl("/app/checkout/complete"),
     cancelUrl: await getCheckoutUrl("/app/membership"),

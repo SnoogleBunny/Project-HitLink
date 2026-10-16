@@ -14,6 +14,10 @@ const {
   requireContextMock: vi.fn(),
 }));
 
+vi.mock("@flowstate/db", async () => ({ ...await vi.importActual<typeof import("@flowstate/db")>("@flowstate/db"), getMemberProgramProgress: vi.fn().mockResolvedValue([]),
+  getMembershipLifecycle: vi.fn().mockResolvedValue(null), getMembershipAllowanceSummary: vi.fn().mockResolvedValue(null) }));
+vi.mock("./lifecycle-actions", () => ({ memberLifecycleAction: vi.fn() }));
+
 vi.mock("../../_components/member-shell", () => ({
   MemberShell: ({ children }: PropsWithChildren) => <main>{children}</main>,
 }));
@@ -62,6 +66,7 @@ vi.mock("./punch-card-purchase-form", () => ({
 import MembershipPage from "./page";
 
 const context = {
+  session: { userId: "user_1" },
   workspace: { id: "workspace_1" },
   member: { id: "member_1" },
   location: { timezone: "America/Toronto" },
@@ -195,7 +200,7 @@ describe("MembershipPage display truth", () => {
     expect(html).toContain("Payment method needed");
     expect(html).toContain("Next billing (gym time)");
     expect(html).toContain("Jan 15, 2027, 4:30 p.m. EST");
-    expect(html).toContain("End after current billing period");
+    expect(html).toContain("Scheduled access end");
     expect(html).toContain("Scheduled");
     expect(html).toContain("Scheduled freeze");
     expect(html).toContain("Jan 15, 2027 to Jan 31, 2027");
@@ -203,15 +208,15 @@ describe("MembershipPage display truth", () => {
     expect(html).toContain("Used up");
     expect(html).toContain('aria-label="Punches remaining: 0 of 10"');
     expect(html).toContain("Purchased (gym time)");
-    expect(html).toContain("$129.00");
+    expect(html).toContain("CAD\u202f129.00");
 
     expect(html).not.toMatch(/PENDING_PAYMENT_METHOD|DEPLETED/);
 
     const planIndex = html.indexOf("Unlimited training");
     const statusIndex = html.indexOf("Membership status");
-    const priceIndex = html.indexOf("$129.00");
+    const priceIndex = html.indexOf("CAD\u202f129.00");
     const billingIndex = html.indexOf("Next billing (gym time)");
-    const cancelIndex = html.indexOf("End after current billing period");
+    const cancelIndex = html.indexOf("Scheduled access end");
     const freezeIndex = html.indexOf("Scheduled freeze");
     const programsIndex = html.indexOf("Allowed programs");
 

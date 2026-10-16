@@ -1,20 +1,25 @@
-"use client";
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes } from "react";
 
-import { ReactNode } from "react";
+export type ButtonVariant = "primary" | "secondary" | "danger" | "text";
 
-interface ButtonProps {
-  children: ReactNode;
-  className?: string;
-  appName: string;
-}
-
-export const Button = ({ children, className, appName }: ButtonProps) => {
+export function Button({
+  className = "",
+  variant = "primary",
+  type = "button",
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
   return (
     <button
-      className={className}
-      onClick={() => alert(`Hello from your ${appName} app!`)}
-    >
-      {children}
-    </button>
+      {...props}
+      type={type}
+      className={`hl-button hl-button-${variant} ${className}`}
+    />
   );
-};
+}
+
+export function TextLink({
+  className = "",
+  ...props
+}: AnchorHTMLAttributes<HTMLAnchorElement>) {
+  return <a {...props} className={`hl-text-link ${className}`} />;
+}

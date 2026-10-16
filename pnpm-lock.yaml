@@ -42,6 +42,9 @@ importers:
       '@flowstate/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@flowstate/payments':
+        specifier: workspace:*
+        version: link:../../packages/payments
       '@flowstate/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -159,6 +162,9 @@ importers:
       '@flowstate/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@flowstate/payments':
+        specifier: workspace:*
+        version: link:../../packages/payments
       '@flowstate/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -303,6 +309,31 @@ importers:
       typescript-eslint:
         specifier: ^8.50.0
         version: 8.58.0(eslint@9.39.4(jiti@2.6.1))(typescript@5.9.2)
+
+  packages/payments:
+    dependencies:
+      '@flowstate/db':
+        specifier: workspace:*
+        version: link:../db
+      stripe:
+        specifier: ^22.0.0
+        version: 22.0.0(@types/node@22.19.17)
+    devDependencies:
+      '@flowstate/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@flowstate/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: ^22.15.3
+        version: 22.19.17
+      eslint:
+        specifier: ^9.39.1
+        version: 9.39.4(jiti@2.6.1)
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
 
   packages/types:
     devDependencies:
@@ -1467,6 +1498,7 @@ packages:
   eslint@9.39.4:
     resolution: {integrity: sha512-XoMjdBOwe/esVgEvLmNsD3IRHkm7fbKIUGvrleloJXUZgDHig2IPWNniv+GwjyJXzuNqVjlr5+4yVUZjycJwfQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'

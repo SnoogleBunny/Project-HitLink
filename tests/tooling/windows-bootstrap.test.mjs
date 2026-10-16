@@ -83,6 +83,11 @@ test("Turbo exposes only the declared application runtime environment", async ()
     "NEXT_PUBLIC_APP_URL",
     "NEXT_PUBLIC_FLOWSTATE_APP_URL",
     "NEXT_PUBLIC_MEMBER_APP_URL",
+    "NEXT_PUBLIC_MEMBER_WEB_URL",
+    "TEST_DATABASE_URL",
+    "HITLINK_WORKER_SECRET",
+    "RESEND_API_KEY",
+    "HITLINK_EMAIL_FROM",
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
     "FORMS_MAGIC_LINK_SECRET",
@@ -183,8 +188,13 @@ test("E2E orchestration stays on the Corepack-pinned pnpm toolchain", async () =
   );
   assert.match(
     playwrightConfig,
-    /command:\s*"corepack pnpm exec dotenv -e \.env -- turbo run dev --env-mode=loose"/,
+    /"corepack\.cmd pnpm@10\.33\.0"/,
   );
+  assert.match(playwrightConfig, /"corepack pnpm@10\.33\.0"/);
+  assert.match(playwrightConfig, /\$\{packageManager\} --filter \$\{workspace\} exec next \$\{nextCommand\} --hostname 127\.0\.0\.1 --port \$\{port\}/);
+  for (const app of ["admin-web", "member-web", "api", "landing-web"]) {
+    assert.ok(playwrightConfig.includes(`command: serverCommand("${app}",`));
+  }
   assert.doesNotMatch(playwrightConfig, /command:\s*"pnpm\b/);
   assert.match(
     playwrightConfig,

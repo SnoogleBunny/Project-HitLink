@@ -1,9 +1,14 @@
 import {
-  buildUpcomingOccurrenceDateOptions,
+  addDays,
+  classOccurrenceInclude,
+  formatOccurrenceLabel,
+  getOccurrenceStartsAt,
+  getWorkspaceDateString,
+  isUnambiguousClassTime,
+  resolveClassOccurrence,
+  type ClassOccurrenceTemplate,
   createAccessBackedBooking,
-  dateOnlyStringToUtcDate,
   prisma,
-  validateOccurrenceDate,
   type ClassBookingStatus,
   type ClassBookingType,
   type Weekday,
@@ -29,26 +34,7 @@ interface BookingGuardianLinkRecord {
   };
 }
 
-interface BookingTemplateRecord {
-  id: string;
-  title: string | null;
-  weekday: Weekday;
-  startTimeMinutes: number;
-  endTimeMinutes: number;
-  program: {
-    name: string;
-  };
-  room: {
-    name: string;
-    capacity: number | null;
-  };
-  coachWorkspaceUser: {
-    user: {
-      fullName: string | null;
-      email: string;
-    };
-  };
-}
+type BookingTemplateRecord = ClassOccurrenceTemplate;
 
 interface ExistingBookingRecord {
   id: string;
@@ -149,39 +135,12 @@ function cleanNullable(value: string | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
-function buildDisplayName(fullName: string | null, email: string): string {
-  const trimmedName = fullName?.trim();
-
-  return trimmedName ? trimmedName : email;
-}
-
 function formatMemberContact(member: BookingMemberRecord): string {
   if (member.email && member.phone) {
     return `${member.email} / ${member.phone}`;
   }
 
   return member.email ?? member.phone ?? member.status;
-}
-
-function mapTemplateForOptions(
-  template: BookingTemplateRecord,
-): Omit<BookingTemplateOption, "dateOptions"> & {
-  startTimeMinutes: number;
-} {
-  const coachDisplayName = buildDisplayName(
-    template.coachWorkspaceUser.user.fullName,
-    template.coachWorkspaceUser.user.email,
-  );
-
-  return {
-    id: template.id,
-    displayTitle: template.title ?? template.program.name,
-    weekday: template.weekday,
-    startTimeMinutes: template.startTimeMinutes,
-    programName: template.program.name,
-    roomName: template.room.name,
-    coachDisplayName,
-  };
 }
 
 function isBookingType(value: string): value is ClassBookingType {
@@ -224,29 +183,7 @@ export async function listBookingFormOptions(args: {
           isActive: true,
         },
       },
-      include: {
-        program: {
-          select: {
-            name: true,
-          },
-        },
-        room: {
-          select: {
-            name: true,
-            capacity: true,
-          },
-        },
-        coachWorkspaceUser: {
-          include: {
-            user: {
-              select: {
-                fullName: true,
-                email: true,
-              },
-            },
-          },
-        },
-      },
+      include: classOccurrenceInclude,
       orderBy: [
         {
           weekday: "asc",
@@ -258,13 +195,22 @@ export async function listBookingFormOptions(args: {
     }),
   ]);
 
-  const templatesForDates = templateRecords.map(mapTemplateForOptions);
-  const templatesWithDates = buildUpcomingOccurrenceDateOptions({
-    templates: templatesForDates,
-    timezone: args.timezone,
-    now: args.now ?? new Date(),
-    occurrenceCount: 6,
-  });
+  const now = args.now ?? new Date();
+  const today = getWorkspaceDateString(now, args.timezone);
+  // This is an explicit six-week booking picker, not the recurrence's end date.
+  const lastDate = addDays(today, 42);
+  const templates: BookingTemplateOption[] = [];
+  for (const template of templateRecords) {
+    let option: BookingTemplateOption | null = null;
+    for (let date = today; date <= lastDate; date = addDays(date, 1)) {
+      const occurrence = resolveClassOccurrence({ template, scheduledForDate: date });
+      if (!occurrence || occurrence.status !== "ACTIVE" || occurrence.program.archivedAt || occurrence.room.archivedAt || occurrence.room.isActive === false) continue;
+      if (getOccurrenceStartsAt({ scheduledForDate: date, startTimeMinutes: occurrence.startTimeMinutes, timezone: args.timezone }) <= now || !isUnambiguousClassTime(date, occurrence.startTimeMinutes, args.timezone) || !isUnambiguousClassTime(date, occurrence.endTimeMinutes, args.timezone)) continue;
+      option ??= { id: template.id, displayTitle: occurrence.displayTitle, weekday: occurrence.weekday, programName: occurrence.program.name, roomName: occurrence.room.name, coachDisplayName: occurrence.coachDisplayName, dateOptions: [] };
+      option.dateOptions.push({ classTemplateId: template.id, scheduledForDate: date, label: `${formatOccurrenceLabel({ weekday: occurrence.weekday, dateString: date, startTimeMinutes: occurrence.startTimeMinutes })} · ${occurrence.displayTitle} · ${occurrence.room.name} · ${occurrence.coachDisplayName}` });
+    }
+    if (option) templates.push(option);
+  }
 
   return {
     members: members.map((member) => ({
@@ -273,19 +219,7 @@ export async function listBookingFormOptions(args: {
       status: member.status,
     })),
     guardians: [],
-    templates: templatesWithDates.map(({ template, dateOptions }) => ({
-      id: template.id,
-      displayTitle: template.displayTitle,
-      weekday: template.weekday,
-      programName: template.programName,
-      roomName: template.roomName,
-      coachDisplayName: template.coachDisplayName,
-      dateOptions: dateOptions.map((dateOption) => ({
-        classTemplateId: dateOption.classTemplateId,
-        scheduledForDate: dateOption.scheduledForDate,
-        label: dateOption.label,
-      })),
-    })),
+    templates,
   };
 }
 
@@ -415,7 +349,7 @@ export async function createClassBooking(args: {
     }
   }
 
-  if (bookingType !== "TRIAL") {
+  {
     const result = await createAccessBackedBooking({
       workspaceId: args.workspaceId,
       memberId,
@@ -425,6 +359,7 @@ export async function createClassBooking(args: {
       timezone: args.timezone,
       source: "ADMIN",
       allowDropIn: false,
+      trial: bookingType === "TRIAL",
       db: db as never,
       now,
     });
@@ -450,81 +385,4 @@ export async function createClassBooking(args: {
     };
   }
 
-  const occurrence = validateOccurrenceDate({
-    scheduledForDate,
-    templateWeekday: template.weekday,
-    timezone: args.timezone,
-    now,
-    direction: "future",
-  });
-
-  if (occurrence.status === "error") {
-    return {
-      status: "error",
-      message: "Choose a valid upcoming date for this class.",
-    };
-  }
-
-  const existingBooking = await db.classBooking.findFirst({
-    where: {
-      workspaceId: args.workspaceId,
-      memberId,
-      classTemplateId,
-      scheduledForDate: occurrence.date,
-    },
-    select: {
-      id: true,
-      status: true,
-    },
-  });
-
-  if (existingBooking) {
-    if (existingBooking.status === "CANCELLED") {
-      const booking = await db.classBooking.update({
-        where: {
-          id: existingBooking.id,
-        },
-        data: {
-          guardianId,
-          bookingType: "TRIAL",
-          status: "BOOKED",
-          source: "ADMIN",
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      return {
-        status: "restored",
-        bookingId: booking.id,
-      };
-    }
-
-    return {
-      status: "error",
-      message: "This member already has an active booking for that class date.",
-    };
-  }
-
-  const booking = await db.classBooking.create({
-    data: {
-      workspaceId: args.workspaceId,
-      memberId,
-      guardianId,
-      classTemplateId,
-      scheduledForDate: dateOnlyStringToUtcDate(occurrence.dateString),
-      bookingType: "TRIAL",
-      status: "BOOKED",
-      source: "ADMIN",
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  return {
-    status: "created",
-    bookingId: booking.id,
-  };
 }

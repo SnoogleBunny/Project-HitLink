@@ -1,8 +1,8 @@
 export const site = {
-  name: "Flowstate",
+  name: "HitLink",
   tagline: "Martial arts gym software reliable enough to disappear.",
   description:
-    "Flowstate helps martial arts gyms run memberships, bookings, waivers, attendance, billing, parent accounts, and member self-service without breaking the rhythm of the gym.",
+    "HitLink helps martial arts gyms run memberships, bookings, waivers, attendance, billing, parent accounts, and member self-service without breaking the rhythm of the gym.",
   demoEmail: "hello@flowstategym.com",
 };
 

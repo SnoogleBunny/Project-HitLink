@@ -1,3 +1,4 @@
+import { inspectMigrationCutoverSnapshot } from "./migration-cutover";
 import { createHash } from "node:crypto";
 import { parse } from "csv-parse/sync";
 import {
@@ -538,7 +539,7 @@ async function runSerializableWithRetry<T>(
   db: MigrationDatabase,
   operation: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
-  const maxAttempts = 3;
+  const maxAttempts = 6;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -549,6 +550,7 @@ async function runSerializableWithRetry<T>(
       if (!isPrismaSerializationConflict(error) || attempt === maxAttempts) {
         throw error;
       }
+      await new Promise((resolve) => setTimeout(resolve, Math.min(250, 15 * 2 ** attempt) + Math.floor(Math.random() * 20)));
     }
   }
 
@@ -721,13 +723,13 @@ function isMemberStatus(value: string | undefined): value is MemberStatus {
   );
 }
 
-function normalizeMemberStatus(value: string | undefined): MemberStatus {
+function normalizeMemberStatus(value: string | undefined): MemberStatus | null {
   const status = value
     ?.trim()
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
 
-  return isMemberStatus(status) ? status : "ACTIVE";
+  return isMemberStatus(status) ? status : null;
 }
 
 function isMemberMembershipStatus(
@@ -748,13 +750,13 @@ function isMemberMembershipStatus(
 
 function normalizeMembershipStatus(
   value: string | undefined,
-): MemberMembershipStatus {
+): MemberMembershipStatus | null {
   const status = value
     ?.trim()
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
 
-  return isMemberMembershipStatus(status) ? status : "ACTIVE";
+  return isMemberMembershipStatus(status) ? status : null;
 }
 
 function normalizeWeekday(value: string | undefined): Weekday | null {
@@ -896,21 +898,24 @@ function buildMemberStagedRow(row: Record<string, string>): StagedRow {
 
   if (dateOfBirth && !parsedBirthdate) {
     issues.push({
-      severity: "WARNING",
+      severity: "ERROR",
       code: "INVALID_DATE",
-      message: "date_of_birth was not imported because it is not YYYY-MM-DD.",
+      message: "date_of_birth must be verified as YYYY-MM-DD before import.",
       fieldName: "date_of_birth",
     });
   }
 
+  const memberStatus = normalizeMemberStatus(readValue(row, ["status", "member_status"]));
+  if (!memberStatus) issues.push({severity:"ERROR",code:"UNKNOWN_STATUS",message:"Map an explicit supported member status; missing or unknown values cannot become active.",fieldName:"status"});
+  if (readValue(row,["notes","note"])) issues.push({severity:"WARNING",code:"NOTES_EXCLUDED",message:"Internal source notes were excluded from the member profile. Import approved history through a scoped review.",fieldName:"notes"});
   const mappedData = {
     externalId,
     fullName,
     email: readValue(row, ["email", "member_email"]) ?? null,
     phone: readValue(row, ["phone", "mobile", "member_phone"]) ?? null,
     dateOfBirth: parsedBirthdate ? parsedBirthdate.toISOString() : null,
-    status: normalizeMemberStatus(readValue(row, ["status", "member_status"])),
-    notes: readValue(row, ["notes", "note"]) ?? null,
+    status: memberStatus,
+    notes: null,
     tags:
       readValue(row, ["tags"])
         ?.split(",")
@@ -982,15 +987,16 @@ function buildMemberMembershipStagedRow(
     issues,
   );
 
+  const membershipStatus = normalizeMembershipStatus(readValue(row, ["status", "membership_status"]));
+  if (!membershipStatus) issues.push({severity:"ERROR",code:"UNKNOWN_STATUS",message:"Map an explicit supported membership status; missing or unknown values cannot become active.",fieldName:"status"});
+  for (const [field,aliases] of [["started_at",["started_at","start_date"]],["next_billing_date",["next_billing_date","billing_date"]]] as const) if (!parseDateOnly(readValue(row,[...aliases]))) issues.push({severity:"ERROR",code:"BILLING_DATE_REQUIRED",message:`${field} must preserve the verified source billing boundary.`,fieldName:field});
   return {
     externalId,
     mappedData: jsonObject({
       externalId,
       memberExternalId,
       membershipPlanExternalId: planExternalId,
-      status: normalizeMembershipStatus(
-        readValue(row, ["status", "membership_status"]),
-      ),
+      status: membershipStatus,
       startedAt:
         parseDateOnly(
           readValue(row, ["started_at", "start_date"]),
@@ -1303,13 +1309,14 @@ async function importMember(args: {
     recordKind: "MEMBER",
     externalId: args.stagingRecord.externalId,
   });
+  if (!data.status || !isMemberStatus(data.status)) throw new Error("Imported member status needs explicit source review.");
   const memberData = {
     fullName: data.fullName ?? "",
     email: data.email ?? null,
     phone: data.phone ?? null,
     dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
-    status: data.status ?? "ACTIVE",
-    notes: data.notes ?? null,
+    status: data.status,
+    notes: null,
     tags: data.tags ?? [],
   };
   let memberId = identity?.importedRecordId;
@@ -1568,10 +1575,11 @@ async function importMemberMembership(args: {
     return "skipped";
   }
 
+  if (!data.status || !isMemberMembershipStatus(data.status) || !data.startedAt || !data.nextBillingDate) throw new Error("Imported membership needs explicit status and verified billing boundaries.");
   const membershipData = {
     memberId: memberIdentity.importedRecordId,
     membershipPlanId: planIdentity.importedRecordId,
-    status: data.status ?? "ACTIVE",
+    status: data.status,
     startedAt: data.startedAt ? new Date(data.startedAt) : new Date(),
     nextBillingDate: data.nextBillingDate
       ? new Date(data.nextBillingDate)
@@ -2237,6 +2245,7 @@ export async function getMigrationDashboard(args: {
 export async function acknowledgeMigrationOwnerReview(args: {
   workspaceId: string;
   userId: string;
+  snapshotId?: string;
   db?: MigrationDatabase;
   now?: Date;
 }): Promise<MutationResult> {
@@ -2388,6 +2397,8 @@ export async function acknowledgeMigrationOwnerReview(args: {
       };
     }
 
+    const cutover = tx.migrationCutoverSnapshot ? await inspectMigrationCutoverSnapshot(tx, args.workspaceId, args.snapshotId) : null;
+    if (cutover && (!args.snapshotId || cutover.errors.length)) return { status: "error", message: cutover.errors[0] ?? "Review the exact final cutover snapshot before acknowledging." };
     const acknowledgment = await tx.workspaceMigration.updateMany({
       where: {
         workspaceId: args.workspaceId,
@@ -2403,6 +2414,7 @@ export async function acknowledgeMigrationOwnerReview(args: {
         },
       },
       data: {
+        reviewedCutoverSnapshotId: cutover?.snapshot?.id,
         ownerReviewAcknowledgedAt: now,
         ownerReviewAcknowledgedByUserId: args.userId,
       },
@@ -3215,6 +3227,7 @@ export async function markMigrationOperationallyReady(args: {
         workspaceId: args.workspaceId,
       },
       select: {
+        reviewedCutoverSnapshotId: true,
         stage: true,
         goLiveScheduledFor: true,
         ownerReviewAcknowledgedAt: true,
@@ -3363,6 +3376,11 @@ export async function markMigrationOperationallyReady(args: {
       };
     }
 
+    if (tx.migrationCutoverSnapshot) {
+      if (!migration.reviewedCutoverSnapshotId) return { status: "error", message: "Activation requires the exact cutover snapshot acknowledged by the owner." };
+      const cutover = await inspectMigrationCutoverSnapshot(tx, args.workspaceId, migration.reviewedCutoverSnapshotId);
+      if (cutover.errors.length) return { status: "error", message: cutover.errors[0]! };
+    }
     const operationallyReadyAt = now;
     const completedMigration = await tx.workspaceMigration.updateMany({
       where: {

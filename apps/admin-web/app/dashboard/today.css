@@ -1,0 +1,7 @@
+.today-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.today-metric{display:flex;flex-direction:column;gap:12px;text-decoration:none;color:var(--hl-fg);min-width:0}
+.today-metric>span:last-child{margin-top:auto;color:var(--hl-muted);font-size:.9375rem}
+.today-metric-value{font-family:var(--hl-font-heading);font-size:2rem;line-height:1.2;font-variant-numeric:tabular-nums}
+a.today-metric:hover{border-color:var(--hl-focus);background:var(--hl-hover)}
+a.today-metric:focus-visible{outline:3px solid var(--hl-focus);outline-offset:3px}
+@media(max-width:700px){.today-metrics{grid-template-columns:1fr;gap:12px}.today-metric{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px}.today-metric-value{grid-column:2;grid-row:1/3;align-self:center}.today-metric>span:last-child{grid-column:1}}

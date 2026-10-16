@@ -1,4 +1,4 @@
-import { prisma } from "@flowstate/db";
+import { prisma, lockClassSchedule, snapshotPunchCardTerms, type Prisma } from "@flowstate/db";
 
 const currencyPattern = /^[a-z]{3}$/;
 
@@ -10,6 +10,9 @@ interface ProgramRestrictionRecord {
 }
 
 interface PunchCardProductRecord {
+  termsVersion?: number;
+  lateCancellationConsumesPunch?: boolean;
+  noShowConsumesPunch?: boolean;
   id: string;
   workspaceId: string;
   name: string;
@@ -59,6 +62,8 @@ interface MemberPunchCardRecord {
 }
 
 interface AccessProductDatabase {
+  $transaction<T>(callback: (tx: AccessProductDatabase) => Promise<T>): Promise<T>;
+  punchCardEntry?: Prisma.TransactionClient["punchCardEntry"];
   program: {
     findMany(args: Record<string, unknown>): Promise<Array<{ id: string; name: string }>>;
   };
@@ -96,6 +101,8 @@ export interface AccessProductFormOptions {
 }
 
 export interface PunchCardProductFormInput {
+  lateCancellationConsumesPunch?: boolean;
+  noShowConsumesPunch?: boolean;
   name: string;
   description?: string;
   punchesIncluded: string;
@@ -113,6 +120,9 @@ export interface DropInProductFormInput {
 }
 
 export interface PunchCardProductSummary {
+  termsVersion?: number;
+  lateCancellationConsumesPunch?: boolean;
+  noShowConsumesPunch?: boolean;
   id: string;
   name: string;
   description: string | null;
@@ -223,6 +233,9 @@ function mapPunchCardProduct(
 ): PunchCardProductSummary {
   return {
     id: record.id,
+    termsVersion: record.termsVersion ?? 1,
+    lateCancellationConsumesPunch: record.lateCancellationConsumesPunch ?? true,
+    noShowConsumesPunch: record.noShowConsumesPunch ?? true,
     name: record.name,
     description: record.description,
     punchesIncluded: record.punchesIncluded,
@@ -264,6 +277,8 @@ function mapDropInProduct(record: DropInProductRecord): DropInProductSummary {
 function sanitizePunchCardProductInput(input: PunchCardProductFormInput) {
   return {
     name: input.name.trim(),
+    lateCancellationConsumesPunch: input.lateCancellationConsumesPunch ?? true,
+    noShowConsumesPunch: input.noShowConsumesPunch ?? true,
     description: cleanNullable(input.description),
     punchesIncluded: parsePositiveInteger(input.punchesIncluded),
     priceCents: parsePositiveInteger(input.priceCents),
@@ -354,6 +369,8 @@ function validatePunchCardProductInput(
       status: "ok";
       value: {
         name: string;
+        lateCancellationConsumesPunch: boolean;
+        noShowConsumesPunch: boolean;
         description: string | null;
         punchesIncluded: number;
         priceCents: number;
@@ -667,6 +684,8 @@ export async function createPunchCardProduct(args: {
       data: {
         workspaceId: args.workspaceId,
         name: input.value.name,
+        lateCancellationConsumesPunch: input.value.lateCancellationConsumesPunch,
+        noShowConsumesPunch: input.value.noShowConsumesPunch,
         description: input.value.description,
         punchesIncluded: input.value.punchesIncluded,
         priceCents: input.value.priceCents,
@@ -766,6 +785,9 @@ export async function updatePunchCardProduct(args: {
       },
       data: {
         name: input.value.name,
+        lateCancellationConsumesPunch: input.value.lateCancellationConsumesPunch,
+        noShowConsumesPunch: input.value.noShowConsumesPunch,
+        termsVersion: { increment: 1 },
         description: input.value.description,
         punchesIncluded: priceLocked
           ? existing.punchesIncluded
@@ -1121,9 +1143,15 @@ export async function grantMemberPunchCard(args: {
   workspaceId: string;
   memberId: string;
   punchCardProductId: string;
+  expectedTermsVersion: number;
   db?: AccessProductDatabase;
+  mutationId?: string;
+  actorWorkspaceUserId?: string;
 }): Promise<AccessProductMutationResult> {
-  const db = args.db ?? accessProductDatabase;
+  const database = args.db ?? accessProductDatabase;
+  return database.$transaction(async (db) => {
+  await lockClassSchedule(db as never, args.workspaceId);
+  if (args.mutationId && db.punchCardEntry) { const existing = await db.punchCardEntry.findFirst({ where: { operationKey: `grant:${args.mutationId}` }, include: { punchCard: true } }); if (existing) return existing.workspaceId === args.workspaceId && existing.memberId === args.memberId && existing.punchCard.punchCardProductId === args.punchCardProductId ? { status: "granted" as const, recordId: existing.memberPunchCardId } : { status: "error" as const, message: "This request was already used for different pack details." }; }
   const [member, product] = await Promise.all([
     db.member.findFirst({
       where: {
@@ -1169,6 +1197,8 @@ export async function grantMemberPunchCard(args: {
     };
   }
 
+  if (args.expectedTermsVersion !== (product.termsVersion ?? 1)) return { status: "error", message: "This pack changed. Refresh and review its terms before granting it." };
+
   const card = await db.memberPunchCard.create({
     data: {
       workspaceId: args.workspaceId,
@@ -1180,12 +1210,14 @@ export async function grantMemberPunchCard(args: {
       purchasePriceCents: product.priceCents,
       purchaseCurrency: product.currency,
       purchasedAt: new Date(),
+      acceptedTerms: snapshotPunchCardTerms({ ...product, programRestrictions: product.programRestrictions.map((p) => ({ programId: p.program.id })) }),
     },
     select: {
       id: true,
     },
   });
 
+  if (db.punchCardEntry) await db.punchCardEntry.create({ data: { workspaceId: args.workspaceId, memberId: args.memberId, memberPunchCardId: card.id, operationKey: `grant:${args.mutationId ?? card.id}`, delta: product.punchesIncluded, reason: "Owner granted pack", actorWorkspaceUserId: args.actorWorkspaceUserId } });
   await db.billingRecord.create({
     data: {
       workspaceId: args.workspaceId,
@@ -1204,4 +1236,5 @@ export async function grantMemberPunchCard(args: {
     status: "granted",
     recordId: card.id,
   };
+  });
 }

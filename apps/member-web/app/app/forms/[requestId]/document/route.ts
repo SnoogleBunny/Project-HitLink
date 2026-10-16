@@ -13,11 +13,12 @@ export async function GET(
   },
 ) {
   const { requestId } = await params;
-  const context = await requireMemberPortalContext();
+  const context = await requireMemberPortalContext({ permission: "sign" });
   const requestData = await getPortalFormRequestPageData({
     workspaceId: context.workspace.id,
     memberId: context.member.id,
     requestId,
+    guardianId: context.permissions?.guardianId,
   });
 
   if (!requestData) {

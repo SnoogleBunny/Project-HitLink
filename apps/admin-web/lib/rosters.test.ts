@@ -197,8 +197,6 @@ describe("roster helpers", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           workspaceId: "workspace_1",
-          weekday: "TUESDAY",
-          coachWorkspaceUserId: "coach_workspace_user_1",
         }),
       }),
     );
@@ -355,6 +353,7 @@ describe("roster helpers", () => {
       waitlistEntryId: "waitlist_1",
     });
     expect(promoteNextWaitlistEntryMock).toHaveBeenCalledWith({
+      authorize: expect.any(Function),
       workspaceId: "workspace_1",
       classTemplateId: "template_1",
       scheduledForDate: "2026-04-07",
@@ -364,6 +363,7 @@ describe("roster helpers", () => {
       now: new Date("2026-04-06T12:00:00.000Z"),
     });
 
+    db.waitlistEntry.findFirst = vi.fn().mockResolvedValue({ classTemplateId: "template_1", scheduledForDate: new Date("2026-04-07T00:00:00.000Z") });
     await expect(
       removeRosterWaitlist({
         access,
@@ -375,6 +375,7 @@ describe("roster helpers", () => {
       waitlistEntryId: "waitlist_1",
     });
     expect(removeWaitlistEntryMock).toHaveBeenCalledWith({
+      authorize: expect.any(Function),
       workspaceId: "workspace_1",
       waitlistEntryId: "waitlist_1",
       db,

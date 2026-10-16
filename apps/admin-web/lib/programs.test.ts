@@ -12,7 +12,7 @@ function buildInput() {
 }
 
 describe("program helpers", () => {
-  it("creates a program with sanitized nullable fields and the requested progress flag", async () => {
+  it("creates a program with sanitized nullable fields with rank tracking off until configured", async () => {
     const created = {
       data: null as Record<string, unknown> | null,
     };
@@ -49,7 +49,7 @@ describe("program helpers", () => {
       description: "Intro classes for teens",
       ageGroupLabel: "12-16",
       levelLabel: "Beginner",
-      progressTrackingEnabled: true,
+      progressTrackingEnabled: false,
     });
   });
 
@@ -118,7 +118,6 @@ describe("program helpers", () => {
         description: "Intro classes for teens",
         ageGroupLabel: "12-16",
         levelLabel: "Beginner",
-        progressTrackingEnabled: true,
       },
     });
   });

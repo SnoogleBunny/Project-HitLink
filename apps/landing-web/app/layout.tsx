@@ -25,6 +25,7 @@ export const metadata: Metadata = {
   metadataBase,
   title,
   description: site.description,
+  alternates: { canonical: "/" },
   keywords: [
     "martial arts gym software",
     "Muay Thai gym management software",
@@ -38,10 +39,10 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/images/flowstate-hero-atmosphere.png",
-        width: 1536,
-        height: 1024,
-        alt: "A calm martial arts training space used as the Flowstate landing page atmosphere.",
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "HitLink — memberships, bookings and gym operations.",
       },
     ],
   },

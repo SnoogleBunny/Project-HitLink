@@ -70,6 +70,8 @@ describe("membership plan helpers", () => {
     });
 
     expect(created.data).toEqual({
+      lifecyclePolicy: expect.objectContaining({ noticeLength: 2, noticeUnit: "CALENDAR_MONTHS", alignment: "NEXT_BILLING_BOUNDARY" }),
+      weeklyClassLimit: null, monthlyClassLimit: null, allowanceCountingMode: "ATTENDANCE", lateCancellationConsumesClass: true, noShowConsumesClass: true,
       workspaceId: "workspace_1",
       name: "Unlimited Monthly",
       description: "Best for regulars",

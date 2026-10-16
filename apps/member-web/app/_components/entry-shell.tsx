@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { HitLinkBrand, ThemeToggle } from "@flowstate/ui";
 
 type EntryShellIntent = "member-login" | "restricted";
 
@@ -15,16 +16,16 @@ const identityCopy: Record<
   { heading: string; description: string; footer: string }
 > = {
   "member-login": {
-    heading: "Member access, provided by your gym",
+    heading: "Your member portal",
     description:
-      "Your gym creates and manages your portal access. Once inside, your schedule and account details stay together in one clear place.",
-    footer: "One gym. One member account. The essentials for training.",
+      "Book classes, check your membership and see your payments. Use the login supplied by your gym.",
+    footer: "Need access? Ask your gym team.",
   },
   restricted: {
-    heading: "A protected space for gym members",
-    description:
-      "Portal access stays connected to the member record managed by your gym team.",
-    footer: "If something looks wrong, return to login or ask your gym team to check access.",
+    heading: "Check your access",
+    description: "Your gym team can check which member records you can access.",
+    footer:
+      "If something looks wrong, return to login or ask your gym team to check access.",
   },
 };
 
@@ -43,12 +44,9 @@ export function EntryShell({
         aria-labelledby="member-entry-context"
         className="member-entry-identity"
       >
-        <div className="member-entry-mark" aria-hidden="true">
-          F
-        </div>
-        <p className="member-entry-product">Flowstate member portal</p>
+        <HitLinkBrand />
+        <p className="member-entry-product">Member portal</p>
         <div className="member-entry-message">
-          <p className="member-entry-kicker">Your training, in view</p>
           <h2 id="member-entry-context">{identity.heading}</h2>
           <p>{identity.description}</p>
         </div>
@@ -57,6 +55,9 @@ export function EntryShell({
 
       <section className="member-entry-task">
         <div className="member-entry-task-inner">
+          <div className="hl-entry-theme">
+            <ThemeToggle />
+          </div>
           <p className="member-eyebrow">{eyebrow}</p>
           <h1>{title}</h1>
           <p className="member-auth-description">{description}</p>

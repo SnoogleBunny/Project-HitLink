@@ -1,7 +1,18 @@
+import { checkMemberClassEligibility } from "@flowstate/db";
+import type { Prisma } from "@prisma/client";
 import {
+  classOccurrenceInclude,
+  settleMembershipAllowance,
+  settlePunchCardBooking,
+  financialEntitlementHoldReason,
+  resolveClassOccurrence,
+  resolveRequiredFormStatusesForMember,
+  lockClassSchedule,
+  toDateOnlyString,
+  type ClassOccurrenceTemplate,
+  type ClassScheduleLockDatabase,
   dateOnlyStringToUtcDate,
   formatMinutesAsTime,
-  getWeekdayForDateString,
   getWorkspaceDateString,
   listOccurrenceWaitlist,
   promoteNextWaitlistEntry,
@@ -37,7 +48,7 @@ interface RosterTemplateRecord {
   startTimeMinutes: number;
   endTimeMinutes: number;
   capacityOverride: number | null;
-  coachWorkspaceUserId: string;
+  coachWorkspaceUserId: string | null;
   program: {
     name: string;
   };
@@ -53,7 +64,7 @@ interface RosterTemplateRecord {
       fullName: string | null;
       email: string;
     };
-  };
+  } | null;
 }
 
 interface RosterBookingRecord {
@@ -100,7 +111,11 @@ interface RosterAttendanceRecord {
   updatedAt: Date;
 }
 
-interface RosterDatabase {
+interface RosterDatabase extends ClassScheduleLockDatabase {
+  programPromotion?: Prisma.TransactionClient["programPromotion"];
+  financialEntitlementHold?: Prisma.TransactionClient["financialEntitlementHold"];
+  punchCardEntry?: Prisma.TransactionClient["punchCardEntry"];
+  membershipAllowanceAllocation?: Prisma.TransactionClient["membershipAllowanceAllocation"];
   $transaction<T>(
     callback: (tx: RosterDatabase) => Promise<T>,
   ): Promise<T>;
@@ -234,43 +249,11 @@ function mapTemplateDisplay(template: RosterTemplateRecord) {
     timeLabel: `${formatMinutesAsTime(template.startTimeMinutes)} - ${formatMinutesAsTime(template.endTimeMinutes)}`,
     weekdayLabel: WEEKDAY_LABELS[template.weekday],
     effectiveCapacity: template.capacityOverride ?? template.room.capacity,
-    coachDisplayName: buildDisplayName(
+    coachDisplayName: template.coachWorkspaceUser ? buildDisplayName(
       template.coachWorkspaceUser.user.fullName,
       template.coachWorkspaceUser.user.email,
-    ),
+    ) : "Needs coach",
   };
-}
-
-function getClassTemplateAccessWhere(args: {
-  access: RosterAccessContext;
-  templateId?: string;
-  weekday?: Weekday;
-}) {
-  const where: Record<string, unknown> = {
-    workspaceId: args.access.workspaceId,
-    archivedAt: null,
-    program: {
-      archivedAt: null,
-    },
-    room: {
-      archivedAt: null,
-      isActive: true,
-    },
-  };
-
-  if (args.templateId) {
-    where.id = args.templateId;
-  }
-
-  if (args.weekday) {
-    where.weekday = args.weekday;
-  }
-
-  if (args.access.role === "COACH") {
-    where.coachWorkspaceUserId = args.access.workspaceUserId;
-  }
-
-  return where;
 }
 
 function isAttendanceState(value: string): value is AttendanceState {
@@ -314,37 +297,18 @@ function selectGuardianForBooking(
 async function getRosterTemplate(args: {
   access: RosterAccessContext;
   templateId: string;
+  scheduledForDate: string;
   db: RosterDatabase;
 }): Promise<RosterTemplateRecord | null> {
-  return args.db.classTemplate.findFirst({
-    where: getClassTemplateAccessWhere({
-      access: args.access,
-      templateId: args.templateId,
-    }),
-    include: {
-      program: {
-        select: {
-          name: true,
-        },
-      },
-      room: {
-        select: {
-          name: true,
-          capacity: true,
-        },
-      },
-      coachWorkspaceUser: {
-        include: {
-          user: {
-            select: {
-              fullName: true,
-              email: true,
-            },
-          },
-        },
-      },
-    },
+  const template = await args.db.classTemplate.findFirst({
+    where: { id: args.templateId, workspaceId: args.access.workspaceId },
+    include: classOccurrenceInclude,
   });
+  if (!template) return null;
+  const occurrence = resolveClassOccurrence({ template: template as unknown as ClassOccurrenceTemplate, scheduledForDate: args.scheduledForDate });
+  if (!occurrence || occurrence.status !== "ACTIVE") return null;
+  if (args.access.role === "COACH" && occurrence.coachWorkspaceUserId !== args.access.workspaceUserId) return null;
+  return occurrence as RosterTemplateRecord;
 }
 
 export async function listTodayClasses(args: {
@@ -355,44 +319,13 @@ export async function listTodayClasses(args: {
   const db = args.db ?? rosterDatabase;
   const now = args.now ?? new Date();
   const scheduledForDate = getWorkspaceDateString(now, args.access.timezone);
-  const weekday = getWeekdayForDateString(scheduledForDate);
-  const templates = await db.classTemplate.findMany({
-    where: getClassTemplateAccessWhere({
-      access: args.access,
-      weekday,
-    }),
-    include: {
-      program: {
-        select: {
-          name: true,
-        },
-      },
-      room: {
-        select: {
-          name: true,
-          capacity: true,
-        },
-      },
-      coachWorkspaceUser: {
-        include: {
-          user: {
-            select: {
-              fullName: true,
-              email: true,
-            },
-          },
-        },
-      },
-    },
-    orderBy: [
-      {
-        startTimeMinutes: "asc",
-      },
-      {
-        createdAt: "asc",
-      },
-    ],
+  const rawTemplates = await db.classTemplate.findMany({
+    where: { workspaceId: args.access.workspaceId, archivedAt: null },
+    include: classOccurrenceInclude,
   });
+  const templates = rawTemplates.map((template) => resolveClassOccurrence({ template: template as unknown as ClassOccurrenceTemplate, scheduledForDate }))
+    .filter((item) => item && item.status === "ACTIVE" && (args.access.role === "OWNER" || item.coachWorkspaceUserId === args.access.workspaceUserId)) as RosterTemplateRecord[];
+  templates.sort((a, b) => a.startTimeMinutes - b.startTimeMinutes);
   const templateIds = templates.map((template) => template.id);
 
   if (templateIds.length === 0) {
@@ -513,6 +446,7 @@ export async function getClassRoster(args: {
   const template = await getRosterTemplate({
     access: args.access,
     templateId: args.templateId,
+    scheduledForDate: args.scheduledForDate,
     db,
   });
 
@@ -661,7 +595,9 @@ export async function recordAttendance(args: {
   db?: RosterDatabase;
   now?: Date;
 }): Promise<AttendanceMutationResult> {
-  const db = args.db ?? rosterDatabase;
+  const database = args.db ?? rosterDatabase;
+  return database.$transaction(async (db) => {
+  await lockClassSchedule(db, args.access.workspaceId);
   const now = args.now ?? new Date();
   const memberId = args.memberId.trim();
   const classTemplateId = args.classTemplateId.trim();
@@ -695,6 +631,7 @@ export async function recordAttendance(args: {
     getRosterTemplate({
       access: args.access,
       templateId: classTemplateId,
+      scheduledForDate,
       db,
     }),
   ]);
@@ -728,6 +665,18 @@ export async function recordAttendance(args: {
     };
   }
 
+  const fundedBooking = await db.classBooking.findFirst({ where: { workspaceId: args.access.workspaceId, memberId, classTemplateId, scheduledForDate: occurrence.date, status: { in: ["BOOKED", "ATTENDED", "ABSENT", "NO_SHOW"] } }, select: { id: true, memberPunchCardId: true, fundingMembershipId: true, fundedByBookingId: true, bookingType: true } }) as { id: string; bookingType?: string; memberPunchCardId?: string; fundingMembershipId?: string; fundedByBookingId?: string } | null;
+  if (fundedBooking) { const held = await financialEntitlementHoldReason({ workspaceId: args.access.workspaceId, targets: [{ targetKind: "BOOKING", targetId: fundedBooking.id }, { targetKind: "BOOKING", targetId: fundedBooking.fundedByBookingId }, { targetKind: "MEMBERSHIP", targetId: fundedBooking.fundingMembershipId }, { targetKind: "PUNCH_CARD", targetId: fundedBooking.memberPunchCardId }], db }); if (held) return { status: "error", message: held }; }
+  if (db.membershipAllowanceAllocation && !fundedBooking) return { status: "error", message: "Add this member to the class before recording attendance." };
+  if (db.programPromotion && ["PRESENT", "LATE"].includes(args.state)) {
+    const eligibility = await checkMemberClassEligibility({ workspaceId: args.access.workspaceId, memberId, scheduledForDate: occurrence.dateString, occurrence: { ...template, classTemplateId: template.id } as never, db: db as unknown as Prisma.TransactionClient });
+    if (!eligibility.eligible) return { status: "error", message: eligibility.reason ?? "This member does not meet the class requirements." };
+  }
+  if (fundedBooking && db.membershipAllowanceAllocation && ["PRESENT", "LATE"].includes(args.state)) {
+    const forms = await resolveRequiredFormStatusesForMember({ workspaceId: args.access.workspaceId, memberId, targets: fundedBooking.bookingType === "TRIAL" ? ["TRIAL", "GUARDIAN"] : ["MEMBER", "GUARDIAN"], db: db as never, now });
+    if (forms.items.some((form) => form.status !== "SIGNED")) return { status: "error", message: "Complete the current required forms before this member attends class." };
+  }
+  if (fundedBooking && db.punchCardEntry) { const punchResult = await settlePunchCardBooking({ workspaceId: args.access.workspaceId, bookingId: fundedBooking.id, outcome: args.state === "NO_SHOW" ? "NO_SHOW" : args.state === "ABSENT" ? "EXCUSED" : "ATTENDED", db: db as unknown as Prisma.TransactionClient, actorWorkspaceUserId: args.access.workspaceUserId }); if (!punchResult.ok) return { status: "error", message: punchResult.message }; }
   const attendanceRecord = await db.attendanceRecord.upsert({
     where: {
       workspaceId_memberId_classTemplateId_scheduledForDate: {
@@ -771,10 +720,13 @@ export async function recordAttendance(args: {
     },
   });
 
+  if (fundedBooking && db.membershipAllowanceAllocation) await settleMembershipAllowance({ workspaceId: args.access.workspaceId, bookingId: fundedBooking.id, outcome: args.state === "NO_SHOW" ? "NO_SHOW" : args.state === "ABSENT" ? "EXCUSED" : "ATTENDED", actorWorkspaceUserId: args.access.workspaceUserId, db: db as unknown as Prisma.TransactionClient });
+
   return {
     status: "recorded",
     attendanceRecordId: attendanceRecord.id,
   };
+  });
 }
 
 export async function promoteRosterWaitlist(args: {
@@ -795,12 +747,15 @@ export async function promoteRosterWaitlist(args: {
     }
 > {
   const db = args.db ?? rosterDatabase;
+  const template = await getRosterTemplate({ access: args.access, templateId: args.classTemplateId, scheduledForDate: args.scheduledForDate, db });
+  if (!template) return { status: "error", message: "Class roster not found." };
   const result = await promoteNextWaitlistEntry({
     workspaceId: args.access.workspaceId,
     classTemplateId: args.classTemplateId,
     scheduledForDate: args.scheduledForDate,
     timezone: args.access.timezone,
     source: "ADMIN",
+    authorize: async (tx) => Boolean(await getRosterTemplate({ access: args.access, templateId: args.classTemplateId, scheduledForDate: args.scheduledForDate, db: tx as unknown as RosterDatabase })),
     db: db as never,
     now: args.now,
   });
@@ -831,9 +786,12 @@ export async function removeRosterWaitlist(args: {
     }
 > {
   const db = args.db ?? rosterDatabase;
+  const entry = await db.waitlistEntry.findFirst({ where: { id: args.waitlistEntryId, workspaceId: args.access.workspaceId } }) as { classTemplateId: string; scheduledForDate: Date } | null;
+  if (!entry || !await getRosterTemplate({ access: args.access, templateId: entry.classTemplateId, scheduledForDate: toDateOnlyString(entry.scheduledForDate), db })) return { status: "error", message: "Class roster not found." };
   const result = await removeWaitlistEntry({
     workspaceId: args.access.workspaceId,
     waitlistEntryId: args.waitlistEntryId,
+    authorize: async (tx) => Boolean(await getRosterTemplate({ access: args.access, templateId: entry.classTemplateId, scheduledForDate: toDateOnlyString(entry.scheduledForDate), db: tx as unknown as RosterDatabase })),
     db: db as never,
   });
 

@@ -1,0 +1,111 @@
+.registration-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(250px, 0.8fr);
+  gap: 32px;
+  align-items: start;
+}
+.registration-card {
+  min-width: 0;
+  padding: 28px;
+  border: 1px solid var(--hl-line);
+  border-radius: 16px;
+  background: var(--hl-surface);
+}
+.registration-card h1 {
+  font: 700 36px/1.15 var(--font-barlow);
+  margin: 0 0 20px;
+}
+.registration-card h2 {
+  font: 600 25px/1.2 var(--font-barlow);
+  margin: 0 0 12px;
+}
+.registration-card p {
+  line-height: 1.55;
+}
+.registration-form {
+  display: grid;
+  gap: 18px;
+  margin-top: 22px;
+}
+.registration-form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+}
+.registration-form input:not([type="checkbox"], [type="hidden"]),
+.registration-form select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--hl-line);
+  border-radius: 8px;
+  background: var(--hl-surface);
+  color: var(--hl-fg);
+  font: inherit;
+  padding: 10px 12px;
+}
+.registration-form label.registration-check {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.registration-check input {
+  width: 18px;
+  height: 18px;
+  margin: 3px 0 0;
+}
+.registration-optional {
+  font-weight: 400;
+}
+.registration-form .button {
+  justify-self: start;
+  min-height: 44px;
+  white-space: normal;
+  text-align: center;
+}
+.registration-error {
+  margin: 0;
+  padding: 12px 14px;
+  border-left: 3px solid #a53535;
+  background: color-mix(in srgb, #a53535 8%, var(--hl-surface));
+}
+.registration-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding: 0;
+  list-style: none;
+  margin: 0 0 26px;
+  color: var(--hl-muted);
+}
+.registration-steps [aria-current="step"] {
+  color: var(--hl-fg);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+.registration-forms {
+  padding-left: 20px;
+  line-height: 1.6;
+}
+.registration-forms li {
+  margin: 12px 0;
+}
+@media (max-width: 700px) {
+  .registration-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+  .registration-card {
+    padding: 22px;
+  }
+  .registration-card h1 {
+    font-size: 30px;
+  }
+  .registration-form .button {
+    width: 100%;
+  }
+}

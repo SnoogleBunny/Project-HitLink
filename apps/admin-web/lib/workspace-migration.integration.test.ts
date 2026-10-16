@@ -1,4 +1,5 @@
 /* eslint-disable turbo/no-undeclared-env-vars -- disposable PostgreSQL test URL is opt-in and never used by application runtime */
+import { cutoverSnapshotFixture } from "./migration-cutover.test-support";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@flowstate/db";
 
@@ -354,6 +355,8 @@ integrationDescribe("migration readiness PostgreSQL integration", () => {
       "readiness_completed_job",
     );
 
+    const cutover = await cutoverSnapshotFixture(prisma, workspaceIds[1]);
+    await prisma.workspaceMigration.update({where:{workspaceId:workspaceIds[1]},data:{reviewedCutoverSnapshotId:cutover.id}});
     await expect(
       markMigrationOperationallyReady({
         workspaceId: workspaceIds[1],

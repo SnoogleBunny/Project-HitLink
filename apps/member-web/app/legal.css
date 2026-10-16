@@ -1,0 +1,7 @@
+.hitlink-legal { max-width: 820px; margin: 0 auto; padding: 48px 22px 80px; line-height: 1.65; }
+.hitlink-legal nav { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 36px; }
+.hitlink-legal h1 { font-size: 42px; line-height: 1.15; }
+.hitlink-legal h2 { font-size: 25px; margin-top: 36px; }
+.hitlink-legal p { margin: 14px 0; }
+.hitlink-legal-draft { border: 1px solid #bb9147; background: #fff3d6; color: #65490b; border-radius: 12px; padding: 20px; margin: 24px 0; }
+.hitlink-legal footer { border-top: 1px solid #d6d6da; padding-top: 24px; margin-top: 40px; }

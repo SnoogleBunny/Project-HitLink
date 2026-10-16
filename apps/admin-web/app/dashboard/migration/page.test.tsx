@@ -61,6 +61,8 @@ vi.mock("./migration-recovery-alert", () => ({
   ),
 }));
 
+vi.mock("../../../lib/migration-cutover", () => ({ inspectMigrationCutoverSnapshot: vi.fn().mockResolvedValue({ snapshot: { id:"reviewed-cutover",createdAt:new Date("2026-07-25T12:00:00Z"),actorOperatorId:"operator",evidence:{sourceTotals:{},sourceReferences:{},billingOwners:[],recordDisposition:{excluded:[]}} }, errors:[] }) }));
+
 const completedAt = new Date("2026-07-25T12:05:00.000Z");
 const acknowledgedAt = new Date("2026-07-25T12:00:00.000Z");
 

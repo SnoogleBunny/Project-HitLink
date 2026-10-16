@@ -19,6 +19,7 @@ function buildTemplateRecord() {
     title: "Muay Thai Fundamentals",
     weekday: "TUESDAY" as const,
     startTimeMinutes: 18 * 60,
+    endTimeMinutes: 19 * 60,
     bookingCutoffMinutes: 60,
     cancellationCutoffMinutes: 120,
     capacityOverride: 1,
@@ -453,6 +454,7 @@ describe("shared class access helpers", () => {
         guardianId: null,
         classTemplateId: "template_1",
         scheduledForDate: new Date("2026-04-14T00:00:00.000Z"),
+        fundingRevision: 1, providerChangedAt: null, fundedByBookingId: null, fundingMembershipId: null,
         bookingType: "PUNCH_CARD",
         status: "BOOKED",
         source: "MEMBER_PORTAL",
@@ -477,10 +479,7 @@ describe("shared class access helpers", () => {
           consumedPunchCount: 1,
           pendingPaymentExpiresAt: null,
           scheduledForDate: new Date("2026-04-14T00:00:00.000Z"),
-          classTemplate: {
-            startTimeMinutes: 18 * 60,
-            cancellationCutoffMinutes: 120,
-          },
+          classTemplate: buildTemplateRecord(),
         }),
         updateMany: vi.fn().mockResolvedValue({
           count: 1,
@@ -784,12 +783,16 @@ describe("shared class access helpers", () => {
 
   it("finalizes punch-card purchases and drop-in webhooks idempotently", async () => {
     const purchaseDb = {
+      $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(purchaseDb)),
+      member: { findFirst: vi.fn().mockResolvedValue({ id: "member_1" }) },
+      punchCardProduct: { findFirst: vi.fn().mockResolvedValue({ id: "product_1" }) },
       memberPunchCard: {
         findFirst: vi
           .fn()
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce({
-            id: "card_1",
+            id: "card_1", workspaceId: "workspace_1", memberId: "member_1", punchCardProductId: "product_1", originalPunches: 10, purchasePriceCents: 25000, purchaseCurrency: "usd",
+            acceptedTerms: { version: 1, priceCents: 25000, currency: "usd", originalPunches: 10, restrictionMode: "GENERAL", programIds: [], lateCancellationConsumesPunch: true, noShowConsumesPunch: true, capturedAt: "2026-04-08T12:00:00Z" },
             remainingPunches: 10,
             status: "ACTIVE",
             purchasedAt: new Date("2026-04-08T12:00:00.000Z"),
@@ -816,6 +819,7 @@ describe("shared class access helpers", () => {
         priceCents: 25000,
         currency: "usd",
         checkoutSessionId: "cs_1",
+        acceptedTerms: { version: 1, priceCents: 25000, currency: "usd", originalPunches: 10, restrictionMode: "GENERAL", programIds: [], lateCancellationConsumesPunch: true, noShowConsumesPunch: true, capturedAt: "2026-04-08T12:00:00Z" },
         db: purchaseDb as never,
         now: new Date("2026-04-08T12:00:00.000Z"),
       }),
@@ -833,6 +837,7 @@ describe("shared class access helpers", () => {
         priceCents: 25000,
         currency: "usd",
         checkoutSessionId: "cs_1",
+        acceptedTerms: { version: 1, priceCents: 25000, currency: "usd", originalPunches: 10, restrictionMode: "GENERAL", programIds: [], lateCancellationConsumesPunch: true, noShowConsumesPunch: true, capturedAt: "2026-04-08T12:00:00Z" },
         db: purchaseDb as never,
         now: new Date("2026-04-08T12:00:00.000Z"),
       }),
@@ -850,12 +855,13 @@ describe("shared class access helpers", () => {
           .fn()
           .mockResolvedValueOnce({
             id: "booking_1",
-            status: "PENDING_PAYMENT",
+            status: "PENDING_PAYMENT", bookingType: "DROP_IN", dropInCheckoutSessionId: "cs_1", dropInPriceCents: 2500, dropInCurrency: "usd", pendingPaymentExpiresAt: new Date("2026-04-08T12:15:00Z"), classTemplateId: "template_1", scheduledForDate: new Date("2026-04-14"), classTemplate: buildTemplateRecord(), workspace: { location: { timezone: "UTC" } },
           })
           .mockResolvedValueOnce({
             id: "booking_1",
-            status: "BOOKED",
+            status: "BOOKED", bookingType: "DROP_IN", dropInCheckoutSessionId: "cs_1", dropInPriceCents: 2500, dropInCurrency: "usd", dropInPaidAt: new Date("2026-04-08T12:05:00Z"),
           }),
+        count: vi.fn().mockResolvedValue(1),
         update: vi.fn().mockResolvedValue({
           id: "booking_1",
         }),
@@ -870,7 +876,7 @@ describe("shared class access helpers", () => {
         workspaceId: "workspace_1",
         bookingId: "booking_1",
         checkoutSessionId: "cs_1",
-        paymentIntentId: "pi_1",
+        paymentIntentId: "pi_1", amountCents: 2500, currency: "usd",
         expiresAt: new Date("2026-04-08T12:15:00.000Z"),
         db: dropInDb as never,
         now: new Date("2026-04-08T12:05:00.000Z"),
@@ -881,7 +887,7 @@ describe("shared class access helpers", () => {
         workspaceId: "workspace_1",
         bookingId: "booking_1",
         checkoutSessionId: "cs_1",
-        paymentIntentId: "pi_1",
+        paymentIntentId: "pi_1", amountCents: 2500, currency: "usd",
         expiresAt: new Date("2026-04-08T12:15:00.000Z"),
         db: dropInDb as never,
         now: new Date("2026-04-08T12:05:00.000Z"),

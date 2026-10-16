@@ -1,4 +1,10 @@
 export { prisma } from "./client.js";
+export * from "./class-occurrences.js";
+export * from "./coaching.js";
+export * from "./financial-operations.js";
+export * from "./checkout-payments.js";
+export * from "./website.js";
+export * from "./invoice-reconciliation.js";
 
 export {
   isWorkspaceMigrationReady,
@@ -32,6 +38,7 @@ export {
   cleanupExpiredPendingBookings,
   countActiveOccurrenceBookings,
   createAccessBackedBooking,
+  moveAccessBackedBooking,
   findEligibleDropInProduct,
   getEffectiveCapacity,
   getOccurrenceStartsAt,
@@ -82,6 +89,8 @@ export {
 
 export {
   createDevelopmentNotificationAdapter,
+  createEmailNotificationAdapter,
+  NotificationDeliveryError,
   enqueueNotificationJob,
   processNotificationOutbox,
   type EnqueueNotificationInput,
@@ -205,3 +214,18 @@ export type {
   WorkspaceStatus,
   WorkspaceUser,
 } from "@prisma/client";
+export * from "./membership-allowances.js";
+export * from "./punch-card-ledger.js";
+export * from "./entitlement-holds.js";
+export * from "./financial-adjustments.js";
+export * from "./public-enrollment.js";
+export * from "./notification-context.js";
+export * from "./membership-lifecycle-policy.js";
+export * from "./membership-lifecycle.js";
+
+export * from "./public-trials.js";
+
+export * from "./program-progress-policy.js";
+export * from "./program-progress.js";
+export * from "./workspace-data.js";
+export * from "./member-notification-recipients.js";

@@ -606,12 +606,16 @@ function getMemberInclude(args?: {
 export async function listMembers(args: {
   workspaceId: string;
   query?: string;
+  status?: MemberStatus;
+  skip?: number;
+  take?: number;
   db?: MemberDatabase;
 }): Promise<MemberListItem[]> {
   const db = args.db ?? memberDatabase;
   const query = args.query?.trim();
   const where: Record<string, unknown> = {
     workspaceId: args.workspaceId,
+    ...(args.status ? { status: args.status } : {}),
   };
 
   if (query) {
@@ -644,7 +648,8 @@ export async function listMembers(args: {
     orderBy: {
       fullName: "asc",
     },
-    take: 100,
+    take: args.take ?? 100,
+    ...(args.skip ? { skip: args.skip } : {}),
   });
 
   return members.map(mapMemberListItem);

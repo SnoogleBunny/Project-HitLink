@@ -1,0 +1,4 @@
+import Link from "next/link";
+import content from "./hitlink-legal.json";
+import "../app/legal.css";
+export function LegalPage({ kind }: { kind: "terms" | "privacy" }) { const page = content[kind]; return <main className="hitlink-legal"><nav aria-label="HitLink legal"><Link href="/">HitLink</Link><Link href={kind === "terms" ? "/privacy" : "/terms"}>{kind === "terms" ? "Privacy policy" : "Terms of Service"}</Link></nav><h1>{page.title}</h1><p>HitLink software service · Draft for review</p><aside className="hitlink-legal-draft"><strong>Business details are placeholders</strong><p>{content.draftNotice}</p></aside><p>Effective date: {content.effectiveDate}</p><p>{page.description}</p>{page.sections.map((section) => <section key={section.title}><h2>{section.title}</h2>{section.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</section>)}<footer><Link href="/">Return to HitLink</Link></footer></main>; }

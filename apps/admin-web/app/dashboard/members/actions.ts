@@ -1,6 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { changeFamilyPortalAccess } from "../../../lib/family-portal-access";
 import {
   emptyFormState,
   type BasicFormState,
@@ -26,6 +28,24 @@ function getMemberInput(formData: FormData) {
     notes: String(formData.get("notes") ?? ""),
     tags: String(formData.get("tags") ?? ""),
   };
+}
+
+export async function changeFamilyPortalAccessAction(
+  _previous: { error: string | null; success: string | null }, formData: FormData,
+): Promise<{ error: string | null; success: string | null }> {
+  const context = await requireOwnerWorkspaceContext();
+  const memberId = String(formData.get("memberId") ?? "");
+  const revoke = formData.get("operation") === "revoke";
+  const result = await changeFamilyPortalAccess({
+    workspaceId: context.workspace.id, actorWorkspaceUserId: context.workspaceUserId, memberId,
+    userId: String(formData.get("userId") ?? ""), guardianId: String(formData.get("guardianId") ?? ""),
+    expectedVersion: Number(formData.get("expectedVersion")), reason: String(formData.get("reason") ?? ""),
+    canBook: formData.get("canBook") === "on", canSign: formData.get("canSign") === "on", canPay: formData.get("canPay") === "on",
+    identityAndAuthorityVerified: formData.get("verified") === "on", revoke,
+  });
+  if (result.error) return { error: result.error, success: null };
+  revalidatePath(`/dashboard/members/${memberId}`);
+  return { error: null, success: revoke ? "Family access revoked." : "Family permissions saved." };
 }
 
 function getPasswordInput(formData: FormData) {

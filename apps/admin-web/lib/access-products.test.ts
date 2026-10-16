@@ -13,7 +13,8 @@ type AccessProductsTestDb = NonNullable<
 >;
 
 function createMockDb(): AccessProductsTestDb {
-  return {
+  const db = {
+    $transaction: vi.fn(async (callback: (tx: AccessProductsTestDb) => unknown) => callback(db as AccessProductsTestDb)),
     program: {
       findMany: vi.fn().mockResolvedValue([
         {
@@ -102,6 +103,7 @@ function createMockDb(): AccessProductsTestDb {
       }),
     },
   };
+  return db as AccessProductsTestDb;
 }
 
 describe("access product helpers", () => {
@@ -134,6 +136,7 @@ describe("access product helpers", () => {
         punchesIncluded: 10,
         priceCents: 25000,
         currency: "usd",
+        lateCancellationConsumesPunch: true, noShowConsumesPunch: true,
         restrictionMode: "PROGRAM_RESTRICTED",
         programRestrictions: {
           createMany: {
@@ -243,6 +246,7 @@ describe("access product helpers", () => {
         workspaceId: "workspace_1",
         memberId: "member_1",
         punchCardProductId: "punch_card_product_1",
+        expectedTermsVersion: 1,
         db,
       }),
     ).resolves.toEqual({
@@ -252,6 +256,7 @@ describe("access product helpers", () => {
 
     expect(db.memberPunchCard.create).toHaveBeenCalledWith({
       data: {
+        acceptedTerms: expect.objectContaining({ version: 1, originalPunches: 10, programIds: ["program_1"], lateCancellationConsumesPunch: true, noShowConsumesPunch: true }),
         workspaceId: "workspace_1",
         memberId: "member_1",
         punchCardProductId: "punch_card_product_1",

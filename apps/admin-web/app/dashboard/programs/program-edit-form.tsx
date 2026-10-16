@@ -62,17 +62,7 @@ export function ProgramEditForm({ program }: ProgramEditFormProps) {
         </label>
       </div>
 
-      <label className="field-checkbox">
-        <input
-          defaultChecked={program.progressTrackingEnabled}
-          name="progressTrackingEnabled"
-          type="checkbox"
-        />
-        <div>
-          <strong>Enable progress tracking</strong>
-          <p>Leave this on only for programs that should surface progress UI.</p>
-        </div>
-      </label>
+      <p className="field-help">Rank tracking starts off. Configure ranks and booking rules from the program’s progress settings.</p>
 
       {state.error ? <p className="form-error">{state.error}</p> : null}
 

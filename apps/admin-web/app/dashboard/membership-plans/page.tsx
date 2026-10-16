@@ -57,10 +57,8 @@ function PlanCard({
             <dt>Programs</dt>
             <dd>{formatRestrictions(plan)}</dd>
           </div>
-          <div>
-            <dt>Archived</dt>
-            <dd>{formatDate(plan.archivedAt)}</dd>
-          </div>
+          <div><dt>Class allowance</dt><dd>{!plan.weeklyClassLimit && !plan.monthlyClassLimit ? "Unlimited classes" : [plan.weeklyClassLimit ? `${plan.weeklyClassLimit} per billing week` : null, plan.monthlyClassLimit ? `${plan.monthlyClassLimit} per billing month` : null].filter(Boolean).join(" · ")}</dd></div>
+          {archived ? <div><dt>Archived</dt><dd>{formatDate(plan.archivedAt)}</dd></div> : null}
         </dl>
       </div>
 
@@ -101,12 +99,12 @@ export default async function MembershipPlansPage() {
       workspaceName={workspace.name}
       eyebrow="Memberships"
       title="Membership plans"
-      description="Create recurring monthly membership plans for owner-assigned member billing."
+      description="Set monthly prices, class allowances, cancellation notice and freezes."
     >
       <div className="management-grid">
         <section className="management-card">
           <p className="dashboard-card-label">Create plan</p>
-          <h3>Monthly recurring only</h3>
+          <h3>New monthly plan</h3>
           <p className="management-copy">
             Keep pricing in cents. Punch cards, drop-ins, discounts, and taxes
             are handled in their own billing areas.
@@ -116,10 +114,9 @@ export default async function MembershipPlansPage() {
 
         <section className="management-card">
           <p className="dashboard-card-label">Policy notes</p>
-          <h3>Simple references</h3>
+          <h3>Terms stay with the member</h3>
           <p className="management-copy">
-            Cancellation and freeze policy fields are owner-facing references
-            only. Contract automation is intentionally not part of this screen.
+            New members accept the plan version shown at signup or assignment. Existing memberships keep their accepted price, class limits and cancellation policy. Review a member’s contract before making an exception.
           </p>
           <dl className="detail-list">
             <div>

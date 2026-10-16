@@ -1,84 +1,19 @@
-import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const { listTrialBookingOptionsMock } = vi.hoisted(() => ({
-  listTrialBookingOptionsMock: vi.fn(),
-}));
-
-vi.mock("../../../lib/trial-booking", () => ({
-  listTrialBookingOptions: listTrialBookingOptionsMock,
-}));
-
-vi.mock("./trial-booking-form", () => ({
-  TrialBookingForm: () => <div data-testid="trial-booking-form" />,
-}));
-
-vi.mock("next/navigation", () => ({
-  notFound: vi.fn(() => {
-    throw new Error("not found");
-  }),
-}));
-
-import TrialBookingPage from "./page";
-
-describe("public trial page availability projection", () => {
-  beforeEach(() => {
-    (globalThis as typeof globalThis & { React: typeof React }).React = React;
-    vi.clearAllMocks();
+import { describe, expect, it, vi } from "vitest";
+const { website } = vi.hoisted(() => ({ website: vi.fn() }));
+vi.mock("@flowstate/db", () => ({ prisma: { workspaceWebsite: { findUnique: website } } }));
+vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("not found"); }, redirect: (url: string) => { throw new Error(`redirect:${url}`); } }));
+import Page from "./page";
+import { createTrialBookingAction } from "./actions";
+describe("legacy public trial route", () => {
+  it("redirects to the published verified journey", async () => {
+    website.mockResolvedValue({ slug: "muay-thai", publishedAt: new Date(), workspace: { status: "ACTIVE" } });
+    await expect(Page({ params: Promise.resolve({ workspaceId: "gym" }) })).rejects.toThrow("redirect:/gym/muay-thai/trial");
   });
-
-  it("renders a non-actionable local recovery when active templates have zero eligible dates", async () => {
-    listTrialBookingOptionsMock.mockResolvedValue({
-      status: "no-eligible-dates",
-      workspaceId: "workspace_1",
-      workspaceName: "Flowstate Gym",
-      timezone: "America/Vancouver",
-      activeTemplateCount: 1,
-    });
-
-    const html = renderToStaticMarkup(
-      await TrialBookingPage({
-        params: Promise.resolve({ workspaceId: "workspace_1" }),
-      }),
-    );
-
-    expect(html).toContain("Classes are not available right now");
-    expect(html).toContain("Check back later for an available trial date.");
-    expect(html).not.toContain("trial-booking-form");
+  it("does not expose unpublished registration", async () => {
+    website.mockResolvedValue({ slug: "draft", publishedAt: null, workspace: { status: "ACTIVE" } });
+    await expect(Page({ params: Promise.resolve({ workspaceId: "gym" }) })).rejects.toThrow("not found");
   });
-
-  it("keeps the populated-date projection actionable", async () => {
-    listTrialBookingOptionsMock.mockResolvedValue({
-      status: "available",
-      workspaceId: "workspace_1",
-      workspaceName: "Flowstate Gym",
-      timezone: "America/Vancouver",
-      templates: [
-        {
-          id: "template_1",
-          displayTitle: "Muay Thai Fundamentals",
-          programName: "Muay Thai",
-          roomName: "Main Mat",
-          coachDisplayName: "Casey Coach",
-          dateOptions: [
-            {
-              classTemplateId: "template_1",
-              scheduledForDate: "2026-04-14",
-              label: "Tue, Apr 14 at 6:00 PM",
-            },
-          ],
-        },
-      ],
-    });
-
-    const html = renderToStaticMarkup(
-      await TrialBookingPage({
-        params: Promise.resolve({ workspaceId: "workspace_1" }),
-      }),
-    );
-
-    expect(html).toContain("trial-booking-form");
-    expect(html).not.toContain("Classes are not available right now");
+  it("rejects the old unverified booking action", async () => {
+    expect(await createTrialBookingAction({ error: null, confirmation: null }, new FormData())).toEqual({ error: expect.stringContaining("verify your email"), confirmation: null });
   });
 });

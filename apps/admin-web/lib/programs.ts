@@ -80,7 +80,7 @@ function sanitizeProgramInput(input: ProgramFormInput) {
     description: cleanNullable(input.description),
     ageGroupLabel: cleanNullable(input.ageGroupLabel),
     levelLabel: cleanNullable(input.levelLabel),
-    progressTrackingEnabled: input.progressTrackingEnabled,
+    progressTrackingEnabled: false,
   };
 }
 
@@ -179,7 +179,6 @@ export async function updateProgram(args: {
         description: input.description,
         ageGroupLabel: input.ageGroupLabel,
         levelLabel: input.levelLabel,
-        progressTrackingEnabled: input.progressTrackingEnabled,
       },
     });
 

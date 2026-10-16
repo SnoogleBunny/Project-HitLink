@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { prisma } from "@flowstate/db";
+import { prisma, parseProgramRankPolicy } from "@flowstate/db";
 import { AdminShell } from "../../_components/admin-shell";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
 import { ProgramCreateForm } from "./program-create-form";
@@ -48,8 +48,7 @@ export default async function ProgramsPage() {
           <p className="dashboard-card-label">Create program</p>
           <h3>New program</h3>
           <p className="management-copy">
-            Keep this lightweight for now: name, optional labels, and progress
-            tracking.
+            Name the program and add the labels your gym uses. Rank tracking is optional.
           </p>
           <ProgramCreateForm />
         </section>
@@ -94,12 +93,13 @@ export default async function ProgramsPage() {
                       <div>
                         <dt>Progress</dt>
                         <dd>
-                          {program.progressTrackingEnabled ? "Enabled" : "Off"}
+                          {({OFF:"Off",HISTORY:"History only",PREREQUISITES:"Booking requirements"} as const)[parseProgramRankPolicy(program.rankPolicy)?.mode ?? "OFF"]}
                         </dd>
                       </div>
                     </dl>
                   </div>
 
+                  <Link className="text-link" href={`/dashboard/programs/${program.id}/progress`}>Ranks and eligibility</Link>
                   <Link
                     className="button button-secondary"
                     href={`/dashboard/programs/${program.id}/edit`}

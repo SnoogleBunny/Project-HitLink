@@ -1,3 +1,4 @@
+import { formatMoney as formatKnownMoney } from "@flowstate/ui/money";
 import Link from "next/link";
 import { AdminShell } from "../../_components/admin-shell";
 import {
@@ -18,10 +19,7 @@ import { DropInProductForm } from "./drop-in-product-form";
 import { PunchCardProductForm } from "./punch-card-product-form";
 
 function formatMoney(amountCents: number, currency: string): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: currency.toUpperCase(),
-  }).format(amountCents / 100);
+  return formatKnownMoney(amountCents, currency);
 }
 
 function formatRestrictions(

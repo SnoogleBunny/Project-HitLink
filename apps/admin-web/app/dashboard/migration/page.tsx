@@ -1,3 +1,5 @@
+import { prisma } from "@flowstate/db";
+import { inspectMigrationCutoverSnapshot, type CutoverEvidence } from "../../../lib/migration-cutover";
 import Link from "next/link";
 import { AdminShell } from "../../_components/admin-shell";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
@@ -223,6 +225,7 @@ export default async function MigrationPage({
     now: pageNow,
   });
   const migration = dashboard.migration;
+  const cutover = migration && migration.stage !== "COMPLETE" ? await inspectMigrationCutoverSnapshot(prisma, workspace.id) : null;
   const isCompletedOwnerReview =
     dashboard.ownerReview.status === "acknowledged" &&
     migration?.stage === "COMPLETE" &&
@@ -566,8 +569,11 @@ export default async function MigrationPage({
                       projection={correctionChannel}
                     />
                   ) : null}
-                  {correctionChannel?.status === "available" ? (
+                  {cutover?.errors.length ? <div role="status">{cutover.errors.map(error => <p key={error}>{error}</p>)}</div> : null}
+                  {cutover?.snapshot ? <details><summary>Final cutover evidence · {cutover.snapshot.id}</summary><p>Recorded {cutover.snapshot.createdAt.toISOString()} by operator {cutover.snapshot.actorOperatorId}</p><dl className="detail-list">{Object.entries((cutover.snapshot.evidence as unknown as CutoverEvidence).sourceTotals).map(([label,value])=><div key={label}><dt>{({members:"Members",currentMemberships:"Current memberships",packUnits:"Unused pack units",futureBookings:"Future bookings",familyLinks:"Family relationships",verifiedPortalGrants:"Verified family permissions",allowanceReserved:"Reserved class allowance",allowanceUsed:"Used class allowance",invoiceBalances:"Unpaid invoice balances"} as Record<string,string>)[label]??label}</dt><dd>{typeof value==="object"?Object.entries(value).map(([currency,cents])=>`${currency.toUpperCase()} ${(Number(cents)/100).toFixed(2)}`).join(", ")||"None":value}</dd></div>)}</dl><p>Source evidence references</p><ul>{Object.entries((cutover.snapshot.evidence as unknown as CutoverEvidence).sourceReferences).map(([label,reference])=><li key={label}>{label}: {reference}</li>)}</ul><p>Billing responsibility: {(cutover.snapshot.evidence as unknown as CutoverEvidence).billingOwners.length} contracts reviewed.</p>{(cutover.snapshot.evidence as unknown as CutoverEvidence).billingOwners.map(row=><p key={row.membershipId}>Contract {row.membershipId} · next renewal {row.nextBillingDate} · billed by {row.owner==="HITLINK"?"HitLink":"previous system"}. Source stop/transfer: {row.sourceStopOrTransferEvidence||"No transfer; source remains responsible"}. Payer authorization: {row.payerAuthorizationEvidence}</p>)}<p>Backup: {(cutover.snapshot.evidence as unknown as CutoverEvidence).backupReference}</p><p>Recovery rehearsal: {(cutover.snapshot.evidence as unknown as CutoverEvidence).restoreRehearsalReference}</p><p>Final changes checked: {(cutover.snapshot.evidence as unknown as CutoverEvidence).finalDeltaReference}</p></details> : null}
+                  {correctionChannel?.status === "available" && cutover?.snapshot && !cutover.errors.length ? (
                     <MigrationAcknowledgmentForm
+                      snapshotId={cutover.snapshot.id}
                       action={acknowledgeMigrationReviewAction}
                     />
                   ) : null}

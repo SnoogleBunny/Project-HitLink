@@ -4,8 +4,8 @@ import { WaitlistForm } from "./waitlist-form";
 function Header() {
   return (
     <header className="site-header">
-      <a className="brand-link" href="#top" aria-label="Flowstate home">
-        Flowstate
+      <a className="brand-link" href="#top" aria-label="HitLink home">
+        HitLink
       </a>
       <nav aria-label="Primary navigation">
         {navItems.map((item) => (
@@ -33,11 +33,11 @@ function ProductPlaceholder() {
 
 function Hero() {
   return (
-    <section className="hero" id="top" aria-label="Flowstate landing hero">
+    <section className="hero" id="top" aria-label="HitLink landing hero">
       <div className="hero-image" aria-hidden="true" />
       <ProductPlaceholder />
       <div className="hero-content">
-        <p className="hero-brand">Flowstate</p>
+        <p className="hero-brand">HitLink</p>
         <h1>Martial arts gym software reliable enough to disappear.</h1>
         <p>
           Memberships, bookings, waivers, attendance, billing, and parent
@@ -49,7 +49,7 @@ function Hero() {
           </a>
           <a
             className="button button-secondary"
-            href={`mailto:${site.demoEmail}?subject=Flowstate demo request`}
+            href={`mailto:${site.demoEmail}?subject=HitLink demo request`}
           >
             Book a Demo
           </a>
@@ -65,7 +65,7 @@ function Reliability() {
       <p className="section-kicker">Reliability as a feeling</p>
       <h2>The best operations software does not ask to be noticed.</h2>
       <p>
-        Flowstate is designed for the quiet parts of owning a martial arts gym:
+        HitLink is designed for the quiet parts of owning a martial arts gym:
         knowing tomorrow&apos;s schedule is clean, knowing attendance was
         captured, knowing billing is understandable, and knowing members can
         handle the basics without another front-desk interruption.
@@ -99,7 +99,7 @@ function FoundingGym() {
       </div>
       <p>
         Gyms that join the waitlist and onboard during the founding window get
-        15% off monthly pricing, grandfathered after Flowstate launches at full
+        15% off monthly pricing, grandfathered after HitLink launches at full
         price.
       </p>
       <a className="button button-primary" href="#waitlist">
@@ -118,12 +118,12 @@ function Alternatives() {
       <h2>A calmer replacement path for martial arts gym software.</h2>
       <p>
         If you are researching alternatives to older gym management tools,
-        Flowstate is being built for martial arts operators who want reliable
+        HitLink is being built for martial arts operators who want reliable
         scheduling, billing clarity, member self-service, and parent-account
         support without dragging a generic fitness system into a striking gym.
       </p>
       <p className="answer-copy">
-        Flowstate is relevant for searches around alternatives to {competitorList},
+        HitLink is relevant for searches around alternatives to {competitorList},
         and other gym management platforms when the real requirement is a calm
         operating system for Muay Thai, kickboxing, boxing, MMA, and martial arts
         schools.
@@ -135,12 +135,15 @@ function Alternatives() {
 function Footer() {
   return (
     <footer className="site-footer" id="footer">
-      <strong>Flowstate</strong>
+      <strong>HitLink</strong>
       <p>Reliable martial arts gym operations, designed to disappear.</p>
       <div>
         <a href="#reliability">Reliability</a>
         <a href="#founding-gym">Founding Gyms</a>
         <a href={`mailto:${site.demoEmail}`}>Contact</a>
+        <a href="/terms" target="_blank" rel="noreferrer">Terms (draft)</a>
+        <a href="/privacy" target="_blank" rel="noreferrer">Privacy (draft)</a>
+        <a href={process.env.NEXT_PUBLIC_MEMBER_WEB_URL ?? "http://localhost:3001/login"}>Member portal</a>
       </div>
     </footer>
   );

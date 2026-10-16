@@ -80,7 +80,10 @@ function createMockDb(): MemberMembershipTestDb {
     },
     memberMembership: {
       findFirst: vi.fn(async ({ select }) => {
-        if (select && "stripeCustomerId" in (select as Record<string, unknown>)) {
+        if (
+          select &&
+          "stripeCustomerId" in (select as Record<string, unknown>)
+        ) {
           return {
             stripeCustomerId: null,
           };
@@ -150,137 +153,43 @@ function resolveNoActivationForms() {
 }
 
 describe("member membership helpers", () => {
-  it("assigns a membership and stores Stripe linkage when billing is ready", async () => {
-    const db = createMockDb();
-    const stripe = createStripeMock();
-
-    await expect(
-      assignMembershipToMember({
+  it("retires direct assignment without database or processor mutations, even with confirmed owner terms", async () => {
+    const db = createMockDb(),
+      stripe = createStripeMock(),
+      resolveActivationForms = vi.fn(resolveNoActivationForms);
+    expect(
+      await assignMembershipToMember({
         workspaceId: "workspace_1",
         input: {
           memberId: "member_1",
           membershipPlanId: "plan_1",
-          nextBillingDate: "2026-05-08",
+          acceptedTermsConfirmed: true,
+          expectedTermsVersion: "1",
+          acceptedByWorkspaceUserId: "owner_1",
         },
         db,
         stripe,
-        resolveActivationForms: resolveNoActivationForms,
+        resolveActivationForms,
       }),
-    ).resolves.toEqual({
-      status: "assigned",
-      memberMembershipId: "membership_1",
-    });
-
-    expect(db.memberMembership.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          workspaceId: "workspace_1",
-          memberId: "member_1",
-          membershipPlanId: "plan_1",
-          status: "PENDING_PAYMENT_METHOD",
-          currentMembershipSlot: "CURRENT",
-        }),
-      }),
-    );
-    expect(stripe.createSubscription).toHaveBeenCalledWith(
-      expect.objectContaining({
-        stripeAccountId: "acct_1",
-        memberMembershipId: "membership_1",
-        stripeCustomerId: "cus_1",
-        stripePriceId: "price_1",
-      }),
-    );
-    expect(db.memberMembership.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          stripeCustomerId: "cus_1",
-          stripeSubscriptionId: "sub_1",
-          status: "ACTIVE",
-        }),
-      }),
-    );
-  });
-
-  it("blocks assignment when the member already has a current membership", async () => {
-    const db = createMockDb();
-    db.memberMembership.findFirst = vi.fn().mockResolvedValue(buildMembership());
-
-    await expect(
-      assignMembershipToMember({
-        workspaceId: "workspace_1",
-        input: {
-          memberId: "member_1",
-          membershipPlanId: "plan_1",
-        },
-        db,
-        stripe: createStripeMock(),
-        resolveActivationForms: resolveNoActivationForms,
-      }),
-    ).resolves.toEqual({
+    ).toMatchObject({
       status: "error",
-      message: "This member already has a current membership.",
+      message: expect.stringMatching(/verified enrollment/),
     });
-
-    expect(db.memberMembership.create).not.toHaveBeenCalled();
-  });
-
-  it("rejects archived or foreign plans", async () => {
-    const db = createMockDb();
-    db.membershipPlan.findFirst = vi.fn().mockResolvedValue(null);
-
-    await expect(
-      assignMembershipToMember({
-        workspaceId: "workspace_1",
-        input: {
-          memberId: "member_1",
-          membershipPlanId: "plan_archived",
-        },
-        db,
-        stripe: createStripeMock(),
-        resolveActivationForms: resolveNoActivationForms,
-      }),
-    ).resolves.toEqual({
-      status: "error",
-      message: "Choose an active membership plan in this workspace.",
-    });
-  });
-
-  it("blocks membership assignment when activation forms are still unresolved", async () => {
-    const db = createMockDb();
-
-    await expect(
-      assignMembershipToMember({
-        workspaceId: "workspace_1",
-        input: {
-          memberId: "member_1",
-          membershipPlanId: "plan_1",
-        },
-        db,
-        stripe: createStripeMock(),
-        resolveActivationForms: () =>
-          Promise.resolve({
-            items: [
-              {
-                formName: "Membership Agreement",
-                status: "PENDING",
-              },
-            ],
-            history: [],
-          } as never),
-      }),
-    ).resolves.toEqual({
-      status: "error",
-      message:
-        "Membership activation is blocked until the current form versions are signed: Membership Agreement.",
-    });
-
-    expect(db.memberMembership.create).not.toHaveBeenCalled();
+    for (const model of Object.values(db))
+      if (model && typeof model === "object")
+        for (const method of Object.values(model))
+          if (vi.isMockFunction(method)) expect(method).not.toHaveBeenCalled();
+    for (const method of Object.values(stripe))
+      if (vi.isMockFunction(method)) expect(method).not.toHaveBeenCalled();
+    expect(resolveActivationForms).not.toHaveBeenCalled();
   });
 
   it("cancels at period end and calls Stripe when a subscription exists", async () => {
     const db = createMockDb();
     const stripe = createStripeMock();
-    db.memberMembership.findFirst = vi.fn().mockResolvedValue(buildMembership());
+    db.memberMembership.findFirst = vi
+      .fn()
+      .mockResolvedValue(buildMembership());
 
     await expect(
       cancelMembershipAtPeriodEnd({
@@ -311,7 +220,9 @@ describe("member membership helpers", () => {
 
   it("validates freeze dates and records scheduled freeze state", async () => {
     const db = createMockDb();
-    db.memberMembership.findFirst = vi.fn().mockResolvedValue(buildMembership());
+    db.memberMembership.findFirst = vi
+      .fn()
+      .mockResolvedValue(buildMembership());
 
     await expect(
       freezeMemberMembership({

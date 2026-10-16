@@ -19,6 +19,8 @@ function getPunchCardInput(formData: FormData) {
     name: String(formData.get("name") ?? ""),
     description: String(formData.get("description") ?? ""),
     punchesIncluded: String(formData.get("punchesIncluded") ?? ""),
+    lateCancellationConsumesPunch: formData.get("lateCancellationConsumesPunch") === "on",
+    noShowConsumesPunch: formData.get("noShowConsumesPunch") === "on",
     priceCents: String(formData.get("priceCents") ?? ""),
     currency: String(formData.get("currency") ?? "usd"),
     programIds: formData.getAll("programIds").map(String),

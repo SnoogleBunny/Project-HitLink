@@ -24,11 +24,12 @@ export default async function MemberFormRequestPage({
   }>;
 }) {
   const { requestId } = await params;
-  const context = await requireMemberPortalContext();
+  const context = await requireMemberPortalContext({ permission: "sign" });
   const request = await getPortalFormRequestPageData({
     workspaceId: context.workspace.id,
     memberId: context.member.id,
     requestId,
+    guardianId: context.permissions?.guardianId,
   });
 
   if (!request) {
@@ -88,8 +89,9 @@ export default async function MemberFormRequestPage({
             <FormSignatureForm
               action={signPortalFormAction}
               requestId={request.requestId}
-              signerEmail={request.memberEmail}
-              signerName={request.memberName}
+              memberId={context.member.id}
+              signerEmail={context.accountMember?.email ?? request.memberEmail}
+              signerName={context.accountMember?.fullName ?? request.memberName}
               pendingLabel="Signing form..."
               submitLabel="Sign form"
             />

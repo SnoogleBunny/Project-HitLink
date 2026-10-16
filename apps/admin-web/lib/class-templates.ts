@@ -23,6 +23,7 @@ const weekdayLabels: Record<Weekday, string> = {
 };
 
 interface ProgramOptionRecord {
+  rankPolicy?: unknown;
   id: string;
   name: string;
 }
@@ -64,7 +65,7 @@ interface ClassTemplateRecord {
     name: string;
     capacity: number | null;
   };
-  coachWorkspaceUser: CoachOptionRecord;
+  coachWorkspaceUser: CoachOptionRecord | null;
 }
 
 interface ClassTemplateDatabase {
@@ -137,7 +138,7 @@ export interface WeeklyScheduleTemplate {
   roomName: string;
   coachDisplayName: string;
   coachEmail: string;
-  coachRole: UserRole;
+  coachRole: UserRole | null;
   coachIsActive: boolean;
 }
 
@@ -266,10 +267,10 @@ export function formatMinutesAsTime(minutes: number): string {
 function mapTemplateRecord(
   record: ClassTemplateRecord,
 ): WeeklyScheduleTemplate {
-  const coachDisplayName = buildDisplayName(
+  const coachDisplayName = record.coachWorkspaceUser ? buildDisplayName(
     record.coachWorkspaceUser.user.fullName,
-    record.coachWorkspaceUser.user.email,
-  );
+    record.coachWorkspaceUser?.user.email ?? "",
+  ) : "Needs coach";
 
   return {
     id: record.id,
@@ -288,9 +289,9 @@ function mapTemplateRecord(
     programName: record.program.name,
     roomName: record.room.name,
     coachDisplayName,
-    coachEmail: record.coachWorkspaceUser.user.email,
-    coachRole: record.coachWorkspaceUser.role,
-    coachIsActive: record.coachWorkspaceUser.isActive,
+    coachEmail: record.coachWorkspaceUser?.user.email ?? "",
+    coachRole: record.coachWorkspaceUser?.role ?? null,
+    coachIsActive: record.coachWorkspaceUser?.isActive ?? false,
   };
 }
 
@@ -491,6 +492,7 @@ export async function getClassTemplateFormOptions(args: {
       select: {
         id: true,
         name: true,
+        rankPolicy: true,
       },
     }),
     db.room.findMany({
@@ -565,9 +567,6 @@ export async function getClassTemplateFormOptions(args: {
     missingPrerequisites.push("rooms");
   }
 
-  if (coaches.length === 0) {
-    missingPrerequisites.push("coaches");
-  }
 
   return {
     programs,
@@ -738,7 +737,7 @@ export async function getClassTemplateForEdit(args: {
     ...template,
     programId: record.program.id,
     roomId: record.room.id,
-    coachWorkspaceUserId: record.coachWorkspaceUser.id,
+    coachWorkspaceUserId: record.coachWorkspaceUser?.id ?? "",
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

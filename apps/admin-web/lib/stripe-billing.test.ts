@@ -115,14 +115,17 @@ describe("Stripe billing webhook processing", () => {
     expect(db.billingRecord.create).not.toHaveBeenCalled();
   });
 
-  it("maps invoice payment failures into billing state and records", async () => {
+  it("reconciles canonical invoice state before marking a webhook processed", async () => {
     const db = createMockDb();
+    const reconcile = vi.fn().mockResolvedValue(true);
 
     await expect(
       processStripeWebhookEvent({
         event: buildWebhookEvent(),
         db,
         now: new Date("2026-04-08T00:00:00.000Z"),
+        reconcileMembershipEvent: reconcile,
+        recoverPublicMembershipEvent: vi.fn().mockResolvedValue(false),
       }),
     ).resolves.toEqual({
       status: "processed",
@@ -137,28 +140,8 @@ describe("Stripe billing webhook processing", () => {
         }),
       }),
     );
-    expect(db.membershipBillingState.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        update: expect.objectContaining({
-          status: "PAYMENT_FAILED",
-          latestInvoiceId: "in_1",
-          latestPaymentIntentId: "pi_1",
-          failureCode: "card_declined",
-          failureMessage: "Card declined",
-        }),
-      }),
-    );
-    expect(db.billingRecord.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          type: "PAYMENT_FAILED",
-          status: "FAILED",
-          stripeEventId: "evt_1",
-          stripeInvoiceId: "in_1",
-          stripeSubscriptionId: "sub_1",
-        }),
-      }),
-    );
+    expect(reconcile).toHaveBeenCalledWith(buildWebhookEvent());
+    expect(db.membershipBillingState.upsert).not.toHaveBeenCalled();
     expect(db.stripeWebhookEvent.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -170,12 +153,14 @@ describe("Stripe billing webhook processing", () => {
 
   it("marks the webhook row as errored so Stripe can retry", async () => {
     const db = createMockDb();
-    db.billingRecord.create = vi.fn().mockRejectedValue(new Error("db down"));
+    const reconcile = vi.fn().mockRejectedValue(new Error("db down"));
 
     await expect(
       processStripeWebhookEvent({
         event: buildWebhookEvent(),
         db,
+        reconcileMembershipEvent: reconcile,
+        recoverPublicMembershipEvent: vi.fn().mockResolvedValue(false),
       }),
     ).resolves.toEqual({
       status: "error",

@@ -106,15 +106,13 @@ describe("admin app-root recovery", () => {
   it("renders a static, polite loading status without moving focus", () => {
     const html = renderToStaticMarkup(<Loading />);
 
-    expect(html.match(/<h1(?:\s|>)/g)).toHaveLength(1);
     expect(html).toContain('role="status"');
     expect(html).toContain('aria-live="polite"');
-    expect(html).toContain('aria-atomic="true"');
     expect(html).toContain('aria-busy="true"');
-    expect(html).toContain("Flowstate admin");
-    expect(html).toContain("Opening your admin workspace");
-    expect(html).toContain("Please wait while this page gets ready.");
-    expect(html).not.toMatch(/<button|<a\s/i);
+    expect(html).toContain("Loading HitLink");
+    expect(html).toContain("hl-skeleton-title");
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).not.toMatch(/<button|<a\s|tabindex=|autofocus/i);
     expect(hooks.focus).not.toHaveBeenCalled();
   });
 
@@ -202,7 +200,9 @@ describe("admin app-root recovery", () => {
     expect(html).toContain('href="/"');
     expect(html).toContain("Back to Flowstate admin");
     expect(html.match(/<a\s/g)).toHaveLength(1);
-    expect(html).not.toMatch(/try again|dashboard|member|workspace|account|object|query/i);
+    expect(html).not.toMatch(
+      /try again|dashboard|member|workspace|account|object|query/i,
+    );
     expect(hooks.focus).toHaveBeenCalledTimes(1);
   });
 });

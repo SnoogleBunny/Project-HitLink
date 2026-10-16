@@ -1,5 +1,6 @@
 import {
   prisma,
+  readAcceptedMembershipTerms,
   type BillingRecordStatus,
   type BillingStateStatus,
   type MemberMembershipStatus,
@@ -31,6 +32,9 @@ interface BillingStateRecord {
 }
 
 export interface CurrentMembershipRecord {
+  acceptedTerms?: unknown;
+  allowanceAnchorDate?: Date | null;
+  allowanceTimezone?: string | null;
   id: string;
   workspaceId: string;
   memberId: string;
@@ -115,6 +119,8 @@ export function getAllowedProgramIdsForCurrentMembership(
     return [];
   }
 
+  const terms = readAcceptedMembershipTerms(membership.acceptedTerms);
+  if (terms) return terms.programIds.length ? terms.programIds : null;
   const restrictedProgramIds = membership.membershipPlan.programRestrictions.map(
     (restriction) => restriction.programId,
   );

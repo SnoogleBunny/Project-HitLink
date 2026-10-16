@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { AppSession } from "@flowstate/auth";
+import { WorkspaceShell } from "@flowstate/ui";
 import { logoutAction } from "../actions/logout";
 import { AdminNav } from "./admin-nav";
 
@@ -13,85 +14,59 @@ interface AdminShellProps {
   actions?: ReactNode;
 }
 
+/** Page-level heading; persistent chrome is owned by dashboard/layout. */
 export function AdminShell({
+  children,
+  title,
+  description,
+  actions,
+}: AdminShellProps) {
+  return (
+    <div className="hl-route">
+      <header className="hl-page-heading">
+        <div>
+          <h1>{title}</h1>
+          {description ? <p>{description}</p> : null}
+        </div>
+        {actions ? (
+          <div className="hl-page-heading-actions">{actions}</div>
+        ) : null}
+      </header>
+      <div className="hl-route-content">{children}</div>
+    </div>
+  );
+}
+
+export function AdminWorkspace({
   children,
   session,
   workspaceName,
-  title,
-  description,
-  eyebrow = "Protected dashboard",
-  actions,
-}: AdminShellProps) {
-  const roleLabel = session.role === "COACH" ? "Coach access" : "Owner access";
-
+}: Pick<AdminShellProps, "children" | "session" | "workspaceName">) {
+  const roleLabel =
+    session.role === "COACH" ? "Coach workspace" : "Gym workspace";
   return (
-    <div className="shell">
-      <aside className="shell-sidebar shell-desktop-sidebar">
-        <div className="shell-brand">
-          <span className="shell-brand-label">Flowstate Admin</span>
-          <h1>{workspaceName}</h1>
-          <p className="shell-role-context">{roleLabel}</p>
-        </div>
-
-        <AdminNav role={session.role} />
-
-        <div className="shell-sidebar-footer">
-          <p className="shell-sidebar-caption">Signed in as</p>
-          <p className="shell-sidebar-value">{session.displayName}</p>
-          <p className="shell-sidebar-caption">{session.email}</p>
-        </div>
-      </aside>
-
-      <header className="shell-mobile-header">
-        <div className="shell-mobile-identity">
-          <span className="shell-brand-label">Flowstate Admin</span>
-          <p className="shell-mobile-workspace-name">{workspaceName}</p>
-          <p className="shell-role-context">{roleLabel}</p>
-        </div>
-
-        <details className="shell-mobile-menu">
-          <summary>Menu</summary>
-
-          <div className="shell-mobile-menu-content">
-            <div className="shell-mobile-context">
-              <p>Signed in as {session.displayName}</p>
-              <p>{session.email}</p>
-            </div>
-
-            <AdminNav
-              ariaLabel="Mobile admin navigation"
-              role={session.role}
-            />
-
-            <div className="shell-sidebar-footer">
-              <p className="shell-sidebar-caption">Signed in as</p>
-              <p className="shell-sidebar-value">{session.displayName}</p>
-              <p className="shell-sidebar-caption">{session.email}</p>
-            </div>
-          </div>
-        </details>
-      </header>
-
-      <div className="shell-main">
-        <header className="shell-header">
-          <div>
-            <p className="shell-header-eyebrow">{eyebrow}</p>
-            <h2>{title}</h2>
-            <p className="shell-header-description">{description}</p>
-          </div>
-
-          <div className="shell-header-actions">
-            {actions}
-            <form action={logoutAction}>
-              <button className="button button-secondary" type="submit">
-                Log out
-              </button>
-            </form>
-          </div>
-        </header>
-
-        <main className="shell-content">{children}</main>
-      </div>
-    </div>
+    <WorkspaceShell
+      workspaceName={workspaceName}
+      contextLabel={roleLabel}
+      navigation={<AdminNav role={session.role} />}
+      compactNavigation={
+        session.role === "OWNER" ? (
+          <AdminNav role={session.role} compact />
+        ) : undefined
+      }
+      account={
+        <>
+          <strong>{session.displayName}</strong>
+          <span>{session.email}</span>
+          <form action={logoutAction}>
+            <button className="hl-text-link" type="submit">
+              Log out
+            </button>
+          </form>
+        </>
+      }
+    >
+      {children}
+    </WorkspaceShell>
   );
 }

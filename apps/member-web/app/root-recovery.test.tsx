@@ -106,15 +106,13 @@ describe("member app-root recovery", () => {
   it("renders a static, polite loading status without moving focus", () => {
     const html = renderToStaticMarkup(<Loading />);
 
-    expect(html.match(/<h1(?:\s|>)/g)).toHaveLength(1);
     expect(html).toContain('role="status"');
     expect(html).toContain('aria-live="polite"');
-    expect(html).toContain('aria-atomic="true"');
     expect(html).toContain('aria-busy="true"');
-    expect(html).toContain("Member portal");
-    expect(html).toContain("Opening your member portal");
-    expect(html).toContain("Please wait while this page gets ready.");
-    expect(html).not.toMatch(/<button|<a\s/i);
+    expect(html).toContain("Loading HitLink");
+    expect(html).toContain("hl-skeleton-title");
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).not.toMatch(/<button|<a\s|tabindex=|autofocus/i);
     expect(hooks.focus).not.toHaveBeenCalled();
   });
 
@@ -195,14 +193,16 @@ describe("member app-root recovery", () => {
 
     expect(html.match(/<h1(?:\s|>)/g)).toHaveLength(1);
     expect(html).toContain("Page not found");
-    expect(html).toContain("This member page isn’t available");
+    expect(html).toContain("This page is not available.");
     expect(html).toContain(
-      "The address may be incorrect. Return to the member portal to continue.",
+      "Check the address or return to your member account. Your gym can send you its current public website link.",
     );
-    expect(html).toContain('href="/"');
-    expect(html).toContain("Back to member portal");
+    expect(html).toContain('href="/login"');
+    expect(html).toContain("Open member portal");
     expect(html.match(/<a\s/g)).toHaveLength(1);
-    expect(html).not.toMatch(/try again|dashboard|workspace|account|object|query/i);
+    expect(html).not.toMatch(
+      /try again|dashboard|workspace|object|query|member-42|North Gym|token=|sensitive-digest/i,
+    );
     expect(hooks.focus).toHaveBeenCalledTimes(1);
   });
 });

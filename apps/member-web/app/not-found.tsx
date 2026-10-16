@@ -1,39 +1,24 @@
 "use client";
-
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-
 export default function NotFound() {
-  const headingRef = useRef<HTMLHeadingElement>(null);
-
+  const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
-    headingRef.current?.focus();
+    heading.current?.focus();
   }, []);
-
   return (
-    <main
-      className="member-auth-page"
-      style={{ alignItems: "start", paddingTop: "clamp(4rem, 18vh, 9rem)" }}
-    >
-      <section className="member-auth-card">
-        <p
-          className="member-eyebrow"
-          style={{ color: "var(--member-sidebar)" }}
-        >
-          Page not found
-        </p>
-        <h1 ref={headingRef} style={{ outline: "none" }} tabIndex={-1}>
-          This member page isn’t available
+    <main className="auth-page">
+      <section className="auth-card">
+        <p>404 · Page not found</p>
+        <h1 ref={heading} tabIndex={-1}>
+          This page is not available.
         </h1>
-        <p className="member-auth-description">
-          The address may be incorrect. Return to the member portal to continue.
+        <p>
+          Check the address or return to your member account. Your gym can send
+          you its current public website link.
         </p>
-        <Link
-          className="member-button"
-          href="/"
-          style={{ borderRadius: "999px", width: "100%" }}
-        >
-          Back to member portal
+        <Link className="button" href="/login">
+          Open member portal
         </Link>
       </section>
     </main>

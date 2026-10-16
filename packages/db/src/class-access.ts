@@ -1,3 +1,8 @@
+import { checkMemberClassEligibility } from "./program-progress.js";
+import { financialEntitlementHoldReason } from "./entitlement-holds.js";
+import { readPunchCardTerms, ensurePunchCardLedger, recordPunchCardReservation, settlePunchCardBooking } from "./punch-card-ledger.js";
+import type { Prisma } from "@prisma/client";
+import { prepareMembershipAllowance, reserveMembershipAllowance, settleMembershipAllowance, readAcceptedMembershipTerms } from "./membership-allowances.js";
 import type {
   ClassBookingSource,
   ClassBookingStatus,
@@ -12,9 +17,11 @@ import {
   validateOccurrenceDate,
 } from "./occurrences.js";
 import { prisma } from "./client.js";
+import { classOccurrenceInclude, resolveClassOccurrence, isUnambiguousClassTime, lockClassSchedule, type ClassOccurrenceTemplate, type ClassScheduleLockDatabase } from "./class-occurrences.js";
 
 const blockedMembershipStatuses: MemberMembershipStatus[] = [
   "FROZEN",
+  "PENDING_PAYMENT_METHOD",
   "CANCELLED",
   "ENDED",
 ];
@@ -31,6 +38,10 @@ interface AccessRestrictionRecord {
 interface AccessMembershipRecord {
   id: string;
   status: MemberMembershipStatus;
+  acceptedTerms?: unknown;
+  frozenFrom?: Date | null;
+  frozenUntil?: Date | null;
+  billingState?: { status: string; gracePeriodEndsAt: Date | null } | null;
   membershipPlan: {
     programRestrictions: AccessRestrictionRecord[];
   };
@@ -38,6 +49,7 @@ interface AccessMembershipRecord {
 
 interface AccessPunchCardRecord {
   id: string;
+  acceptedTerms?: unknown;
   remainingPunches: number;
   status: "ACTIVE" | "DEPLETED" | "ARCHIVED";
   purchasedAt: Date;
@@ -61,12 +73,14 @@ interface AccessDropInProductRecord {
 }
 
 export interface AccessTemplateSummary {
+  prerequisites?: unknown;
   id: string;
   workspaceId: string;
   programId: string;
   title: string | null;
   weekday: string;
   startTimeMinutes: number;
+  endTimeMinutes?: number;
   bookingCutoffMinutes: number;
   cancellationCutoffMinutes: number;
   capacityOverride: number | null;
@@ -82,6 +96,8 @@ export interface AccessTemplateSummary {
 
 interface AccessBookingRecord {
   id: string;
+  providerChangedAt?: Date | null;
+  fundingRevision?: number;
   status: ClassBookingStatus;
   bookingType: ClassBookingType;
   memberPunchCardId: string | null;
@@ -104,11 +120,16 @@ interface WaitlistSummaryRecord {
   };
 }
 
-interface AccessTransactionDatabase {
+interface AccessTransactionDatabase extends ClassScheduleLockDatabase {
+  programPromotion?: Prisma.TransactionClient["programPromotion"];
+  financialEntitlementHold?: Prisma.TransactionClient["financialEntitlementHold"];
+  punchCardEntry?: Prisma.TransactionClient["punchCardEntry"];
+  membershipAllowanceAllocation?: Prisma.TransactionClient["membershipAllowanceAllocation"];
   classTemplate: {
     findFirst(args: Record<string, unknown>): Promise<AccessTemplateSummary | null>;
   };
   classBooking: {
+    findMany?(args: Record<string, unknown>): Promise<unknown[]>;
     findFirst(args: Record<string, unknown>): Promise<AccessBookingRecord | null>;
     create(args: Record<string, unknown>): Promise<{ id: string }>;
     update(args: Record<string, unknown>): Promise<{ id: string }>;
@@ -261,7 +282,8 @@ function isMembershipProgramAllowed(args: {
   programId: string;
   membership: AccessMembershipRecord;
 }): boolean {
-  const restrictions = args.membership.membershipPlan.programRestrictions;
+  const accepted = readAcceptedMembershipTerms(args.membership.acceptedTerms);
+  const restrictions = accepted ? accepted.programIds.map((programId) => ({ programId })) : args.membership.membershipPlan.programRestrictions;
 
   if (restrictions.length === 0) {
     return true;
@@ -341,7 +363,7 @@ export function canCancelClassBooking(args: {
 
   const lateCancellation = isPastCancellationCutoff(args);
 
-  if (lateCancellation && args.bookingType !== "PUNCH_CARD") {
+  if (lateCancellation && !["PUNCH_CARD", "MEMBERSHIP"].includes(args.bookingType)) {
     return {
       canCancel: false,
       lateCancellation: false,
@@ -378,6 +400,8 @@ export async function cleanupExpiredPendingBookings(args: {
     where.scheduledForDate = dateOnlyStringToUtcDate(args.scheduledForDate);
   }
 
+  const transactional = db as CountActiveOccurrenceBookingsDatabase & { $transaction?: AccessDatabase["$transaction"] };
+  if (transactional.$transaction) return transactional.$transaction(async (tx) => { await lockClassSchedule(tx, args.workspaceId); const result = await tx.classBooking.updateMany({ where, data: { status: "CANCELLED" } }); return result.count; });
   const result = await db.classBooking.updateMany({
     where,
     data: {
@@ -433,38 +457,21 @@ export async function countActiveOccurrenceBookings(args: {
 }
 
 async function getActiveTemplate(args: {
+  timezone: string;
   workspaceId: string;
   classTemplateId: string;
+  scheduledForDate: string;
   db: AccessTransactionDatabase;
 }): Promise<AccessTemplateSummary | null> {
-  return args.db.classTemplate.findFirst({
-    where: {
-      id: args.classTemplateId,
-      workspaceId: args.workspaceId,
-      archivedAt: null,
-      program: {
-        archivedAt: null,
-      },
-      room: {
-        archivedAt: null,
-        isActive: true,
-      },
-    },
-    include: {
-      program: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-      room: {
-        select: {
-          name: true,
-          capacity: true,
-        },
-      },
-    },
+  const template = await args.db.classTemplate.findFirst({
+    where: { id: args.classTemplateId, workspaceId: args.workspaceId, archivedAt: null },
+    include: classOccurrenceInclude,
   });
+  if (!template) return null;
+  const occurrence = resolveClassOccurrence({ template: template as unknown as ClassOccurrenceTemplate, scheduledForDate: args.scheduledForDate });
+  if (!occurrence || occurrence.status === "CANCELLED" || occurrence.program.archivedAt || occurrence.room.archivedAt || occurrence.room.isActive === false) return null;
+  if (!isUnambiguousClassTime(args.scheduledForDate, occurrence.startTimeMinutes, args.timezone) || !isUnambiguousClassTime(args.scheduledForDate, occurrence.endTimeMinutes, args.timezone)) return null;
+  return occurrence;
 }
 
 async function getCurrentMembership(args: {
@@ -479,6 +486,7 @@ async function getCurrentMembership(args: {
       currentMembershipSlot: "CURRENT",
     },
     include: {
+      billingState: true,
       membershipPlan: {
         include: {
           programRestrictions: {
@@ -490,6 +498,12 @@ async function getCurrentMembership(args: {
       },
     },
   });
+}
+
+function isPunchCardProgramAllowed(card: AccessPunchCardRecord, programId: string) {
+  const accepted = readPunchCardTerms(card.acceptedTerms);
+  if (card.acceptedTerms && !accepted) return false;
+  return isProgramAllowed({ programId, restrictionMode: accepted?.restrictionMode ?? card.punchCardProduct.restrictionMode, restrictions: accepted ? accepted.programIds.map((programId) => ({ programId })) : card.punchCardProduct.programRestrictions });
 }
 
 export async function pickOldestEligiblePunchCard(args: {
@@ -530,13 +544,7 @@ export async function pickOldestEligiblePunchCard(args: {
   });
 
   return (
-    punchCards.find((punchCard) =>
-      isProgramAllowed({
-        programId: args.programId,
-        restrictionMode: punchCard.punchCardProduct.restrictionMode,
-        restrictions: punchCard.punchCardProduct.programRestrictions,
-      }),
-    ) ?? null
+    punchCards.find((card) => isPunchCardProgramAllowed(card, args.programId)) ?? null
   );
 }
 
@@ -580,10 +588,20 @@ export async function findEligibleDropInProduct(args: {
   );
 }
 
+function membershipCanFundDate(membership: Pick<AccessMembershipRecord, "status" | "frozenFrom" | "frozenUntil" | "billingState">, date: string | undefined, now: Date): boolean {
+  const outsideFreeze = membership.status === "FROZEN" && !!date && !!membership.frozenFrom && !!membership.frozenUntil && (date < toDateOnlyString(membership.frozenFrom) || date >= toDateOnlyString(membership.frozenUntil));
+  const billing = membership.billingState;
+  const debtAllowed = billing?.gracePeriodEndsAt ? billing.gracePeriodEndsAt > now : !billing || !["GRACE_PERIOD", "PAST_DUE", "PAYMENT_FAILED"].includes(billing.status);
+  const statusAllowed = membership.status === "ACTIVE" || (membership.status === "PAST_DUE" && !!billing?.gracePeriodEndsAt && billing.gracePeriodEndsAt > now) || outsideFreeze;
+  return statusAllowed && debtAllowed;
+}
+
 async function resolveBookingAccessForProgramWithDb(args: {
   workspaceId: string;
   memberId: string;
   programId: string;
+  scheduledForDate?: string;
+  now?: Date;
   allowDropIn: boolean;
   db: AccessTransactionDatabase;
 }): Promise<AccessResolution> {
@@ -593,7 +611,9 @@ async function resolveBookingAccessForProgramWithDb(args: {
     db: args.db,
   });
 
-  if (membership && !blockedMembershipStatuses.includes(membership.status)) {
+  if (membership) { const held = await financialEntitlementHoldReason({ workspaceId: args.workspaceId, targets: [{ targetKind: "MEMBERSHIP", targetId: membership.id }], db: args.db }); if (held) return { type: "none", reason: "membership_blocked", message: held }; }
+  const membershipAllowed = !!membership && membershipCanFundDate(membership, args.scheduledForDate, args.now ?? new Date());
+  if (membership && membershipAllowed) {
     if (isMembershipProgramAllowed({ programId: args.programId, membership })) {
       return {
         type: "membership",
@@ -621,7 +641,7 @@ async function resolveBookingAccessForProgramWithDb(args: {
     if (membership) {
       return {
         type: "none",
-        reason: blockedMembershipStatuses.includes(membership.status)
+        reason: !membershipAllowed
           ? "membership_blocked"
           : "no_access_product",
         message: blockedMembershipStatuses.includes(membership.status)
@@ -653,7 +673,7 @@ async function resolveBookingAccessForProgramWithDb(args: {
     };
   }
 
-  if (membership && blockedMembershipStatuses.includes(membership.status)) {
+  if (membership && !membershipAllowed) {
     return {
       type: "none",
       reason: "membership_blocked",
@@ -674,6 +694,8 @@ export async function resolveBookingAccessForProgram(args: {
   workspaceId: string;
   memberId: string;
   programId: string;
+  scheduledForDate?: string;
+  now?: Date;
   allowDropIn?: boolean;
   db?: AccessResolutionDatabase;
 }): Promise<AccessResolution> {
@@ -683,6 +705,7 @@ export async function resolveBookingAccessForProgram(args: {
     workspaceId: args.workspaceId,
     memberId: args.memberId,
     programId: args.programId,
+    scheduledForDate: args.scheduledForDate, now: args.now,
     allowDropIn: args.allowDropIn ?? true,
     db,
   });
@@ -690,26 +713,25 @@ export async function resolveBookingAccessForProgram(args: {
 
 export type AccessResolutionDatabase = Pick<
   AccessTransactionDatabase,
-  "memberMembership" | "memberPunchCard" | "dropInProduct"
+  "memberMembership" | "memberPunchCard" | "dropInProduct" | "financialEntitlementHold"
 >;
 
 async function debitPunchCard(args: {
+  punchCardId?: string;
   workspaceId: string;
   memberId: string;
   programId: string;
   db: AccessTransactionDatabase;
 }): Promise<{ memberPunchCardId: string } | null> {
-  const punchCard = await pickOldestEligiblePunchCard({
-    workspaceId: args.workspaceId,
-    memberId: args.memberId,
-    programId: args.programId,
-    db: args.db,
-  });
+  const punchCard = args.punchCardId ? await args.db.memberPunchCard.findFirst({ where: { id: args.punchCardId, workspaceId: args.workspaceId, memberId: args.memberId, status: "ACTIVE", remainingPunches: { gt: 0 } }, include: { punchCardProduct: { include: { programRestrictions: true } } } }) : await pickOldestEligiblePunchCard({ workspaceId: args.workspaceId, memberId: args.memberId, programId: args.programId, db: args.db });
 
-  if (!punchCard) {
+  if (!punchCard || !isPunchCardProgramAllowed(punchCard, args.programId)) {
     return null;
   }
 
+  if (args.db.punchCardEntry) await ensurePunchCardLedger({ workspaceId: args.workspaceId, cardId: punchCard.id, db: args.db as unknown as Prisma.TransactionClient });
+  const held = await financialEntitlementHoldReason({ workspaceId: args.workspaceId, targets: [{ targetKind: "PUNCH_CARD", targetId: punchCard.id }], db: args.db });
+  if (held) return null;
   const nextRemainingPunches = punchCard.remainingPunches - 1;
   const result = await args.db.memberPunchCard.updateMany({
     where: {
@@ -785,6 +807,9 @@ async function createAccessBackedBookingWithDb(args: {
   source: ClassBookingSource;
   db: AccessTransactionDatabase;
   now: Date;
+  trial?: boolean;
+  fundingOverride?: AccessResolution;
+  punchCardOverrideId?: string;
 }): Promise<CreateAccessBackedBookingResult> {
   const memberId = args.memberId.trim();
   const classTemplateId = args.classTemplateId.trim();
@@ -800,8 +825,10 @@ async function createAccessBackedBookingWithDb(args: {
   }
 
   const template = await getActiveTemplate({
+    timezone: args.timezone,
     workspaceId: args.workspaceId,
     classTemplateId,
+    scheduledForDate,
     db: args.db,
   });
 
@@ -829,7 +856,7 @@ async function createAccessBackedBookingWithDb(args: {
     };
   }
 
-  if (args.source === "MEMBER_PORTAL") {
+  if (args.source === "MEMBER_PORTAL" || args.source === "PUBLIC_TRIAL") {
     const startsAt = getOccurrenceStartsAt({
       scheduledForDate: occurrence.dateString,
       startTimeMinutes: template.startTimeMinutes,
@@ -845,6 +872,11 @@ async function createAccessBackedBookingWithDb(args: {
         message: "Choose a valid upcoming date for this class.",
       };
     }
+  }
+
+  if (args.db.programPromotion) {
+    const eligibility = await checkMemberClassEligibility({ workspaceId: args.workspaceId, memberId, scheduledForDate: occurrence.dateString, occurrence: { ...template, classTemplateId: template.id }, db: args.db as unknown as Prisma.TransactionClient });
+    if (!eligibility.eligible) return { status: "error", code: "NO_ACCESS", message: eligibility.reason ?? "This class has eligibility requirements." };
   }
 
   await cleanupExpiredPendingBookings({
@@ -869,9 +901,11 @@ async function createAccessBackedBookingWithDb(args: {
       memberPunchCardId: true,
       consumedPunchCount: true,
       pendingPaymentExpiresAt: true,
+      fundingRevision: true,
     },
   });
 
+  if (existingBooking) { const held = await financialEntitlementHoldReason({ workspaceId: args.workspaceId, targets: [{ targetKind: "BOOKING", targetId: existingBooking.id }], db: args.db }); if (held) return { status: "error", code: "NO_ACCESS", message: held }; }
   if (existingBooking && existingBooking.status !== "CANCELLED") {
     return {
       status: "error",
@@ -883,6 +917,7 @@ async function createAccessBackedBookingWithDb(args: {
     };
   }
 
+  const fundingRevision = existingBooking ? (existingBooking.fundingRevision ?? 1) + 1 : 1;
   const activeBookingCount = await countActiveOccurrenceBookings({
     workspaceId: args.workspaceId,
     classTemplateId,
@@ -903,10 +938,21 @@ async function createAccessBackedBookingWithDb(args: {
     };
   }
 
-  const access = await resolveBookingAccessForProgramWithDb({
+  if (args.db.classBooking.findMany) {
+    const overlapping = await args.db.classBooking.findMany({ where: { workspaceId: args.workspaceId, memberId, scheduledForDate: occurrence.date, status: { in: ["BOOKED", "PENDING_PAYMENT"] }, classTemplateId: { not: classTemplateId } }, include: { classTemplate: { include: classOccurrenceInclude } } }) as Array<{ classTemplate: ClassOccurrenceTemplate }>;
+    if (overlapping.some((booking) => { const other = resolveClassOccurrence({ template: booking.classTemplate, scheduledForDate: occurrence.dateString }); return other && other.status !== "CANCELLED" && other.startTimeMinutes < (template.endTimeMinutes ?? template.startTimeMinutes) && template.startTimeMinutes < other.endTimeMinutes; })) return { status: "error", code: "INVALID", message: "This member already has a booking at this time." };
+  }
+  if (args.trial) {
+    const data = { fundingRevision, providerChangedAt: null, fundedByBookingId: null, workspaceId: args.workspaceId, memberId, guardianId, classTemplateId, scheduledForDate: occurrence.date, bookingType: "TRIAL", status: "BOOKED", source: args.source, fundingMembershipId: null, consumedPunchCount: 0, memberPunchCardId: null };
+    const booking = existingBooking ? await args.db.classBooking.update({ where: { id: existingBooking.id }, data, select: { id: true } }) : await args.db.classBooking.create({ data, select: { id: true } });
+    return { status: existingBooking ? "restored" : "created", bookingId: booking.id, bookingType: "TRIAL" };
+  }
+
+  const access = args.fundingOverride ?? await resolveBookingAccessForProgramWithDb({
     workspaceId: args.workspaceId,
     memberId,
     programId: template.programId,
+    scheduledForDate: occurrence.dateString, now: args.now,
     allowDropIn: args.allowDropIn,
     db: args.db,
   });
@@ -925,6 +971,10 @@ async function createAccessBackedBookingWithDb(args: {
   }
 
   if (access.type === "membership") {
+    const allowance = args.db.membershipAllowanceAllocation ? await prepareMembershipAllowance({ workspaceId: args.workspaceId, memberId, membershipId: access.membershipId, scheduledForDate: occurrence.dateString, timezone: args.timezone, db: args.db as unknown as Prisma.TransactionClient }) : null;
+    if (allowance && "error" in allowance) return { status: "error", code: "NO_ACCESS", message: allowance.error ?? "Membership access is unavailable." };
+    if (allowance?.windows.some((w) => w.remaining < 1)) return { status: "error", code: "NO_ACCESS", message: "This membership has no classes left in this class date's allowance period. Choose another date or ask the gym about access." };
+    const funding = { fundingMembershipId: access.membershipId, ...(allowance ? { acceptedPolicy: allowance.terms } : {}) };
     const booking = existingBooking
       ? await args.db.classBooking.update({
           where: {
@@ -932,6 +982,9 @@ async function createAccessBackedBookingWithDb(args: {
           },
           data: {
             guardianId,
+            fundingRevision,
+            providerChangedAt: null, fundedByBookingId: null,
+            ...funding,
             bookingType: "MEMBERSHIP",
             status: "BOOKED",
             source: args.source,
@@ -954,6 +1007,9 @@ async function createAccessBackedBookingWithDb(args: {
             workspaceId: args.workspaceId,
             memberId,
             guardianId,
+            fundingRevision,
+            providerChangedAt: null, fundedByBookingId: null,
+            ...funding,
             classTemplateId,
             scheduledForDate: dateOnlyStringToUtcDate(occurrence.dateString),
             bookingType: "MEMBERSHIP",
@@ -966,6 +1022,8 @@ async function createAccessBackedBookingWithDb(args: {
           },
         });
 
+    if (allowance) await reserveMembershipAllowance({ workspaceId: args.workspaceId, memberId, membershipId: access.membershipId, bookingId: booking.id, bookingRevision: fundingRevision, windows: allowance.windows, db: args.db as unknown as Prisma.TransactionClient });
+
     return {
       status: existingBooking ? "restored" : "created",
       bookingId: booking.id,
@@ -974,7 +1032,10 @@ async function createAccessBackedBookingWithDb(args: {
   }
 
   if (access.type === "punch_card") {
+    const held = await financialEntitlementHoldReason({ workspaceId: args.workspaceId, targets: [{ targetKind: "PUNCH_CARD", targetId: access.memberPunchCardId }], db: args.db });
+    if (held) return { status: "error", code: "NO_ACCESS", message: held };
     const debit = await debitPunchCard({
+      punchCardId: args.punchCardOverrideId,
       workspaceId: args.workspaceId,
       memberId,
       programId: template.programId,
@@ -996,6 +1057,9 @@ async function createAccessBackedBookingWithDb(args: {
           },
           data: {
             guardianId,
+            fundingRevision,
+            providerChangedAt: null, fundedByBookingId: null,
+            fundingMembershipId: null,
             bookingType: "PUNCH_CARD",
             status: "BOOKED",
             source: args.source,
@@ -1018,8 +1082,11 @@ async function createAccessBackedBookingWithDb(args: {
             workspaceId: args.workspaceId,
             memberId,
             guardianId,
+            fundingRevision,
+            providerChangedAt: null, fundedByBookingId: null,
             classTemplateId,
             scheduledForDate: dateOnlyStringToUtcDate(occurrence.dateString),
+            fundingMembershipId: null,
             bookingType: "PUNCH_CARD",
             status: "BOOKED",
             source: args.source,
@@ -1030,6 +1097,8 @@ async function createAccessBackedBookingWithDb(args: {
             id: true,
           },
         });
+
+    if (args.db.punchCardEntry) await recordPunchCardReservation({ workspaceId: args.workspaceId, memberId, cardId: debit.memberPunchCardId, bookingId: booking.id, bookingRevision: fundingRevision, db: args.db as unknown as Prisma.TransactionClient });
 
     return {
       status: existingBooking ? "restored" : "created",
@@ -1054,6 +1123,9 @@ async function createAccessBackedBookingWithDb(args: {
         },
         data: {
           guardianId,
+          fundingRevision,
+          providerChangedAt: null, fundedByBookingId: null,
+          fundingMembershipId: null,
           bookingType: "DROP_IN",
           status: "PENDING_PAYMENT",
           source: args.source,
@@ -1065,7 +1137,7 @@ async function createAccessBackedBookingWithDb(args: {
           dropInCheckoutSessionId: null,
           dropInPaymentIntentId: null,
           dropInPaidAt: null,
-          pendingPaymentExpiresAt: null,
+          pendingPaymentExpiresAt: new Date(Math.min(args.now.getTime() + 30 * 60000, getOccurrenceStartsAt({ scheduledForDate: occurrence.dateString, startTimeMinutes: template.startTimeMinutes, timezone: args.timezone }).getTime())),
         },
         select: {
           id: true,
@@ -1076,14 +1148,18 @@ async function createAccessBackedBookingWithDb(args: {
           workspaceId: args.workspaceId,
           memberId,
           guardianId,
+          fundingRevision,
+          providerChangedAt: null, fundedByBookingId: null,
           classTemplateId,
           scheduledForDate: dateOnlyStringToUtcDate(occurrence.dateString),
+          fundingMembershipId: null,
           bookingType: "DROP_IN",
           status: "PENDING_PAYMENT",
           source: args.source,
           dropInProductId: access.dropInProductId,
           dropInPriceCents: access.priceCents,
           dropInCurrency: access.currency,
+          pendingPaymentExpiresAt: new Date(Math.min(args.now.getTime() + 30 * 60000, getOccurrenceStartsAt({ scheduledForDate: occurrence.dateString, startTimeMinutes: template.startTimeMinutes, timezone: args.timezone }).getTime())),
         },
         select: {
           id: true,
@@ -1108,13 +1184,15 @@ export async function createAccessBackedBooking(args: {
   timezone: string;
   source: ClassBookingSource;
   allowDropIn?: boolean;
+  trial?: boolean;
   db?: AccessDatabase;
   now?: Date;
 }): Promise<CreateAccessBackedBookingResult> {
   const db = args.db ?? accessDatabase;
 
-  return db.$transaction((tx) =>
-    createAccessBackedBookingWithDb({
+  return db.$transaction(async (tx) => {
+    await lockClassSchedule(tx, args.workspaceId);
+    return createAccessBackedBookingWithDb({
       workspaceId: args.workspaceId,
       memberId: args.memberId,
       guardianId: args.guardianId,
@@ -1122,11 +1200,12 @@ export async function createAccessBackedBooking(args: {
       scheduledForDate: args.scheduledForDate,
       timezone: args.timezone,
       allowDropIn: args.allowDropIn ?? true,
+      trial: args.trial,
       source: args.source,
       db: tx,
       now: args.now ?? new Date(),
-    }),
-  );
+    });
+  });
 }
 
 export async function cancelAccessBackedBooking(args: {
@@ -1141,6 +1220,7 @@ export async function cancelAccessBackedBooking(args: {
   const now = args.now ?? new Date();
 
   return db.$transaction(async (tx) => {
+    await lockClassSchedule(tx, args.workspaceId);
     const booking = await tx.classBooking.findFirst({
       where: {
         id: args.bookingId,
@@ -1149,17 +1229,11 @@ export async function cancelAccessBackedBooking(args: {
       },
       include: {
         classTemplate: {
-          select: {
-            startTimeMinutes: true,
-            cancellationCutoffMinutes: true,
-          },
+          include: classOccurrenceInclude,
         },
       },
     } as Record<string, unknown>) as (AccessBookingRecord & {
-      classTemplate: {
-        startTimeMinutes: number;
-        cancellationCutoffMinutes: number;
-      };
+      classTemplate: ClassOccurrenceTemplate;
       scheduledForDate: Date;
     }) | null;
 
@@ -1170,14 +1244,19 @@ export async function cancelAccessBackedBooking(args: {
       } satisfies CancelAccessBackedBookingResult;
     }
 
+    const heldFunding = booking as typeof booking & { fundingMembershipId?: string; fundedByBookingId?: string };
+    const held = await financialEntitlementHoldReason({ workspaceId: args.workspaceId, targets: [{ targetKind: "BOOKING", targetId: booking.id }, { targetKind: "BOOKING", targetId: heldFunding.fundedByBookingId }, { targetKind: "PUNCH_CARD", targetId: booking.memberPunchCardId }, { targetKind: "MEMBERSHIP", targetId: heldFunding.fundingMembershipId }], db: tx });
+    if (held) return { status: "error", message: held } satisfies CancelAccessBackedBookingResult;
     const scheduledForDate = toDateOnlyString(booking.scheduledForDate);
+    const effective = resolveClassOccurrence({ template: booking.classTemplate, scheduledForDate });
+    if (!effective || effective.status === "CANCELLED") return { status: "error", message: "This class is no longer active. Refresh your bookings." } satisfies CancelAccessBackedBookingResult;
     const cancellationState = canCancelClassBooking({
       bookingType: booking.bookingType,
       bookingStatus: booking.status,
       scheduledForDate,
-      startTimeMinutes: booking.classTemplate.startTimeMinutes,
+      startTimeMinutes: effective.startTimeMinutes,
       cancellationCutoffMinutes:
-        booking.classTemplate.cancellationCutoffMinutes,
+        booking.providerChangedAt ? 0 : effective.cancellationCutoffMinutes,
       timezone: args.timezone,
       now,
     });
@@ -1209,10 +1288,13 @@ export async function cancelAccessBackedBooking(args: {
       } satisfies CancelAccessBackedBookingResult;
     }
 
+    if (tx.membershipAllowanceAllocation) await settleMembershipAllowance({ workspaceId: args.workspaceId, bookingId: booking.id, outcome: cancellationState.lateCancellation ? "LATE_CANCEL" : "TIMELY_CANCEL", db: tx as unknown as Prisma.TransactionClient });
+
     let punchRefunded = false;
+    if (tx.punchCardEntry) { const settlement = await settlePunchCardBooking({ workspaceId: args.workspaceId, bookingId: booking.id, outcome: cancellationState.lateCancellation ? "LATE_CANCEL" : "TIMELY_CANCEL", db: tx as unknown as Prisma.TransactionClient }); if (!settlement.ok) throw new Error(settlement.message); punchRefunded = settlement.refunded; }
 
     if (
-      booking.bookingType === "PUNCH_CARD" &&
+      !tx.punchCardEntry && booking.bookingType === "PUNCH_CARD" &&
       booking.memberPunchCardId &&
       booking.consumedPunchCount > 0 &&
       !cancellationState.lateCancellation
@@ -1320,9 +1402,12 @@ export async function joinWaitlist(args: {
   const now = args.now ?? new Date();
 
   return db.$transaction(async (tx) => {
+    await lockClassSchedule(tx, args.workspaceId);
     const template = await getActiveTemplate({
+    timezone: args.timezone,
       workspaceId: args.workspaceId,
       classTemplateId: args.classTemplateId,
+      scheduledForDate: args.scheduledForDate,
       db: tx,
     });
 
@@ -1348,7 +1433,7 @@ export async function joinWaitlist(args: {
       };
     }
 
-    if (args.source === "MEMBER_PORTAL") {
+    if (args.source === "MEMBER_PORTAL" || args.source === "PUBLIC_TRIAL") {
       const startsAt = getOccurrenceStartsAt({
         scheduledForDate: occurrence.dateString,
         startTimeMinutes: template.startTimeMinutes,
@@ -1365,10 +1450,16 @@ export async function joinWaitlist(args: {
       }
     }
 
+    if (tx.programPromotion) {
+      const eligibility = await checkMemberClassEligibility({ workspaceId: args.workspaceId, memberId: args.memberId, scheduledForDate: occurrence.dateString, occurrence: { ...template, classTemplateId: template.id }, db: tx as unknown as Prisma.TransactionClient });
+      if (!eligibility.eligible) return { status: "error", message: eligibility.reason ?? "This class has eligibility requirements." };
+    }
+
     const access = await resolveBookingAccessForProgramWithDb({
       workspaceId: args.workspaceId,
       memberId: args.memberId,
       programId: template.programId,
+      scheduledForDate: occurrence.dateString, now: args.now,
       allowDropIn: false,
       db: tx,
     });
@@ -1528,7 +1619,9 @@ export async function leaveWaitlist(args: {
     }
 > {
   const db = args.db ?? accessDatabase;
-  const result = await db.waitlistEntry.updateMany({
+  return db.$transaction(async (tx) => {
+  await lockClassSchedule(tx, args.workspaceId);
+  const result = await tx.waitlistEntry.updateMany({
     where: {
       id: args.waitlistEntryId,
       workspaceId: args.workspaceId,
@@ -1542,21 +1635,23 @@ export async function leaveWaitlist(args: {
 
   if (result.count === 0) {
     return {
-      status: "error",
+      status: "error" as const,
       message: "Waitlist entry not found.",
     };
   }
 
   return {
-    status: "cancelled",
+    status: "cancelled" as const,
     waitlistEntryId: args.waitlistEntryId,
   };
+  });
 }
 
 export async function removeWaitlistEntry(args: {
   workspaceId: string;
   waitlistEntryId: string;
   db?: AccessDatabase;
+  authorize?: (tx: AccessTransactionDatabase) => Promise<boolean>;
 }): Promise<
   | {
       status: "removed";
@@ -1568,7 +1663,10 @@ export async function removeWaitlistEntry(args: {
     }
 > {
   const db = args.db ?? accessDatabase;
-  const result = await db.waitlistEntry.updateMany({
+  return db.$transaction(async (tx) => {
+  await lockClassSchedule(tx, args.workspaceId);
+  if (args.authorize && !await args.authorize(tx)) return { status: "error" as const, message: "Class roster not found." };
+  const result = await tx.waitlistEntry.updateMany({
     where: {
       id: args.waitlistEntryId,
       workspaceId: args.workspaceId,
@@ -1581,15 +1679,16 @@ export async function removeWaitlistEntry(args: {
 
   if (result.count === 0) {
     return {
-      status: "error",
+      status: "error" as const,
       message: "Waitlist entry not found.",
     };
   }
 
   return {
-    status: "removed",
+    status: "removed" as const,
     waitlistEntryId: args.waitlistEntryId,
   };
+  });
 }
 
 export async function promoteNextWaitlistEntry(args: {
@@ -1600,6 +1699,7 @@ export async function promoteNextWaitlistEntry(args: {
   source: ClassBookingSource;
   db?: AccessDatabase;
   now?: Date;
+  authorize?: (tx: AccessTransactionDatabase) => Promise<boolean>;
 }): Promise<
   | {
       status: "promoted";
@@ -1616,9 +1716,13 @@ export async function promoteNextWaitlistEntry(args: {
   const now = args.now ?? new Date();
 
   return db.$transaction(async (tx) => {
+    await lockClassSchedule(tx, args.workspaceId);
+    if (args.authorize && !await args.authorize(tx)) return { status: "error", message: "Class roster not found." };
     const template = await getActiveTemplate({
+    timezone: args.timezone,
       workspaceId: args.workspaceId,
       classTemplateId: args.classTemplateId,
+      scheduledForDate: args.scheduledForDate,
       db: tx,
     });
 
@@ -1698,15 +1802,7 @@ export async function promoteNextWaitlistEntry(args: {
       ],
     });
 
-    const nextEntry = waitlistEntries[0];
-
-    if (!nextEntry) {
-      return {
-        status: "error",
-        message: "No active waitlist entries are available.",
-      };
-    }
-
+    for (const nextEntry of waitlistEntries) {
     const booking = await createAccessBackedBookingWithDb({
       workspaceId: args.workspaceId,
       memberId: nextEntry.memberId,
@@ -1720,10 +1816,8 @@ export async function promoteNextWaitlistEntry(args: {
     });
 
     if (booking.status === "error") {
-      return {
-        status: "error",
-        message: booking.message,
-      };
+      if (booking.code === "NO_ACCESS" || booking.code === "DUPLICATE") continue;
+      return { status: "error", message: booking.message };
     }
 
     if (booking.status === "payment_required") {
@@ -1753,58 +1847,34 @@ export async function promoteNextWaitlistEntry(args: {
       bookingId: booking.bookingId,
       bookingType: booking.bookingType,
     };
+    }
+    return { status: "error", message: "No eligible waitlisted member can take this place. Their positions are kept." };
   });
 }
 
 export async function finalizeDropInBookingPayment(args: {
-  workspaceId: string;
-  bookingId: string;
-  checkoutSessionId: string;
-  paymentIntentId?: string | null;
-  expiresAt?: Date | null;
-  db?: AccessDatabase;
-  now?: Date;
-}): Promise<"booked" | "already_booked" | "missing"> {
-  const db = args.db ?? accessDatabase;
-  const now = args.now ?? new Date();
-
-  return db.$transaction(async (tx) => {
-    const booking = await tx.classBooking.findFirst({
-      where: {
-        id: args.bookingId,
-        workspaceId: args.workspaceId,
-      },
-      select: {
-        id: true,
-        status: true,
-      },
-    });
-
-    if (!booking) {
-      return "missing" as const;
-    }
-
-    if (booking.status === "BOOKED") {
-      return "already_booked" as const;
-    }
-
-    await tx.classBooking.update({
-      where: {
-        id: booking.id,
-      },
-      data: {
-        status: "BOOKED",
-        dropInCheckoutSessionId: args.checkoutSessionId,
-        dropInPaymentIntentId: cleanNullable(args.paymentIntentId),
-        dropInPaidAt: now,
-        pendingPaymentExpiresAt: args.expiresAt ?? null,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    return "booked" as const;
+  workspaceId: string; bookingId: string; checkoutSessionId: string; amountCents: number; currency: string;
+  paymentIntentId?: string | null; expiresAt?: Date | null; db?: AccessDatabase; now?: Date;
+}): Promise<"booked" | "already_booked" | "missing" | "review_required"> {
+  const db = args.db ?? accessDatabase, now = args.now ?? new Date();
+  return db.$transaction(async (transaction) => {
+    await lockClassSchedule(transaction, args.workspaceId);
+    const tx = transaction as unknown as Prisma.TransactionClient;
+    const booking = await tx.classBooking.findFirst({ where: { id: args.bookingId, workspaceId: args.workspaceId }, include: { classTemplate: { include: classOccurrenceInclude }, workspace: { select: { location: { select: { timezone: true } } } } } });
+    if (!booking) return "missing";
+    const matchesPayment = booking.bookingType === "DROP_IN" && booking.dropInCheckoutSessionId === args.checkoutSessionId && Boolean(args.checkoutSessionId) && Number.isSafeInteger(args.amountCents) && args.amountCents > 0 && booking.dropInPriceCents === args.amountCents && booking.dropInCurrency?.toLowerCase() === args.currency.toLowerCase();
+    if (!matchesPayment) return "review_required";
+    if (["BOOKED", "ATTENDED", "ABSENT", "NO_SHOW"].includes(booking.status) && booking.dropInPaidAt) return "already_booked";
+    if (booking.status === "CANCELLED" && booking.dropInPaidAt && await tx.classBooking.count({ where: { workspaceId: args.workspaceId, fundedByBookingId: booking.id } })) return "already_booked";
+    if (booking.status !== "PENDING_PAYMENT" || !booking.pendingPaymentExpiresAt || booking.pendingPaymentExpiresAt <= now) return "review_required";
+    const date = toDateOnlyString(booking.scheduledForDate);
+    const occurrence = resolveClassOccurrence({ template: booking.classTemplate as unknown as ClassOccurrenceTemplate, scheduledForDate: date });
+    const timezone = booking.workspace.location?.timezone;
+    if (!occurrence || occurrence.status !== "ACTIVE" || booking.classTemplate.archivedAt || occurrence.program.archivedAt || occurrence.room.archivedAt || !timezone || getOccurrenceStartsAt({ scheduledForDate: date, startTimeMinutes: occurrence.startTimeMinutes, timezone }) <= now) return "review_required";
+    const seats = await countActiveOccurrenceBookings({ workspaceId: args.workspaceId, classTemplateId: booking.classTemplateId, scheduledForDate: date, db: tx as unknown as CountActiveOccurrenceBookingsDatabase, now });
+    if (occurrence.effectiveCapacity !== null && seats > occurrence.effectiveCapacity) return "review_required";
+    await tx.classBooking.update({ where: { id: booking.id }, data: { status: "BOOKED", dropInPaymentIntentId: cleanNullable(args.paymentIntentId), dropInPaidAt: now, pendingPaymentExpiresAt: null } });
+    return "booked";
   });
 }
 
@@ -1815,7 +1885,9 @@ export async function expireDropInBookingPayment(args: {
   db?: AccessDatabase;
 }): Promise<"cancelled" | "missing"> {
   const db = args.db ?? accessDatabase;
-  const result = await db.classBooking.updateMany({
+  return db.$transaction(async (tx) => {
+  await lockClassSchedule(tx, args.workspaceId);
+  const result = await tx.classBooking.updateMany({
     where: {
       id: args.bookingId,
       workspaceId: args.workspaceId,
@@ -1829,74 +1901,104 @@ export async function expireDropInBookingPayment(args: {
   });
 
   return result.count > 0 ? "cancelled" : "missing";
+  });
 }
 
 export async function finalizePunchCardCheckoutPurchase(args: {
-  workspaceId: string;
-  memberId: string;
-  punchCardProductId: string;
-  originalPunches: number;
-  priceCents: number;
-  currency: string;
-  checkoutSessionId: string;
-  db?: AccessDatabase;
-  now?: Date;
-}): Promise<{ status: "created" | "already_exists"; memberPunchCardId: string | null }> {
-  const db = args.db ?? accessDatabase;
+  workspaceId: string; memberId: string; punchCardProductId: string; originalPunches: number; priceCents: number;
+  currency: string; checkoutSessionId: string; acceptedTerms?: unknown; db?: AccessDatabase; now?: Date;
+}): Promise<{ status: "created" | "already_exists" | "review_required"; memberPunchCardId: string | null }> {
+  const db = args.db ?? accessDatabase, now = args.now ?? new Date();
+  if (!Number.isSafeInteger(args.originalPunches) || args.originalPunches <= 0 || !Number.isSafeInteger(args.priceCents) || args.priceCents <= 0 || !/^[a-z]{3}$/i.test(args.currency) || !args.checkoutSessionId.trim()) return { status: "review_required", memberPunchCardId: null };
+  return db.$transaction(async (transaction) => {
+    await lockClassSchedule(transaction, args.workspaceId);
+    const tx = transaction as unknown as Prisma.TransactionClient;
+    // Session lock also serializes a replay carrying a different workspace.
+    await tx.$queryRawUnsafe?.("SELECT pg_advisory_xact_lock(hashtext($1))::text", `punch-checkout:${args.checkoutSessionId}`);
+    const existing = await tx.memberPunchCard.findFirst({ where: { stripeCheckoutSessionId: args.checkoutSessionId } });
+    if (existing) {
+      const givenTerms = readPunchCardTerms(args.acceptedTerms), storedTerms = readPunchCardTerms(existing.acceptedTerms);
+      const sameTerms = args.acceptedTerms === undefined || (!!givenTerms && !!storedTerms && givenTerms.version === storedTerms.version && givenTerms.restrictionMode === storedTerms.restrictionMode && givenTerms.lateCancellationConsumesPunch === storedTerms.lateCancellationConsumesPunch && givenTerms.noShowConsumesPunch === storedTerms.noShowConsumesPunch && JSON.stringify([...givenTerms.programIds].sort()) === JSON.stringify([...storedTerms.programIds].sort()));
+      const matches = sameTerms && existing.workspaceId === args.workspaceId && existing.memberId === args.memberId && existing.punchCardProductId === args.punchCardProductId && existing.originalPunches === args.originalPunches && existing.purchasePriceCents === args.priceCents && existing.purchaseCurrency.toLowerCase() === args.currency.toLowerCase();
+      return { status: matches ? "already_exists" : "review_required", memberPunchCardId: matches ? existing.id : null };
+    }
+    const member = await tx.member.findFirst({ where: { id: args.memberId, workspaceId: args.workspaceId }, select: { id: true } });
+    const product = await tx.punchCardProduct.findFirst({ where: { id: args.punchCardProductId, workspaceId: args.workspaceId }, include: { programRestrictions: true } });
+    if (!member || !product) return { status: "review_required", memberPunchCardId: null };
+    const terms = readPunchCardTerms(args.acceptedTerms);
+    if (args.acceptedTerms !== undefined && (!terms || terms.priceCents !== args.priceCents || terms.originalPunches !== args.originalPunches || terms.currency.toLowerCase() !== args.currency.toLowerCase())) return { status: "review_required", memberPunchCardId: null };
+    if (!terms) return { status: "review_required", memberPunchCardId: null };
+    const accepted = terms;
+    const record = await tx.memberPunchCard.create({ data: { workspaceId: args.workspaceId, memberId: args.memberId, punchCardProductId: args.punchCardProductId, originalPunches: args.originalPunches, remainingPunches: args.originalPunches, status: "ACTIVE", purchasePriceCents: args.priceCents, purchaseCurrency: args.currency.toLowerCase(), purchasedAt: now, stripeCheckoutSessionId: args.checkoutSessionId, acceptedTerms: JSON.parse(JSON.stringify(accepted)) }, select: { id: true } });
+    if (transaction.punchCardEntry) await tx.punchCardEntry.create({ data: { workspaceId: args.workspaceId, memberId: args.memberId, memberPunchCardId: record.id, operationKey: `purchase:${args.checkoutSessionId}`, delta: args.originalPunches, reason: "Paid pack purchase" } });
+    return { status: "created", memberPunchCardId: record.id };
+  });
+}
+
+
+class BookingMoveFailure extends Error {}
+/** A move is one transaction: failure restores the original reservation and every funding hold. */
+export async function moveAccessBackedBooking(args: {
+  workspaceId: string; memberId: string; bookingId: string; targetClassTemplateId: string; targetDate: string;
+  timezone: string; mutationId?: string; db?: AccessDatabase; now?: Date;
+}): Promise<{ status: "moved"; bookingId: string } | { status: "error"; message: string }> {
+  const db = (args.db ?? prisma) as unknown as Prisma.TransactionClient & Pick<typeof prisma, "$transaction">;
   const now = args.now ?? new Date();
-  const existing = await db.memberPunchCard.findFirst({
-    where: {
-      workspaceId: args.workspaceId,
-      stripeCheckoutSessionId: args.checkoutSessionId,
-    },
-    select: {
-      id: true,
-      remainingPunches: true,
-      status: true,
-      purchasedAt: true,
-      createdAt: true,
-      punchCardProduct: {
-        select: {
-          id: true,
-          name: true,
-          restrictionMode: true,
-          programRestrictions: {
-            select: {
-              programId: true,
-            },
-          },
-        },
-      },
-    },
-  });
-
-  if (existing) {
-    return {
-      status: "already_exists",
-      memberPunchCardId: existing.id,
-    };
+  const mutationId = args.mutationId ?? crypto.randomUUID();
+  if (!/^[\da-f-]{36}$/i.test(mutationId)) return { status: "error", message: "Refresh the booking before moving it." };
+  try {
+    return await db.$transaction(async (tx) => {
+      await lockClassSchedule(tx, args.workspaceId);
+      const prior = await tx.classBookingMove.findFirst({ where: { id: mutationId, workspaceId: args.workspaceId, memberId: args.memberId, originalBookingId: args.bookingId } });
+      if (prior) return { status: "moved" as const, bookingId: prior.targetBookingId };
+      const original = await tx.classBooking.findFirst({ where: { id: args.bookingId, workspaceId: args.workspaceId, memberId: args.memberId }, include: { classTemplate: { include: classOccurrenceInclude }, fundingMembership: { include: { billingState: true } } } });
+      if (!original || original.status !== "BOOKED") throw new BookingMoveFailure("This booking can no longer be moved. Refresh your classes.");
+      const held = await financialEntitlementHoldReason({ workspaceId: args.workspaceId, targets: [{ targetKind: "BOOKING", targetId: original.id }, { targetKind: "BOOKING", targetId: original.fundedByBookingId }, { targetKind: "PUNCH_CARD", targetId: original.memberPunchCardId }, { targetKind: "MEMBERSHIP", targetId: original.fundingMembershipId }], db: tx });
+      if (held) throw new BookingMoveFailure(held);
+      if (original.classTemplateId === args.targetClassTemplateId && toDateOnlyString(original.scheduledForDate) === args.targetDate) throw new BookingMoveFailure("Choose a different class.");
+      const oldOccurrence = resolveClassOccurrence({ template: original.classTemplate as unknown as ClassOccurrenceTemplate, scheduledForDate: toDateOnlyString(original.scheduledForDate) });
+      const target = await getActiveTemplate({ timezone: args.timezone, workspaceId: args.workspaceId, classTemplateId: args.targetClassTemplateId, scheduledForDate: args.targetDate, db: tx as unknown as AccessTransactionDatabase });
+      if (!oldOccurrence || oldOccurrence.status === "CANCELLED" || !target) throw new BookingMoveFailure("A class changed. Refresh your classes before moving this booking.");
+      if (getOccurrenceStartsAt({ scheduledForDate: toDateOnlyString(original.scheduledForDate), startTimeMinutes: oldOccurrence.startTimeMinutes, timezone: args.timezone }) <= now) throw new BookingMoveFailure("A class that has started cannot be moved.");
+      const late = !original.providerChangedAt && isPastCancellationCutoff({ scheduledForDate: toDateOnlyString(original.scheduledForDate), startTimeMinutes: oldOccurrence.startTimeMinutes, cancellationCutoffMinutes: oldOccurrence.cancellationCutoffMinutes, timezone: args.timezone, now });
+      let fundingOverride: AccessResolution | undefined;
+      let paidFundingBookingId: string | null = null;
+      if (original.bookingType === "MEMBERSHIP") {
+        const membership = original.fundingMembership ?? await getCurrentMembership({ workspaceId: args.workspaceId, memberId: args.memberId, db: tx as unknown as AccessTransactionDatabase });
+        if (!membership || !membershipCanFundDate(membership, args.targetDate, now)) throw new BookingMoveFailure("This membership is no longer available for a new class.");
+        const terms = readAcceptedMembershipTerms(original.acceptedPolicy ?? membership.acceptedTerms);
+        if (terms?.programIds.length && !terms.programIds.includes(target.programId)) throw new BookingMoveFailure("This membership does not cover the new class.");
+        fundingOverride = { type: "membership", membershipId: membership.id };
+        await settleMembershipAllowance({ workspaceId: args.workspaceId, bookingId: original.id, outcome: late ? "LATE_CANCEL" : "TIMELY_CANCEL", db: tx });
+      } else if (original.bookingType === "PUNCH_CARD") {
+        if (!original.memberPunchCardId) throw new BookingMoveFailure("The booking's punch card is missing. Ask the gym for help.");
+        fundingOverride = { type: "punch_card", memberPunchCardId: original.memberPunchCardId, productName: "Punch card" };
+        const settled = await settlePunchCardBooking({ workspaceId: args.workspaceId, bookingId: original.id, outcome: late ? "LATE_CANCEL" : "TIMELY_CANCEL", db: tx });
+        if (!settled.ok) throw new BookingMoveFailure(settled.message);
+      } else if (original.bookingType === "DROP_IN") {
+        if (late) throw new BookingMoveFailure("This late change needs a separate drop-in purchase. Your original booking is unchanged.");
+        const funding = original.fundedByBookingId ? await tx.classBooking.findFirst({ where: { id: original.fundedByBookingId, workspaceId: args.workspaceId, memberId: args.memberId } }) : original;
+        if (!funding?.dropInPaidAt || !funding.dropInProductId || !funding.dropInPriceCents || !funding.dropInCurrency) throw new BookingMoveFailure("This booking's payment is not confirmed.");
+        const product = await tx.dropInProduct.findFirst({ where: { id: funding.dropInProductId, workspaceId: args.workspaceId }, include: { programRestrictions: true } });
+        if (!product || !isProgramAllowed({ programId: target.programId, restrictionMode: product.restrictionMode, restrictions: product.programRestrictions })) throw new BookingMoveFailure("The paid drop-in does not cover this class.");
+        paidFundingBookingId = funding.id;
+        fundingOverride = { type: "drop_in", dropInProductId: product.id, productName: product.name, priceCents: funding.dropInPriceCents, currency: funding.dropInCurrency };
+      }
+      await tx.classBooking.update({ where: { id: original.id }, data: { status: "CANCELLED", ...(!late ? { consumedPunchCount: 0 } : {}) } });
+      const result = await createAccessBackedBookingWithDb({ workspaceId: args.workspaceId, memberId: args.memberId, guardianId: original.guardianId, classTemplateId: args.targetClassTemplateId, scheduledForDate: args.targetDate, timezone: args.timezone, source: "MEMBER_PORTAL", allowDropIn: Boolean(paidFundingBookingId), trial: original.bookingType === "TRIAL", fundingOverride, punchCardOverrideId: original.memberPunchCardId ?? undefined, db: tx as unknown as AccessTransactionDatabase, now });
+      if (result.status === "error") throw new BookingMoveFailure(result.message);
+      if (result.status === "payment_required" && !paidFundingBookingId) throw new BookingMoveFailure("This move needs a separate purchase. Your original booking is unchanged.");
+      if (paidFundingBookingId) await tx.classBooking.update({ where: { id: result.bookingId }, data: { status: "BOOKED", fundedByBookingId: paidFundingBookingId, pendingPaymentExpiresAt: null } });
+      await tx.classBookingMove.create({ data: { id: mutationId, workspaceId: args.workspaceId, memberId: args.memberId, originalBookingId: original.id, targetBookingId: result.bookingId, lateCancellation: late } });
+      return { status: "moved" as const, bookingId: result.bookingId };
+    });
+  } catch (error) {
+    if (error instanceof BookingMoveFailure) return { status: "error", message: error.message };
+    throw error;
   }
+}
 
-  const record = await db.memberPunchCard.create({
-    data: {
-      workspaceId: args.workspaceId,
-      memberId: args.memberId,
-      punchCardProductId: args.punchCardProductId,
-      originalPunches: args.originalPunches,
-      remainingPunches: args.originalPunches,
-      status: "ACTIVE",
-      purchasePriceCents: args.priceCents,
-      purchaseCurrency: args.currency,
-      purchasedAt: now,
-      stripeCheckoutSessionId: args.checkoutSessionId,
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  return {
-    status: "created",
-    memberPunchCardId: record.id,
-  };
+/** The verified public registration transaction owns the schedule lock and identity checks. */
+export async function createVerifiedTrialBookingTx(args: { workspaceId: string; memberId: string; guardianId?: string | null; classTemplateId: string; scheduledForDate: string; timezone: string; db: Prisma.TransactionClient; now: Date }): Promise<CreateAccessBackedBookingResult> {
+  return createAccessBackedBookingWithDb({ ...args, source: "PUBLIC_TRIAL", trial: true, allowDropIn: false, db: args.db as unknown as AccessTransactionDatabase });
 }

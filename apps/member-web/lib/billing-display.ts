@@ -1,3 +1,5 @@
+import { formatMoney as formatKnownMoney } from "@flowstate/ui/money";
+
 const membershipStatusLabels: Record<string, string> = {
   ACTIVE: "Active",
   PENDING_PAYMENT_METHOD: "Payment method needed",
@@ -172,8 +174,5 @@ export function formatMoney(
     return `${amountCents} ${currencyCode} amount units`;
   }
 
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: currencyCode,
-  }).format(amountCents / 100);
+  return formatKnownMoney(amountCents, currencyCode);
 }

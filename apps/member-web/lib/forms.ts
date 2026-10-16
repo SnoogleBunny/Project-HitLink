@@ -1,6 +1,4 @@
 import {
-  buildMagicLinkPath,
-  buildSignatureRequestToken,
   getMagicLinkSignatureRequest,
   getPortalSignatureRequestForMember,
   resolveRequiredFormStatusesForMember,
@@ -48,6 +46,8 @@ function buildActionLabel(item: RequiredFormStatusItem, guardianName: string | n
 export async function getMemberFormsPageData(args: {
   workspaceId: string;
   memberId: string;
+  guardianId?: string | null;
+  canSign?: boolean;
 }): Promise<MemberFormsPageData> {
   const result = await resolveRequiredFormStatusesForMember({
     workspaceId: args.workspaceId,
@@ -57,13 +57,12 @@ export async function getMemberFormsPageData(args: {
   return {
     items: result.items.map((item) => ({
       ...item,
-      actionableHrefs: item.openRequests.map((request) => ({
+      actionableHrefs: item.openRequests.filter((request) => args.canSign !== false && (args.guardianId
+        ? request.guardianId === args.guardianId && item.signerKind === "GUARDIAN"
+        : request.accessMethod === "PORTAL" && item.signerKind === "MEMBER")).map((request) => ({
         requestId: request.requestId,
         label: buildActionLabel(item, request.guardianName),
-        href:
-          request.accessMethod === "PORTAL"
-            ? buildMemberActionableHref(request.requestId)
-            : buildMagicLinkPath(buildSignatureRequestToken(request.requestId)),
+        href: buildMemberActionableHref(request.requestId),
       })),
     })),
     history: result.history,
@@ -74,6 +73,7 @@ export function getPortalFormRequestPageData(args: {
   workspaceId: string;
   memberId: string;
   requestId: string;
+  guardianId?: string | null;
 }): Promise<SignatureRequestPageData | null> {
   return getPortalSignatureRequestForMember(args);
 }

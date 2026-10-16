@@ -39,13 +39,7 @@ export function ProgramCreateForm() {
         </label>
       </div>
 
-      <label className="field-checkbox">
-        <input name="progressTrackingEnabled" type="checkbox" />
-        <div>
-          <strong>Enable progress tracking</strong>
-          <p>Belt and stripe tracking stays optional per program.</p>
-        </div>
-      </label>
+      <p className="field-help">Rank tracking starts off. Configure ranks and booking rules from the program’s progress settings.</p>
 
       {state.error ? <p className="form-error">{state.error}</p> : null}
 

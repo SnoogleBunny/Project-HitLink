@@ -24,8 +24,8 @@ vi.mock("../../../lib/owner-workspace", () => ({
 
 vi.mock("../../../lib/failed-payments", () => ({
   markPaymentUpdateRequested: markPaymentUpdateRequestedMock,
-  retryFailedPaymentNow: retryFailedPaymentNowMock,
 }));
+vi.mock("@flowstate/payments", () => ({ retryMembershipInvoice: retryFailedPaymentNowMock }));
 
 import {
   markPaymentUpdateRequestedAction,
@@ -36,6 +36,7 @@ describe("billing actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireOwnerWorkspaceContextMock.mockResolvedValue({
+      session: { userId: "owner_1" },
       workspace: {
         id: "workspace_1",
       },
@@ -74,6 +75,7 @@ describe("billing actions", () => {
     expect(requireOwnerWorkspaceContextMock).toHaveBeenCalled();
     expect(retryFailedPaymentNowMock).toHaveBeenCalledWith({
       workspaceId: "workspace_1",
+      actorUserId: "owner_1",
       membershipBillingStateId: "billing_state_1",
     });
   });

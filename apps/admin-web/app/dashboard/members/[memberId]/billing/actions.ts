@@ -5,9 +5,6 @@ import { emptyFormState, type BasicFormState } from "../../../../../lib/admin-ac
 import { grantMemberPunchCard } from "../../../../../lib/access-products";
 import {
   assignMembershipToMember,
-  cancelMembershipAtPeriodEnd,
-  clearMemberMembershipFreeze,
-  freezeMemberMembership,
 } from "../../../../../lib/member-memberships";
 import { requireOwnerWorkspaceContext } from "../../../../../lib/owner-workspace";
 
@@ -19,7 +16,7 @@ export async function assignMembershipAction(
   _previousState: BasicFormState,
   formData: FormData,
 ): Promise<BasicFormState> {
-  const { workspace } = await requireOwnerWorkspaceContext();
+  const { workspace, workspaceUserId } = await requireOwnerWorkspaceContext();
   const memberId = String(formData.get("memberId") ?? "");
   const result = await assignMembershipToMember({
     workspaceId: workspace.id,
@@ -27,6 +24,9 @@ export async function assignMembershipAction(
       memberId,
       membershipPlanId: String(formData.get("membershipPlanId") ?? ""),
       nextBillingDate: String(formData.get("nextBillingDate") ?? ""),
+      acceptedTermsConfirmed: formData.get("acceptedTermsConfirmed") === "on",
+      expectedTermsVersion: String(formData.get("expectedTermsVersion") ?? ""),
+      acceptedByWorkspaceUserId: workspaceUserId,
     },
   });
 
@@ -39,70 +39,23 @@ export async function assignMembershipAction(
   redirect(getMemberRedirect(memberId));
 
   return emptyFormState;
-}
-
-export async function freezeMembershipAction(
-  _previousState: BasicFormState,
-  formData: FormData,
-): Promise<BasicFormState> {
-  const { workspace } = await requireOwnerWorkspaceContext();
-  const memberId = String(formData.get("memberId") ?? "");
-  const result = await freezeMemberMembership({
-    workspaceId: workspace.id,
-    input: {
-      memberMembershipId: String(formData.get("memberMembershipId") ?? ""),
-      frozenFrom: String(formData.get("frozenFrom") ?? ""),
-      frozenUntil: String(formData.get("frozenUntil") ?? ""),
-    },
-  });
-
-  if (result.status === "error") {
-    return {
-      error: result.message,
-    };
-  }
-
-  redirect(getMemberRedirect(memberId));
-
-  return emptyFormState;
-}
-
-export async function cancelMembershipAction(formData: FormData): Promise<void> {
-  const { workspace } = await requireOwnerWorkspaceContext();
-  const memberId = String(formData.get("memberId") ?? "");
-
-  await cancelMembershipAtPeriodEnd({
-    workspaceId: workspace.id,
-    memberMembershipId: String(formData.get("memberMembershipId") ?? ""),
-  });
-
-  redirect(getMemberRedirect(memberId));
-}
-
-export async function clearMembershipFreezeAction(
-  formData: FormData,
-): Promise<void> {
-  const { workspace } = await requireOwnerWorkspaceContext();
-  const memberId = String(formData.get("memberId") ?? "");
-
-  await clearMemberMembershipFreeze({
-    workspaceId: workspace.id,
-    memberMembershipId: String(formData.get("memberMembershipId") ?? ""),
-  });
-
-  redirect(getMemberRedirect(memberId));
 }
 
 export async function grantPunchCardAction(
   _previousState: BasicFormState,
   formData: FormData,
 ): Promise<BasicFormState> {
-  const { workspace } = await requireOwnerWorkspaceContext();
+  const { workspace, workspaceUserId } = await requireOwnerWorkspaceContext();
+  if (formData.get("acceptedPackTerms") !== "on") return { error: "Confirm the member has accepted the pack terms." };
+  const mutationId = String(formData.get("mutationId") ?? "");
+  if (!/^[\da-f-]{36}$/i.test(mutationId)) return { error: "Refresh before granting a pack." };
   const memberId = String(formData.get("memberId") ?? "");
   const result = await grantMemberPunchCard({
     workspaceId: workspace.id,
     memberId,
+    mutationId, actorWorkspaceUserId: workspaceUserId,
     punchCardProductId: String(formData.get("punchCardProductId") ?? ""),
+    expectedTermsVersion: Number(formData.get("expectedTermsVersion")),
   });
 
   if (result.status === "error") {

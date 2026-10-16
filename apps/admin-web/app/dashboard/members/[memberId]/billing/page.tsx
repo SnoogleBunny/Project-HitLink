@@ -1,6 +1,11 @@
+import { MembershipLifecyclePanel } from "@flowstate/ui";
+import { ownerLifecycleAction } from "./lifecycle-actions";
+import { VerifiedMembershipEnrollment } from "./verified-enrollment";
+import { UnitAdjustmentForm } from "./unit-adjustment-form";
+import { formatMoney as formatKnownMoney } from "@flowstate/ui/money";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { resolveRequiredFormStatusesForMember } from "@flowstate/db";
+import { resolveRequiredFormStatusesForMember, getMembershipAllowanceSummary, getWorkspaceDateString, getMembershipLifecycle, readAcceptedMembershipTerms, toDateOnlyString, prisma } from "@flowstate/db";
 import { AdminShell } from "../../../../_components/admin-shell";
 import {
   formatMembershipStatus,
@@ -17,12 +22,6 @@ import {
 import { formatRequirementTarget } from "../../../../../lib/forms";
 import { requireOwnerWorkspaceContext } from "../../../../../lib/owner-workspace";
 import {
-  cancelMembershipAction,
-  clearMembershipFreezeAction,
-} from "./actions";
-import {
-  MembershipAssignmentForm,
-  MembershipFreezeForm,
   OwnerPunchCardGrantForm,
 } from "./billing-forms";
 
@@ -48,10 +47,7 @@ function formatMoney(amountCents: number | null, currency: string | null): strin
     return "Not set";
   }
 
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: currency.toUpperCase(),
-  }).format(amountCents / 100);
+  return formatKnownMoney(amountCents, currency);
 }
 
 export default async function MemberBillingPage({
@@ -87,6 +83,11 @@ export default async function MemberBillingPage({
   }
 
   const membership = profile.currentMembership;
+  const lifecycle = membership ? await getMembershipLifecycle({ workspaceId: workspace.id, userId: session.userId }, membership.id) : null;
+  const contract = membership ? await prisma.memberMembership.findUnique({ where: { id: membership.id }, select: { acceptedTerms: true, allowanceAnchorDate: true, startedAt: true } }) : null;
+  const terms = readAcceptedMembershipTerms(contract?.acceptedTerms);
+  const allowanceDate = getWorkspaceDateString(new Date(), workspace.location.timezone);
+  const [allowance, adjustments] = await Promise.all([getMembershipAllowanceSummary({ workspaceId: workspace.id, memberId, scheduledForDate: allowanceDate, timezone: workspace.location.timezone }), prisma.membershipAllowanceAdjustment.findMany({ where: { workspaceId: workspace.id, memberId }, orderBy: { createdAt: "desc" }, take: 20 })]);
   const grantableProducts = punchCardProducts.activeProducts;
   const unresolvedActivationForms = activationForms.items.filter(
     (item) => item.status !== "SIGNED",
@@ -184,8 +185,8 @@ export default async function MemberBillingPage({
                   <dt>Monthly price</dt>
                   <dd>
                     {formatMoney(
-                      membership.membershipPlan.monthlyPriceCents,
-                      membership.membershipPlan.currency,
+                      terms?.monthlyPriceCents ?? membership.membershipPlan.monthlyPriceCents,
+                      terms?.currency ?? membership.membershipPlan.currency,
                     )}
                   </dd>
                 </div>
@@ -228,72 +229,13 @@ export default async function MemberBillingPage({
             <>
               <h3>No current membership</h3>
               <p className="empty-state">
-                Assign one recurring monthly membership plan to this member.
+                The member or their verified guardian can start a recurring membership through enrollment.
               </p>
             </>
           )}
         </section>
 
-        <section className="management-card">
-          <p className="dashboard-card-label">
-            {membership ? "Lifecycle actions" : "Assign membership"}
-          </p>
-          {membership ? (
-            <div className="form-stack">
-              <h3>Freeze</h3>
-              <MembershipFreezeForm
-                memberId={profile.member.id}
-                memberMembershipId={membership.id}
-              />
-
-              <form action={clearMembershipFreezeAction}>
-                <input name="memberId" type="hidden" value={profile.member.id} />
-                <input
-                  name="memberMembershipId"
-                  type="hidden"
-                  value={membership.id}
-                />
-                <button className="button button-secondary" type="submit">
-                  Clear freeze
-                </button>
-              </form>
-
-              <form action={cancelMembershipAction}>
-                <input name="memberId" type="hidden" value={profile.member.id} />
-                <input
-                  name="memberMembershipId"
-                  type="hidden"
-                  value={membership.id}
-                />
-                <button
-                  className="button button-secondary"
-                  disabled={membership.cancelAtPeriodEnd}
-                  type="submit"
-                >
-                  Cancel at period end
-                </button>
-              </form>
-            </div>
-          ) : (
-            <>
-              <h3>Owner assignment</h3>
-              {unresolvedActivationForms.length > 0 ? (
-                <div className="info-callout">
-                  <strong>Activation blocked</strong>
-                  <p>
-                    The current membership cannot be assigned until all required
-                    activation forms are signed for the current version.
-                  </p>
-                </div>
-              ) : null}
-              <MembershipAssignmentForm
-                disabled={unresolvedActivationForms.length > 0}
-                memberId={profile.member.id}
-                plans={profile.availablePlans}
-              />
-            </>
-          )}
-        </section>
+        {!membership ? <VerifiedMembershipEnrollment workspaceId={workspace.id} memberName={profile.member.fullName} formsPending={unresolvedActivationForms.length > 0} /> : null}
       </div>
 
       <div className="management-grid">
@@ -358,6 +300,14 @@ export default async function MemberBillingPage({
           />
         </section>
       </div>
+
+      {membership && lifecycle && contract ? <section className="management-card"><MembershipLifecyclePanel memberId={memberId} membershipId={membership.id} memberName={profile.member.fullName} owner={lifecycle.owner} currency={terms?.currency ?? membership.membershipPlan.currency} billingAnchor={toDateOnlyString(contract.allowanceAnchorDate ?? contract.startedAt)} policyKnown={!!lifecycle.policy} allowCancellation={true} allowFreeze={!!lifecycle.policy?.freezeEnabled} action={ownerLifecycleAction} requests={lifecycle.requests.map((request) => ({ id: request.id, kind: request.kind, state: request.state, receivedAt: request.receivedAt.toISOString(), effectiveOn: request.effectiveOn ? toDateOnlyString(request.effectiveOn) : null, resumeOn: request.resumeOn ? toDateOnlyString(request.resumeOn) : null, providerOperationId: request.providerOperationId, active: request.activeSlot === "ACTIVE" }))} /></section> : null}
+
+      <section className="management-card form-stack"><h3>Class allowance</h3>
+        {allowance?.unlimited ? <p>Unlimited classes under the accepted membership terms.</p> : allowance ? <div className="stack-list">{allowance.windows.map((window) => <div className="stack-item" key={window.kind}><div><strong>{window.kind === "WEEK" ? "Billing week" : "Billing month"}: {window.remaining} of {window.limit} available</strong><p>{window.used} used · {window.reserved} reserved · resets {window.endsOn}</p></div></div>)}</div> : <p className="management-copy">No current membership allowance. Pack balances appear above.</p>}
+        <UnitAdjustmentForm memberId={memberId} membershipId={membership?.id} kinds={allowance?.windows.map((window) => window.kind) ?? []} cards={punchCardBalances.filter((card) => card.status !== "ARCHIVED")} date={allowanceDate} />
+        {adjustments.length ? <details><summary>Recent allowance adjustments</summary><div className="stack-list">{adjustments.map((item) => <p key={item.id}>{item.delta > 0 ? "+" : ""}{item.delta} · {item.kind === "WEEK" ? "Billing week" : "Billing month"} from {formatDate(item.periodStart)} · {item.reason}</p>)}</div></details> : null}
+      </section>
 
       <section className="management-card">
         <p className="dashboard-card-label">Billing history</p>

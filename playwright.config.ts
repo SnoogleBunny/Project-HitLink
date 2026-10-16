@@ -62,9 +62,13 @@ const e2eEnvironment = {
   NEXT_PUBLIC_APP_URL: adminBaseURL,
   NEXT_PUBLIC_FLOWSTATE_APP_URL: adminBaseURL,
   NEXT_PUBLIC_MEMBER_APP_URL: memberBaseURL,
+  NEXT_PUBLIC_MEMBER_WEB_URL: memberBaseURL,
   PATH: supportedRuntimePath,
   STRIPE_SECRET_KEY: "",
   STRIPE_WEBHOOK_SECRET: "",
+  RESEND_API_KEY: "",
+  HITLINK_EMAIL_FROM: "",
+  HITLINK_WORKER_SECRET: "",
 };
 Object.assign(process.env, e2eEnvironment);
 const sharedServerEnv: Record<string, string> = Object.fromEntries(

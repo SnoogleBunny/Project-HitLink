@@ -1,9 +1,9 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { retryMembershipInvoice } from "@flowstate/payments";
 import {
   markPaymentUpdateRequested,
-  retryFailedPaymentNow,
 } from "../../../lib/failed-payments";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
 
@@ -23,13 +23,14 @@ export async function markPaymentUpdateRequestedAction(
 export async function retryFailedPaymentNowAction(
   formData: FormData,
 ): Promise<void> {
-  const { workspace } = await requireOwnerWorkspaceContext();
+  const { workspace, session } = await requireOwnerWorkspaceContext();
 
-  await retryFailedPaymentNow({
+  const result = await retryMembershipInvoice({
     workspaceId: workspace.id,
+    actorUserId: session.userId,
     membershipBillingStateId: String(formData.get("membershipBillingStateId") ?? ""),
   });
 
-  redirect("/dashboard/billing");
+  redirect(result.status === "error" ? `/dashboard/billing?error=${encodeURIComponent(result.message)}` : "/dashboard/billing");
 }
 

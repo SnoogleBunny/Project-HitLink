@@ -67,6 +67,7 @@ export async function acknowledgeMigrationReviewAction(
   const result = await acknowledgeMigrationOwnerReview({
     workspaceId: workspace.id,
     userId: session.userId,
+    snapshotId: String(formData.get("snapshotId") ?? ""),
   });
 
   if (result.status === "error") {

@@ -1,4 +1,10 @@
+import { prisma } from "@flowstate/db";
 import Link from "next/link";
+import { getClassOccurrence } from "@flowstate/db";
+import { getClassTemplateFormOptions } from "../../../../../lib/class-templates";
+import { occurrenceEditorInput } from "../../../../../lib/class-schedule-form";
+import { CoachAssignment } from "../../coach-assignment";
+import "../../schedule.css";
 import { notFound } from "next/navigation";
 import { AdminShell } from "../../../../_components/admin-shell";
 import { requireOperationsWorkspaceContext } from "../../../../../lib/operations-workspace";
@@ -51,7 +57,13 @@ export default async function RosterPage({
   if (!roster) {
     notFound();
   }
+  const [occurrence, coachOptions] = workspaceUserRole === "OWNER" ? await Promise.all([
+    getClassOccurrence({ workspaceId: workspace.id, classTemplateId: templateId, scheduledForDate }),
+    getClassTemplateFormOptions({ workspaceId: workspace.id, locationId: location.id }),
+  ]) : [null, null];
 
+  const progressViewer = await prisma.workspaceUser.findUnique({where:{id:workspaceUserId},select:{role:true,canManageProgress:true,canOverridePrerequisites:true}});
+  const canViewProgress = progressViewer?.role === "OWNER" || progressViewer?.canManageProgress || progressViewer?.canOverridePrerequisites;
   return (
     <AdminShell
       session={session}
@@ -60,22 +72,18 @@ export default async function RosterPage({
       title={roster.displayTitle}
       description={`${roster.weekdayLabel}, ${roster.scheduledForDate} at ${roster.timeLabel}. ${formatCapacity(roster.effectiveCapacity, roster.rows.length)}.`}
       actions={
-        <Link className="button button-secondary" href="/dashboard/coach/today">
-          Back to today
-        </Link>
+        <div className="dashboard-actions"><Link className="button button-secondary" href={workspaceUserRole === "OWNER" ? `/dashboard/schedule?date=${scheduledForDate}` : "/dashboard/coach/today"}>
+          {workspaceUserRole === "OWNER" ? "Back to Classes" : "Back to today"}
+        </Link>{workspaceUserRole === "OWNER" ? <Link className="text-link" href={`/dashboard/schedule/${templateId}/edit?date=${scheduledForDate}`}>Edit class</Link> : null}</div>
       }
     >
       <section className="management-card">
         <p className="dashboard-card-label">Class details</p>
-        <h3>{roster.programName}</h3>
+        <h3>{roster.programName}</h3><p className="class-room">{roster.roomName}</p>
         <dl className="inline-meta">
           <div>
-            <dt>Room</dt>
-            <dd>{roster.roomName}</dd>
-          </div>
-          <div>
             <dt>Coach</dt>
-            <dd>{roster.coachDisplayName}</dd>
+            <dd className="class-coach">{roster.coachDisplayName}{occurrence && coachOptions ? <CoachAssignment initial={occurrenceEditorInput(occurrence)} options={coachOptions} title={occurrence.displayTitle} coachName={occurrence.coachWorkspaceUserId ? occurrence.coachDisplayName : null} defaultCoachName={occurrence.defaultCoach?.user.fullName ?? occurrence.defaultCoach?.user.email} timezone={location.timezone} /> : null}</dd>
           </div>
           <div>
             <dt>Roster</dt>
@@ -136,6 +144,7 @@ export default async function RosterPage({
                 </div>
 
                 <div className="stack-item-actions">
+                  {canViewProgress ? <Link className="text-link" href={`/dashboard/members/${row.memberId}/progress?classTemplateId=${templateId}&date=${scheduledForDate}`}>Progress and eligibility</Link> : null}
                   <AttendanceForm
                     classTemplateId={roster.templateId}
                     row={row}

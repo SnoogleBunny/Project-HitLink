@@ -1,29 +1,36 @@
-# Flowstate
+# HitLink
 
-Flowstate is a gym management platform for Muay Thai gyms and Hyrox/HIIT-style class studios. The product goal is to replace older tools like Zen Planner with a calmer, more reliable operating system for scheduling, staff workflows, billing, attendance, and member self-service.
+HitLink serves martial arts gyms and adult one-to-one coaching programs. Owners manage classes, members, forms and payments; members use a separate portal to book for themselves or verified family members. Coaching programs have their own plans, daily notes and optional appointments.
+
+The approved behavior is defined in [the workflow specification](docs/approved-workflows.md), with a [replacement Word document](docs/HitLink_Product_Workflows_Shipping_Specification_v1_3.docx). [Implementation status and operational setup](docs/implementation-status.md) distinguish verified local behavior from remaining work and deployment requirements. Internal `flowstate` package names remain for compatibility.
 
 ## Current status
 
-This monorepo includes working admin, member, and billing slices for the MVP:
+The owner and member applications include:
 
 - owner signup, login, and session handling
 - workspace onboarding for a single-location gym
 - protected admin dashboard and coach roster surface
 - staff invite, program, room, schedule template, booking, roster, and attendance workflows
 - member and guardian records
-- public trial booking
+- verified public trial and paid membership enrollment
 - form upload, required-form assignment, signing, and signed-document tracking
 - membership plans, member memberships, access products, punch cards, drop-ins, billing records, Stripe settings, Stripe webhooks, and failed-payment workflows
-- member portal login, schedule browsing, bookings, membership/billing views, checkout support, and forms/signing
+- member portal login, dated class booking and moves, household selection, accepted membership terms, payer-scoped payments, and forms/signing
+- recurring classes with dated overrides and substitute coaches
+- weekly and billing-month class limits, finite freezes, cancellation notice and payment recovery
+- adult coaching programs, private drafts and separately published client notes
+- program rank policies and promotion history
+- owner website drafts and publishing, export/offboarding review, and time-limited support grants
 
-Still upcoming or intentionally thin:
+Boundaries and deployment requirements:
 
 - `apps/api` currently exposes a health endpoint only
-- messaging, broadcasts, and automated email reminders
-- events and private lessons
-- progress tracking
-- migration tooling
-- deeper reporting
+- live payments and email require configured providers; local tests do not send or charge
+- scheduled maintenance must be connected before relying on unattended delivery or billing recovery
+- imports and account closure block incomplete financial, consent or entitlement evidence
+- legal pages retain explicit business-detail placeholders
+- events, private lessons, broader messaging and deeper reporting remain outside the approved implementation described above
 
 ## Product guardrails
 
@@ -54,6 +61,7 @@ Still upcoming or intentionally thin:
 - `apps/api` - API app; currently includes `GET /api/v1/health`
 - `packages/auth` - shared auth and session helpers
 - `packages/db` - Prisma schema, migrations, and Prisma client export
+- `packages/payments` - durable checkout, invoice, refund and subscription reconciliation
 - `packages/ui` - shared UI components
 - `packages/types` - shared TypeScript types
 - `packages/config` - shared config package

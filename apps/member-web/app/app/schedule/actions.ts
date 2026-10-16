@@ -8,6 +8,7 @@ import {
   type ScheduleActionState,
 } from "../../form-states";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
+import { selectFamilyMember } from "../../_components/member-selector-actions";
 import { startDropInCheckout } from "../../../lib/member-commerce";
 import {
   createSelfBooking,
@@ -19,7 +20,8 @@ async function getCheckoutUrl(pathname: string): Promise<string> {
   const forwardedProto = headerStore.get("x-forwarded-proto");
   const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
   const protocol =
-    forwardedProto ?? (process.env.NODE_ENV === "production" ? "https" : "http");
+    forwardedProto ??
+    (process.env.NODE_ENV === "production" ? "https" : "http");
 
   if (!host) {
     return `http://localhost:3001${pathname}`;
@@ -32,8 +34,22 @@ export async function createSelfBookingAction(
   _previousState: ScheduleActionState,
   formData: FormData,
 ): Promise<ScheduleActionState> {
-  const context = await requireMemberPortalContext();
+  const memberId = String(formData.get("memberId") ?? "");
+  if (!memberId)
+    return { error: "Choose the participant before booking a class." };
+  const context = await requireMemberPortalContext({
+    permission: "book",
+    memberId,
+  });
+  const query = new URLSearchParams({
+    date: String(formData.get("scheduledForDate") ?? ""),
+  });
   const action = String(formData.get("actionKind") ?? "book");
+  if (action === "pay_and_book" && context.permissions?.canPay === false)
+    return {
+      error:
+        "Your family permissions allow bookings, but not purchases. Ask the account holder to arrange payment.",
+    };
 
   if (action === "join_waitlist") {
     const waitlistResult = await joinSelfWaitlist({
@@ -53,7 +69,9 @@ export async function createSelfBookingAction(
     revalidatePath("/app");
     revalidatePath("/app/schedule");
     revalidatePath("/app/bookings");
-    redirect("/app/bookings");
+    await selectFamilyMember(context.member.id);
+    query.set("notice", "waitlisted");
+    redirect(`/app/schedule?${query}`);
 
     return emptyScheduleActionState;
   }
@@ -62,6 +80,7 @@ export async function createSelfBookingAction(
     workspaceId: context.workspace.id,
     memberId: context.member.id,
     timezone: context.location.timezone,
+    allowDropIn: context.permissions?.canPay !== false,
     classTemplateId: String(formData.get("classTemplateId") ?? ""),
     scheduledForDate: String(formData.get("scheduledForDate") ?? ""),
   });
@@ -73,20 +92,32 @@ export async function createSelfBookingAction(
   }
 
   if (result.status === "payment_required") {
+    if (context.permissions?.canPay === false)
+      return {
+        error:
+          "Payment is required. Your family permissions do not allow purchases.",
+      };
     const checkout = await startDropInCheckout({
       workspaceId: context.workspace.id,
       memberId: context.member.id,
       bookingId: result.bookingId,
-      successUrl: await getCheckoutUrl("/app/checkout/complete"),
-      cancelUrl: await getCheckoutUrl("/app/bookings"),
+      actorUserId: context.session.userId,
+      payerMemberId: (context.accountMember ?? context.member).id,
+      successUrl: await getCheckoutUrl(
+        `/app/checkout/complete?${query}&booking=${encodeURIComponent(result.bookingId)}`,
+      ),
+      cancelUrl: await getCheckoutUrl(
+        `/app/schedule?${query}&booking=${encodeURIComponent(result.bookingId)}`,
+      ),
     });
 
     if (checkout.status === "error") {
-      return {
-        error: checkout.message,
-      };
+      await selectFamilyMember(context.member.id);
+      query.set("booking", result.bookingId);
+      redirect(`/app/schedule?${query}`);
     }
 
+    await selectFamilyMember(context.member.id);
     redirect(checkout.url);
 
     return emptyScheduleActionState;
@@ -95,7 +126,40 @@ export async function createSelfBookingAction(
   revalidatePath("/app");
   revalidatePath("/app/schedule");
   revalidatePath("/app/bookings");
-  redirect("/app/bookings");
+  await selectFamilyMember(context.member.id);
+  if ("bookingId" in result) query.set("booking", result.bookingId);
+  query.set("notice", "booked");
+  redirect(`/app/schedule?${query}`);
 
   return emptyScheduleActionState;
+}
+
+export async function resumeBookingPaymentAction(
+  _previousState: ScheduleActionState,
+  formData: FormData,
+): Promise<ScheduleActionState> {
+  const memberId = String(formData.get("memberId") ?? "");
+  if (!memberId)
+    return { error: "Choose the participant before continuing payment." };
+  const context = await requireMemberPortalContext({
+    memberId,
+    permission: "pay",
+  });
+  const bookingId = String(formData.get("bookingId") ?? "");
+  const query = new URLSearchParams({
+    booking: bookingId,
+    date: String(formData.get("returnDate") ?? ""),
+  });
+  const checkout = await startDropInCheckout({
+    workspaceId: context.workspace.id,
+    memberId: context.member.id,
+    bookingId,
+    actorUserId: context.session.userId,
+    payerMemberId: (context.accountMember ?? context.member).id,
+    successUrl: await getCheckoutUrl(`/app/checkout/complete?${query}`),
+    cancelUrl: await getCheckoutUrl(`/app/schedule?${query}`),
+  });
+  if (checkout.status === "error") return { error: checkout.message };
+  await selectFamilyMember(context.member.id);
+  redirect(checkout.url);
 }

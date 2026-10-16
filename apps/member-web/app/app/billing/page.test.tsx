@@ -34,9 +34,11 @@ vi.mock("./billing-actions", () => ({
   ),
 }));
 
+vi.mock("../../../lib/payer-billing", () => ({ getPayerBillingData: vi.fn().mockResolvedValue({operations:[],invoices:[],payments:[],credits:[]}) }));
 import BillingPage from "./page";
 
 const context = {
+  session: { userId: "payer-user" },
   workspace: { id: "workspace_1" },
   member: { id: "member_1" },
   location: { timezone: "America/Toronto" },
@@ -106,7 +108,7 @@ describe("BillingPage display truth", () => {
       "Payment-method update requested",
       "Billing record status",
       "Recorded (gym time)",
-      "$129.00",
+      "CAD\u202f129.00",
       "Invoice available",
       "Yes",
       "No",

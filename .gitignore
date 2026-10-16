@@ -45,3 +45,4 @@ pnpm-debug.log*
 .eslintcache
 *.tsbuildinfo
 next-env.d.ts
+__pycache__/

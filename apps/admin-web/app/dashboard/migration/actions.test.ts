@@ -151,6 +151,7 @@ describe("migration readiness action", () => {
     expect(acknowledgeMigrationOwnerReviewMock).toHaveBeenCalledWith({
       workspaceId: "workspace_1",
       userId: "owner_1",
+      snapshotId: "",
     });
   });
 

@@ -3,6 +3,7 @@ import { resolveRequiredFormStatusesForMember } from "@flowstate/db";
 import { AdminShell } from "../../_components/admin-shell";
 import {
   listMembers,
+  MEMBER_STATUSES,
   type MemberListItem,
 } from "../../../lib/members";
 import {
@@ -43,15 +44,25 @@ export default async function MembersPage({
 }: {
   searchParams?: Promise<{
     q?: string;
+    status?: string;
+    page?: string;
   }>;
 }) {
   const { session, workspace } = await requireOwnerWorkspaceContext();
   const params = await searchParams;
   const query = params?.q ?? "";
+  const status = MEMBER_STATUSES.find((value) => value === params?.status);
+  const page = Math.max(1, Math.min(10000, Number.parseInt(params?.page ?? "1", 10) || 1));
   const members = await listMembers({
     workspaceId: workspace.id,
     query,
+    status,
+    skip: (page - 1) * 50,
+    take: 51,
   });
+  const hasNext = members.length > 50;
+  if (hasNext) members.pop();
+  const pageUrl = (next: number) => `/dashboard/members?${new URLSearchParams({ q: query, ...(status ? { status } : {}), page: String(next) })}`;
   const memberStatuses = await Promise.all(
     members.map(async (member) => ({
       memberId: member.id,
@@ -75,7 +86,8 @@ export default async function MembersPage({
       workspaceName={workspace.name}
       eyebrow="Members"
       title="Members and trials"
-      description="Member records, trial prospects, notes, tags, guardian links, and booked trial dates."
+      description="Find members, review trials, and manage family access."
+      actions={<Link className="text-link" href="/dashboard/coaching">Coaching clients</Link>}
     >
       <div className="management-grid">
         <section className="management-card">
@@ -92,6 +104,7 @@ export default async function MembersPage({
           <p className="dashboard-card-label">Search</p>
           <h3>Find people</h3>
           <form className="form-stack" method="get">
+            <label className="field"><span>Status</span><select name="status" defaultValue={status ?? ""}><option value="">All members</option>{MEMBER_STATUSES.map((value) => <option key={value} value={value}>{formatStatus(value)}</option>)}</select></label>
             <label className="field">
               <span>Name, email, or phone</span>
               <input
@@ -113,18 +126,15 @@ export default async function MembersPage({
             </div>
           </form>
 
-          <p className="management-copy">
-            Search stays basic: exact workspace, simple text matching, no CRM
-            merge flow.
-          </p>
         </section>
       </div>
 
       <section className="management-card">
         <p className="dashboard-card-label">Member list</p>
         <h3>
-          {members.length} result{members.length === 1 ? "" : "s"}
+          {status ? `${formatStatus(status)} members` : "All members"} · Page {page}
         </h3>
+        <nav className="dashboard-actions" aria-label="Member pages">{page > 1 ? <Link className="text-link" href={pageUrl(page - 1)}>Previous</Link> : null}{hasNext ? <Link className="text-link" href={pageUrl(page + 1)}>Next 50 members</Link> : null}</nav>
 
         {members.length === 0 ? (
           <p className="empty-state">

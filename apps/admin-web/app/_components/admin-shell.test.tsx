@@ -1,16 +1,11 @@
 import React, { type PropsWithChildren } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { pathnameMock } = vi.hoisted(() => ({
   pathnameMock: vi.fn(() => "/dashboard/migration"),
 }));
-
-vi.mock("next/navigation", () => ({
-  usePathname: pathnameMock,
-}));
-
+vi.mock("next/navigation", () => ({ usePathname: pathnameMock }));
 vi.mock("next/link", () => ({
   default: ({
     children,
@@ -22,165 +17,105 @@ vi.mock("next/link", () => ({
     </a>
   ),
 }));
-
-vi.mock("../actions/logout", () => ({
-  logoutAction: vi.fn(),
-}));
-
+vi.mock("../actions/logout", () => ({ logoutAction: vi.fn() }));
 import { AdminNav } from "./admin-nav";
-import { AdminShell } from "./admin-shell";
+import { AdminShell, AdminWorkspace } from "./admin-shell";
 
-const ownerSession = {
+const session = {
   userId: "owner_1",
   email: "owner@example.com",
   displayName: "Owner Example",
   workspaceId: "workspace_1",
   role: "OWNER" as const,
 };
+beforeEach(() => {
+  (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  pathnameMock.mockReturnValue("/dashboard/migration");
+});
 
-const ownerDestinations = [
-  "Dashboard",
-  "Migration",
-  "Programs",
-  "Rooms",
-  "Schedule",
-  "Bookings",
-  "Today roster",
-  "Members",
-  "Forms",
-  "Membership plans",
-  "Access products",
-  "Billing",
-  "Billing settings",
-  "Staff invites",
-];
-
-function renderShell() {
-  return renderToStaticMarkup(
-    <AdminShell
-      description="Review the current migration handoff."
-      session={ownerSession}
-      title="Migration handoff"
-      workspaceName="North Shore Muay Thai"
-    >
-      <h3>Review and lock this migration snapshot</h3>
-    </AdminShell>,
-  );
-}
-
-describe("AdminShell responsive navigation structure", () => {
-  beforeEach(() => {
-    (globalThis as typeof globalThis & { React: typeof React }).React = React;
-    pathnameMock.mockReturnValue("/dashboard/migration");
+describe("approved owner navigation", () => {
+  it("has eight primary destinations with Settings owning migration", () => {
+    const html = renderToStaticMarkup(<AdminNav role="OWNER" />);
+    expect(html.match(/<a /g)).toHaveLength(8);
+    for (const label of [
+      "Today",
+      "Classes",
+      "Members",
+      "Billing",
+      "Plans",
+      "Forms",
+      "Website",
+      "Settings",
+    ])
+      expect(html).toContain(">" + label + "</span>");
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+    expect(html).toMatch(/href="\/dashboard\/settings" aria-current="page"/);
   });
-
-  it("provides a collapsed native Menu disclosure before the route header", () => {
-    const html = renderShell();
-    const disclosureStart = html.indexOf('<details class="shell-mobile-menu">');
-    const routeHeaderStart = html.indexOf('<header class="shell-header">');
-
-    expect(disclosureStart).toBeGreaterThan(-1);
-    expect(html).toContain("<summary>Menu</summary>");
-    expect(html).not.toContain('<details class="shell-mobile-menu" open="">');
-    expect(disclosureStart).toBeLessThan(routeHeaderStart);
+  it.each([
+    ["/dashboard/schedule/class_1/roster", "/dashboard/schedule"],
+    ["/dashboard/members/member_1/billing", "/dashboard/members"],
+    [
+      "/dashboard/access-products/punch-cards/pack_1/edit",
+      "/dashboard/membership-plans",
+    ],
+    ["/dashboard/settings/billing", "/dashboard/settings"],
+  ])("keeps %s under %s", (path, parent) => {
+    pathnameMock.mockReturnValue(path);
+    const html = renderToStaticMarkup(<AdminNav role="OWNER" />);
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+    expect(html).toContain('href="' + parent + '" aria-current="page"');
   });
-
-  it("keeps the brand and signed-in account context in the responsive shell", () => {
-    const html = renderShell();
-
-    expect(html).toContain("Flowstate Admin");
-    expect(html).toContain("North Shore Muay Thai");
-    expect(html).toContain("Owner access");
-    expect(html).toContain("Signed in as");
-    expect(html).toContain("Owner Example");
-    expect(html).toContain("owner@example.com");
+  it("does not grant owner destinations to coaches or an unknown role", () => {
+    pathnameMock.mockReturnValue("/dashboard/coaching/client_1");
+    const html = renderToStaticMarkup(<AdminNav role="COACH" />);
+    expect(html.match(/<a /g)).toHaveLength(2);
+    expect(html).toContain(">Clients</span>");
+    expect(html).not.toContain("/dashboard/billing");
+    expect(renderToStaticMarkup(<AdminNav role={null} />)).not.toContain("<a ");
   });
-
-  it("gives the desktop and mobile navigation landmarks distinct names", () => {
-    const html = renderShell();
-
-    expect(html).toContain(
-      '<nav class="shell-nav" aria-label="Primary admin navigation">',
-    );
-    expect(html).toContain(
-      '<nav class="shell-nav" aria-label="Mobile admin navigation">',
-    );
-  });
-
-  it("renders one route heading and one main content landmark", () => {
-    const html = renderShell();
-
-    expect(html.match(/<h2>/g)).toHaveLength(1);
-    expect(html.match(/<main(?:\s|>)/g)).toHaveLength(1);
-    expect(html).toContain("Migration handoff");
-  });
-
-  it("keeps each inactive responsive navigation rendering out of layout", () => {
-    const css = readFileSync(
-      new URL("../globals.css", import.meta.url),
-      "utf8",
-    );
-
-    expect(css).toMatch(/\.shell-mobile-header\s*{\s*display:\s*none;/);
-    expect(css).toMatch(/\.shell-desktop-sidebar\s*{\s*display:\s*none;/);
-    expect(css).toMatch(/\.shell-mobile-menu-content\s*{\s*display:\s*none;/);
-    expect(css).toMatch(
-      /\.shell-mobile-menu\[open\] \.shell-mobile-menu-content\s*{[^}]*display:\s*grid;/,
-    );
-  });
-
-  it("uses the established high-contrast sidebar token for account context", () => {
-    const css = readFileSync(
-      new URL("../globals.css", import.meta.url),
-      "utf8",
-    );
-
-    expect(css).toMatch(
-      /\.shell-sidebar-caption\s*{[^}]*color:\s*var\(--color-sidebar-muted\);/,
-    );
-  });
-
-  it("keeps navigation and disclosure controls at least 44px high", () => {
-    const css = readFileSync(
-      new URL("../globals.css", import.meta.url),
-      "utf8",
-    );
-
-    expect(css).toMatch(/\.shell-nav-link\s*{[^}]*min-height:\s*2\.75rem;/);
-    expect(css).toMatch(
-      /\.shell-mobile-menu\s*>\s*summary\s*{[^}]*min-height:\s*2\.75rem;/,
-    );
+  it("limits common phone actions to Today, Classes and Members", () => {
+    const html = renderToStaticMarkup(<AdminNav role="OWNER" compact />);
+    expect(html.match(/<a /g)).toHaveLength(3);
+    expect(html).not.toContain("/dashboard/billing");
   });
 });
 
-describe("AdminNav role destinations", () => {
-  beforeEach(() => {
-    (globalThis as typeof globalThis & { React: typeof React }).React = React;
-    pathnameMock.mockReturnValue("/dashboard/migration");
-  });
-
-  it("renders all 14 owner destinations with only Migration current", () => {
-    const html = renderToStaticMarkup(<AdminNav role="OWNER" />);
-
-    expect(html).toContain('aria-label="Primary admin navigation"');
-    for (const destination of ownerDestinations) {
-      expect(html).toContain(`>${destination}</a>`);
-    }
-    expect(html.match(/<a /g)).toHaveLength(14);
-    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
-    expect(html).toContain(
-      'href="/dashboard/migration" aria-current="page" class="shell-nav-link active">Migration</a>',
+describe("persistent workspace shell", () => {
+  it("renders one main landmark and one page heading with native dialog navigation", () => {
+    const html = renderToStaticMarkup(
+      <AdminWorkspace session={session} workspaceName="North Shore Muay Thai">
+        <AdminShell
+          session={session}
+          workspaceName="North Shore Muay Thai"
+          title="Import members"
+          description="Review your import."
+        >
+          <input defaultValue="Draft retained" />
+        </AdminShell>
+      </AdminWorkspace>,
     );
+    expect(html.match(/<main(?:\s|>)/g)).toHaveLength(1);
+    expect(html.match(/<h1(?:\s|>)/g)).toHaveLength(1);
+    expect(html).toContain("<dialog");
+    expect(html).not.toMatch(/<dialog[^>]* open=/);
+    expect(html).toContain("Open workspace menu");
+    expect(html).toContain("More destinations");
+    expect(html).toContain("HitLink");
+    expect(html).toContain("North Shore Muay Thai");
+    expect(html).toContain("owner@example.com");
+    expect(html).toContain("Switch to dark mode");
+    expect(html).not.toContain("Protected dashboard");
   });
-
-  it("renders only the coach destination and marks it current", () => {
-    pathnameMock.mockReturnValue("/dashboard/coach/today");
-    const html = renderToStaticMarkup(<AdminNav role="COACH" />);
-
-    expect(html.match(/<a /g)).toHaveLength(1);
-    expect(html).toContain(
-      'href="/dashboard/coach/today" aria-current="page" class="shell-nav-link active">Today roster</a>',
+  it("omits the redundant coach bottom bar", () => {
+    const html = renderToStaticMarkup(
+      <AdminWorkspace
+        session={{ ...session, role: "COACH" }}
+        workspaceName="Gym"
+      >
+        <p>Client plan</p>
+      </AdminWorkspace>,
     );
-    expect(html).not.toContain(">Migration</a>");
+    expect(html).not.toContain('aria-label="Quick navigation"');
+    expect(html).toContain("Open workspace menu");
   });
 });

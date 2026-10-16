@@ -17,6 +17,7 @@ export function FormSignatureForm({
   signerName,
   signerEmail,
   requestId,
+  memberId,
   token,
   disabled = false,
   submitLabel,
@@ -29,6 +30,7 @@ export function FormSignatureForm({
   signerName: string;
   signerEmail: string | null;
   requestId?: string;
+  memberId?: string;
   token?: string;
   disabled?: boolean;
   submitLabel: string;
@@ -53,7 +55,8 @@ export function FormSignatureForm({
   }
 
   return (
-    <form action={formAction} className="member-form-stack">
+    <form action={formAction} className="member-form-stack" data-person-context>
+      {memberId ? <input name="memberId" type="hidden" value={memberId} /> : null}
       {requestId ? <input name="requestId" type="hidden" value={requestId} /> : null}
       {token ? <input name="token" type="hidden" value={token} /> : null}
 

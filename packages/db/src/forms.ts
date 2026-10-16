@@ -33,6 +33,7 @@ interface MemberContextRecord {
   fullName: string;
   email: string | null;
   status: MemberStatus;
+  dateOfBirth: Date | null;
   familyLinks: Array<{
     guardian: {
       id: string;
@@ -397,8 +398,18 @@ function isRequirementTargetApplicable(args: {
 
 function getSignerKindForTarget(
   requirementTarget: RequirementTarget,
+  member?: MemberContextRecord,
+  now = new Date(),
 ): FormSignerKind {
-  return requirementTarget === "GUARDIAN" ? "GUARDIAN" : "MEMBER";
+  return requirementTarget === "GUARDIAN" || (member && memberNeedsGuardian(member, now)) ? "GUARDIAN" : "MEMBER";
+}
+
+function memberNeedsGuardian(member: MemberContextRecord, now: Date): boolean {
+  if (member.dateOfBirth) {
+    const adultOn = new Date(member.dateOfBirth); adultOn.setUTCFullYear(adultOn.getUTCFullYear() + 18);
+    return adultOn > now;
+  }
+  return member.familyLinks.length > 0 && !member.userId;
 }
 
 function getMemberContext(args: {
@@ -418,6 +429,7 @@ function getMemberContext(args: {
       fullName: true,
       email: true,
       status: true,
+      dateOfBirth: true,
       familyLinks: {
         select: {
           guardian: {
@@ -738,7 +750,8 @@ async function ensureGuardianMagicLinkRequestsForMember(args: {
   db: FormsDatabase;
   now: Date;
 }): Promise<void> {
-  const applicableTargets = args.targets?.filter((target) => target === "GUARDIAN");
+  const dependent = memberNeedsGuardian(args.member, args.now);
+  const applicableTargets = dependent ? args.targets : args.targets?.filter((target) => target === "GUARDIAN");
 
   if (args.member.familyLinks.length === 0 || applicableTargets?.length === 0) {
     return;
@@ -746,7 +759,7 @@ async function ensureGuardianMagicLinkRequestsForMember(args: {
 
   const guardianAssignments = (await listActiveAssignments({
     workspaceId: args.workspaceId,
-    targets: ["GUARDIAN"],
+    targets: dependent ? args.targets : ["GUARDIAN"],
     db: args.db,
   })).filter((assignment) =>
     isRequirementTargetApplicable({
@@ -799,15 +812,14 @@ async function ensureGuardianMagicLinkRequestsForMember(args: {
           request.formVersionId === currentVersionId &&
           request.signerKind === "GUARDIAN" &&
           request.guardianId === link.guardian.id &&
-          request.accessMethod === "MAGIC_LINK" &&
-          (!request.expiresAt || request.expiresAt > args.now),
+          (request.accessMethod === "PORTAL" || !request.expiresAt || request.expiresAt > args.now),
       );
 
       if (existingOpen) {
         continue;
       }
 
-      await createMagicLinkRequest({
+      const created = await createMagicLinkRequest({
         workspaceId: args.workspaceId,
         formVersionId: currentVersionId,
         memberId: args.member.id,
@@ -816,6 +828,7 @@ async function ensureGuardianMagicLinkRequestsForMember(args: {
         expiresAt: new Date(args.now.getTime() + MAGIC_LINK_EXPIRY_MS),
         db: args.db,
       });
+      openRequests.push(created);
     }
   }
 
@@ -867,7 +880,7 @@ export async function ensureCurrentPortalRequestsForMember(args: {
     db,
   });
 
-  if (!member?.userId) {
+  if (!member?.userId || memberNeedsGuardian(member, now)) {
     return;
   }
 
@@ -1035,7 +1048,7 @@ export async function issueTrialMagicLinkRequests(args: {
       continue;
     }
 
-    if (assignment.requirementTarget === "TRIAL") {
+    if (assignment.requirementTarget === "TRIAL" && !memberNeedsGuardian(member, now)) {
       if (signedKeys.has(`${currentVersion.id}:MEMBER`)) {
         continue;
       }
@@ -1077,7 +1090,7 @@ export async function issueTrialMagicLinkRequests(args: {
       continue;
     }
 
-    if (assignment.requirementTarget !== "GUARDIAN") {
+    if (assignment.requirementTarget !== "GUARDIAN" && !memberNeedsGuardian(member, now)) {
       continue;
     }
 
@@ -1201,7 +1214,7 @@ export async function resolveRequiredFormStatusesForMember(args: {
       return [];
     }
 
-    const signerKind = getSignerKindForTarget(assignment.requirementTarget);
+    const signerKind = getSignerKindForTarget(assignment.requirementTarget, member, now);
     const currentSignedDocument = signedDocuments.find(
       (signedDocument) =>
         signedDocument.formVersionId === currentVersion.id &&
@@ -1414,6 +1427,7 @@ export async function getPortalSignatureRequestForMember(args: {
   workspaceId: string;
   memberId: string;
   requestId: string;
+  guardianId?: string | null;
   db?: FormsDatabase;
   now?: Date;
 }): Promise<SignatureRequestPageData | null> {
@@ -1428,8 +1442,9 @@ export async function getPortalSignatureRequestForMember(args: {
     !request ||
     request.workspaceId !== args.workspaceId ||
     request.memberId !== args.memberId ||
-    request.accessMethod !== "PORTAL" ||
-    request.signerKind !== "MEMBER"
+    (args.guardianId
+      ? request.signerKind !== "GUARDIAN" || request.guardianId !== args.guardianId
+      : request.accessMethod !== "PORTAL" || request.signerKind !== "MEMBER")
   ) {
     return null;
   }
@@ -1522,6 +1537,8 @@ export async function recordLocalFormSignature(args: {
   token?: string;
   workspaceId?: string;
   memberId?: string;
+  actorUserId?: string;
+  guardianId?: string | null;
   signerName: string;
   signerEmail?: string | null;
   ipAddress?: string | null;
@@ -1529,188 +1546,59 @@ export async function recordLocalFormSignature(args: {
   db?: FormsDatabase;
   now?: Date;
 }): Promise<RecordLocalFormSignatureResult> {
-  const db = args.db ?? prisma;
-  const now = args.now ?? new Date();
-  const signerName = args.signerName.trim();
-  const signerEmail = args.signerEmail?.trim() || null;
-
-  if (!signerName) {
-    return {
-      status: "error",
-      message: "Enter the signer’s full legal name.",
-    };
-  }
-
-  await expireOpenMagicLinkRequests({
-    workspaceId: args.workspaceId ?? "",
-    db,
-    now,
-  }).catch(() => undefined);
-
-  const request =
-    args.token
-      ? await getMagicLinkSignatureRequest({
-          token: args.token,
-          db,
-          now,
-        }).then((result) =>
-          result
-            ? getSignatureRequestDetailById({
-                requestId: result.requestId,
-                db,
-              })
-            : null,
-        )
-      : args.requestId
-        ? await getSignatureRequestDetailById({
-            requestId: args.requestId,
-            db,
-          })
-        : null;
-
-  if (!request) {
-    return {
-      status: "error",
-      message: "Signature request not found.",
-    };
-  }
-
-  if (
-    args.workspaceId &&
-    (request.workspaceId !== args.workspaceId || request.memberId !== args.memberId)
-  ) {
-    return {
-      status: "error",
-      message: "Signature request not found.",
-    };
-  }
-
-  if (!isRequestStillSignable(request)) {
-    await db.signatureRequest.updateMany({
-      where: {
-        id: request.id,
-        status: "OPEN",
-      },
-      data: {
-        status: "CANCELLED",
-      },
-    });
-
-    return {
-      status: "error",
-      message: "This signing link is no longer active.",
-    };
-  }
-
-  if (request.expiresAt && request.expiresAt <= now) {
-    await db.signatureRequest.updateMany({
-      where: {
-        id: request.id,
-        status: "OPEN",
-      },
-      data: {
-        status: "EXPIRED",
-      },
-    });
-
-    return {
-      status: "error",
-      message: "This signing link has expired.",
-    };
-  }
-
-  const existingSignedDocument = await db.signedDocument.findFirst({
-    where: {
-      workspaceId: request.workspaceId,
-      formVersionId: request.formVersionId,
-      memberId: request.memberId,
-      signerKind: request.signerKind,
-    },
-    select: {
-      id: true,
-      guardianId: true,
-    },
-  });
-
-  if (existingSignedDocument) {
-    if (
-      request.signerKind === "GUARDIAN" &&
-      request.guardianId &&
-      existingSignedDocument.guardianId !== request.guardianId
-    ) {
-      await db.signatureRequest.updateMany({
-        where: {
-          id: request.id,
-          status: "OPEN",
-        },
-        data: {
-          status: "CANCELLED",
-        },
-      });
+  const db = args.db ?? prisma, now = args.now ?? new Date();
+  const signerName = args.signerName.trim(), signerEmail = args.signerEmail?.trim() || null;
+  const deny = (message: string): RecordLocalFormSignatureResult => ({ status: "error", message });
+  if (!signerName) return deny("Enter the signer’s full legal name.");
+  const parsed = args.token ? parseMagicLinkToken(args.token) : null;
+  if (args.token && (!parsed || !safeEqual(parsed.signature, buildMagicLinkSignature(parsed.requestId)))) return deny("Signature request not found.");
+  if (!args.token && (!args.actorUserId || !args.workspaceId || !args.memberId || !args.requestId)) return deny("You do not have permission to sign this request.");
+  const requestId = parsed?.requestId ?? args.requestId;
+  if (!requestId) return deny("Signature request not found.");
+  // This lookup identifies lock keys only. Identity, request state and document version are checked again under the locks.
+  const initial = await getSignatureRequestDetailById({ requestId, db });
+  if (!initial) return deny("Signature request not found.");
+  return db.$transaction(async tx => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`family-access:${initial.workspaceId}`}))`;
+    // Publication updates this same document row; it cannot supersede the reviewed version during signature creation.
+    await tx.$queryRaw`SELECT id FROM form_documents WHERE id = ${initial.formVersion.formDocument.id} FOR SHARE`;
+    await tx.$queryRaw`SELECT id FROM required_form_assignments WHERE "formDocumentId" = ${initial.formVersion.formDocument.id} FOR SHARE`;
+    await tx.$queryRaw`SELECT id FROM signature_requests WHERE id = ${requestId} FOR UPDATE`;
+    const request = await getSignatureRequestDetailById({ requestId, db: tx as FormsDatabase });
+    if (!request || request.workspaceId !== initial.workspaceId) return deny("Signature request not found.");
+    const member = await getMemberContext({ workspaceId: request.workspaceId, memberId: request.memberId, db: tx as FormsDatabase });
+    if (!member) return deny("Signature request not found.");
+    if (args.workspaceId && (request.workspaceId !== args.workspaceId || request.memberId !== args.memberId)) return deny("Signature request not found.");
+    if (args.token) {
+      if (request.accessMethod !== "MAGIC_LINK" || !request.tokenHash || !safeEqual(request.tokenHash, hashValue(args.token))) return deny("Signature request not found.");
+      if (request.signerKind === "GUARDIAN") {
+        if (!request.guardianId || !member.familyLinks.some(link => link.guardian.id === request.guardianId)) return deny("Guardian access is no longer active.");
+        const grants = await tx.memberPortalGrant.findMany({ where: { workspaceId: request.workspaceId, memberId: request.memberId, guardianId: request.guardianId }, select: { revokedAt: true, canSign: true } });
+        if (grants.length && !grants.some(grant => !grant.revokedAt && grant.canSign)) return deny("Guardian signing access is no longer active.");
+      }
+    } else if (request.signerKind === "GUARDIAN") {
+      if (!request.guardianId || request.guardianId !== args.guardianId || !member.familyLinks.some(link => link.guardian.id === request.guardianId)) return deny("You do not have permission to sign this request.");
+      const grant = await tx.memberPortalGrant.findFirst({ where: { workspaceId: request.workspaceId, memberId: request.memberId, userId: args.actorUserId!, guardianId: request.guardianId, canSign: true, revokedAt: null, user: { workspaceUsers: { some: { workspaceId: request.workspaceId, isActive: true } } } }, select: { id: true } });
+      if (!grant) return deny("Guardian signing access is no longer active.");
+    } else {
+      if (request.accessMethod !== "PORTAL" || member.userId !== args.actorUserId || args.guardianId) return deny("You do not have permission to sign this request.");
+      if (!await tx.workspaceUser.findFirst({ where: { workspaceId: request.workspaceId, userId: args.actorUserId!, isActive: true }, select: { id: true } })) return deny("Your gym access is no longer active.");
     }
-
-    return {
-      status: "already_signed",
-      signedDocumentId: existingSignedDocument.id,
-    };
-  }
-
-  const created = await db.$transaction(async (tx) => {
-    const signedDocument = await tx.signedDocument.create({
-      data: {
-        workspaceId: request.workspaceId,
-        formVersionId: request.formVersionId,
-        memberId: request.memberId,
-        guardianId: request.guardianId,
-        signerKind: request.signerKind,
-        signedFromRequestId: request.id,
-        signerNameSnapshot: signerName,
-        signerEmailSnapshot: signerEmail,
-        signatureMethod: "LOCAL_TYPED_NAME",
-        providerReference: null,
-        ipAddress: args.ipAddress?.trim() || null,
-        userAgent: args.userAgent?.trim() || null,
-        signedAt: now,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    await tx.signatureRequest.updateMany({
-      where: {
-        id: request.id,
-        status: "OPEN",
-      },
-      data: {
-        status: "COMPLETED",
-        completedAt: now,
-      },
-    });
-
-    if (request.signerKind === "GUARDIAN") {
-      await tx.signatureRequest.updateMany({
-        where: {
-          workspaceId: request.workspaceId,
-          memberId: request.memberId,
-          formVersionId: request.formVersionId,
-          signerKind: "GUARDIAN",
-          status: "OPEN",
-          id: {
-            not: request.id,
-          },
-        },
-        data: {
-          status: "CANCELLED",
-        },
-      });
+    if (request.signerKind === "MEMBER" && memberNeedsGuardian(member, now)) return deny("A verified guardian must sign this participant’s forms.");
+    const document = await tx.formDocument.findFirst({ where: { id: request.formVersion.formDocument.id, workspaceId: request.workspaceId, archivedAt: null }, select: { currentVersionId: true } });
+    const applicable = request.formVersion.formDocument.assignments.some(assignment => isRequirementTargetApplicable({ requirementTarget: assignment.requirementTarget, memberStatus: member.status, guardianCount: member.familyLinks.length }) && getSignerKindForTarget(assignment.requirementTarget, member, now) === request.signerKind);
+    if (!document || document.currentVersionId !== request.formVersionId || !applicable) return deny("This form changed. Open the current version before signing.");
+    const existing = await tx.signedDocument.findFirst({ where: { workspaceId: request.workspaceId, formVersionId: request.formVersionId, memberId: request.memberId, signerKind: request.signerKind }, select: { id: true } });
+    if (existing) return { status: "already_signed", signedDocumentId: existing.id };
+    if (!isRequestStillSignable(request)) return deny("This signing request is no longer active.");
+    if (request.expiresAt && request.expiresAt <= now) {
+      await tx.signatureRequest.updateMany({ where: { id: request.id, status: "OPEN" }, data: { status: "EXPIRED" } });
+      return deny("This signing link has expired.");
     }
-
-    return signedDocument;
+    const changed = await tx.signatureRequest.updateMany({ where: { id: request.id, workspaceId: request.workspaceId, formVersionId: request.formVersionId, status: "OPEN" }, data: { status: "COMPLETED", completedAt: now } });
+    if (changed.count !== 1) return deny("This signing request changed. Refresh before trying again.");
+    const signed = await tx.signedDocument.create({ data: { workspaceId: request.workspaceId, formVersionId: request.formVersionId, memberId: request.memberId, guardianId: request.guardianId, signerKind: request.signerKind, signedFromRequestId: request.id, signerNameSnapshot: signerName, signerEmailSnapshot: signerEmail, signatureMethod: "LOCAL_TYPED_NAME", providerReference: null, ipAddress: args.ipAddress?.trim() || null, userAgent: args.userAgent?.trim() || null, signedAt: now }, select: { id: true } });
+    await tx.signatureRequest.updateMany({ where: { workspaceId: request.workspaceId, memberId: request.memberId, formVersionId: request.formVersionId, signerKind: request.signerKind, status: "OPEN", id: { not: request.id } }, data: { status: "CANCELLED" } });
+    return { status: "signed", signedDocumentId: signed.id };
   });
-
-  return {
-    status: "signed",
-    signedDocumentId: created.id,
-  };
 }

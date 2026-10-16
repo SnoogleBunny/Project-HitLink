@@ -1,16 +1,12 @@
 import {
-  expireDropInBookingPayment,
-  finalizeDropInBookingPayment,
-  finalizePunchCardCheckoutPurchase,
   prisma,
   type BillingRecordStatus,
   type BillingRecordType,
-  type BillingStateStatus,
-  type MemberMembershipStatus,
   type StripeConnectionStatus,
   type StripeWebhookProcessingStatus,
 } from "@flowstate/db";
 import Stripe from "stripe";
+import { reconcileLegacyCheckout, reconcileCheckoutWebhook, handleCoachingCheckoutWebhook, reconcileMembershipWebhook, reconcileAdjustmentWebhook, handlePublicMembershipCheckoutWebhook, handlePublicMembershipSubscriptionWebhook } from "@flowstate/payments";
 
 export interface StripeAccountSummary {
   stripeAccountId: string;
@@ -183,12 +179,6 @@ function timestampToDate(timestamp: number | null | undefined): Date | null {
   return new Date(timestamp * 1000);
 }
 
-function addDaysToDate(value: Date, days: number): Date {
-  const date = new Date(value);
-  date.setUTCDate(date.getUTCDate() + days);
-
-  return date;
-}
 
 function getStringId(value: unknown): string | null {
   if (!value) {
@@ -250,22 +240,6 @@ function getInvoicePaymentIntentId(invoice: Stripe.Invoice): string | null {
   );
 }
 
-function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
-  const invoiceWithLegacySubscription = invoice as unknown as {
-    subscription?: unknown;
-    parent?: {
-      subscription_details?: {
-        subscription?: unknown;
-      };
-    };
-  };
-
-  return (
-    getStringId(invoiceWithLegacySubscription.subscription) ??
-    getStringId(invoiceWithLegacySubscription.parent?.subscription_details?.subscription)
-  );
-}
-
 function getInvoiceFailure(invoice: Stripe.Invoice): {
   failureCode: string | null;
   failureMessage: string | null;
@@ -304,38 +278,6 @@ function mapSubscriptionStatus(
   }
 
   return "pending_payment_method";
-}
-
-function mapSubscriptionToMembershipStatus(
-  subscription: Stripe.Subscription,
-): MemberMembershipStatus {
-  const mappedStatus = mapSubscriptionStatus(subscription);
-
-  if (mappedStatus === "active") {
-    return "ACTIVE";
-  }
-
-  if (mappedStatus === "past_due") {
-    return "PAST_DUE";
-  }
-
-  return "PENDING_PAYMENT_METHOD";
-}
-
-function mapSubscriptionToBillingStatus(
-  subscription: Stripe.Subscription,
-): BillingStateStatus {
-  const mappedStatus = mapSubscriptionStatus(subscription);
-
-  if (mappedStatus === "active") {
-    return "ACTIVE";
-  }
-
-  if (mappedStatus === "past_due") {
-    return "PAST_DUE";
-  }
-
-  return "PENDING_PAYMENT_METHOD";
 }
 
 function mapInvoiceStatusForRetry(invoice: Stripe.Invoice): StripeRetryInvoiceResult["status"] {
@@ -772,401 +714,37 @@ async function handleAccountEvent(args: {
   });
 }
 
-async function findMembershipForSubscription(args: {
-  db: StripeWebhookDatabase;
-  workspaceId: string;
-  stripeSubscriptionId: string | null;
-}): Promise<WebhookMembershipRecord | null> {
-  if (!args.stripeSubscriptionId) {
-    return null;
-  }
-
-  return args.db.memberMembership.findFirst({
-    where: {
-      workspaceId: args.workspaceId,
-      stripeSubscriptionId: args.stripeSubscriptionId,
-    },
-    include: {
-      billingState: {
-        select: {
-          id: true,
-        },
-      },
-    },
-  });
-}
-
-async function handleSubscriptionEvent(args: {
-  event: StripeWebhookEventWithAccount;
-  db: StripeWebhookDatabase;
-  settings: WorkspaceStripeSettingsRecord | null;
-}): Promise<void> {
-  if (!args.settings) {
-    return;
-  }
-
-  const subscription = args.event.data.object as Stripe.Subscription;
-  const membership = await findMembershipForSubscription({
-    db: args.db,
-    workspaceId: args.settings.workspaceId,
-    stripeSubscriptionId: subscription.id,
-  });
-
-  if (!membership) {
-    return;
-  }
-
-  if (args.event.type === "customer.subscription.deleted") {
-    await args.db.memberMembership.updateMany({
-      where: {
-        id: membership.id,
-        workspaceId: args.settings.workspaceId,
-      },
-      data: {
-        status: "CANCELLED",
-        endedAt: new Date(),
-        currentMembershipSlot: null,
-        cancelAtPeriodEnd: false,
-      },
-    });
-    await args.db.membershipBillingState.updateMany({
-      where: {
-        memberMembershipId: membership.id,
-        workspaceId: args.settings.workspaceId,
-      },
-      data: {
-        status: "CANCELLED",
-        latestSubscriptionId: subscription.id,
-      },
-    });
-    await createBillingRecord({
-      db: args.db,
-      workspaceId: args.settings.workspaceId,
-      memberId: membership.memberId,
-      memberMembershipId: membership.id,
-      type: "SUBSCRIPTION_UPDATED",
-      status: "INFO",
-      stripeEventId: args.event.id,
-      stripeSubscriptionId: subscription.id,
-    });
-
-    return;
-  }
-
-  const nextBillingDate = getSubscriptionCurrentPeriodEnd(subscription);
-  const billingStatus = mapSubscriptionToBillingStatus(subscription);
-  await args.db.memberMembership.updateMany({
-    where: {
-      id: membership.id,
-      workspaceId: args.settings.workspaceId,
-    },
-    data: {
-      status: mapSubscriptionToMembershipStatus(subscription),
-      nextBillingDate,
-      cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
-    },
-  });
-  await args.db.membershipBillingState.upsert({
-    where: {
-      memberMembershipId: membership.id,
-    },
-    update: {
-      status: billingStatus,
-      nextBillingDate,
-      latestSubscriptionId: subscription.id,
-    },
-    create: {
-      workspaceId: args.settings.workspaceId,
-      memberId: membership.memberId,
-      memberMembershipId: membership.id,
-      status: billingStatus,
-      nextBillingDate,
-      latestSubscriptionId: subscription.id,
-    },
-    select: {
-      id: true,
-    },
-  });
-  await createBillingRecord({
-    db: args.db,
-    workspaceId: args.settings.workspaceId,
-    memberId: membership.memberId,
-    memberMembershipId: membership.id,
-    type:
-      args.event.type === "customer.subscription.created"
-        ? "SUBSCRIPTION_CREATED"
-        : "SUBSCRIPTION_UPDATED",
-    status: "INFO",
-    stripeEventId: args.event.id,
-    stripeSubscriptionId: subscription.id,
-  });
-}
-
-function getInvoiceEventState(args: {
-  invoice: Stripe.Invoice;
-  eventType: string;
-  failedAt: Date;
-  gracePeriodDays: number;
-}): {
-  billingStatus: BillingStateStatus;
-  recordType: BillingRecordType;
-  recordStatus: BillingRecordStatus;
-  lastPaymentStatus: BillingRecordStatus;
-  failedAt: Date | null;
-  gracePeriodEndsAt: Date | null;
-} {
-  if (args.eventType === "invoice.paid") {
-    return {
-      billingStatus: "ACTIVE",
-      recordType: "PAYMENT_SUCCEEDED",
-      recordStatus: "SUCCEEDED",
-      lastPaymentStatus: "SUCCEEDED",
-      failedAt: null,
-      gracePeriodEndsAt: null,
-    };
-  }
-
-  if (args.eventType === "invoice.payment_action_required") {
-    return {
-      billingStatus: "ACTION_REQUIRED",
-      recordType: "PAYMENT_ACTION_REQUIRED",
-      recordStatus: "ACTION_REQUIRED",
-      lastPaymentStatus: "ACTION_REQUIRED",
-      failedAt: args.failedAt,
-      gracePeriodEndsAt: addDaysToDate(args.failedAt, args.gracePeriodDays),
-    };
-  }
-
-  return {
-    billingStatus: "PAYMENT_FAILED",
-    recordType: "PAYMENT_FAILED",
-    recordStatus: "FAILED",
-    lastPaymentStatus: "FAILED",
-    failedAt: args.failedAt,
-    gracePeriodEndsAt: addDaysToDate(args.failedAt, args.gracePeriodDays),
-  };
-}
-
-async function handleInvoiceEvent(args: {
-  event: StripeWebhookEventWithAccount;
-  db: StripeWebhookDatabase;
-  settings: WorkspaceStripeSettingsRecord | null;
-}): Promise<void> {
-  if (!args.settings) {
-    return;
-  }
-
-  const invoice = args.event.data.object as Stripe.Invoice;
-  const stripeSubscriptionId = getInvoiceSubscriptionId(invoice);
-  const membership = await findMembershipForSubscription({
-    db: args.db,
-    workspaceId: args.settings.workspaceId,
-    stripeSubscriptionId,
-  });
-
-  if (!membership) {
-    return;
-  }
-
-  const occurredAt = timestampToDate(invoice.status_transitions?.paid_at) ?? new Date();
-  const paymentIntentId = getInvoicePaymentIntentId(invoice);
-  const failure = getInvoiceFailure(invoice);
-  const eventState = getInvoiceEventState({
-    invoice,
-    eventType: args.event.type,
-    failedAt: occurredAt,
-    gracePeriodDays: args.settings.failedPaymentGracePeriodDays,
-  });
-
-  await args.db.membershipBillingState.upsert({
-    where: {
-      memberMembershipId: membership.id,
-    },
-    update: {
-      status: eventState.billingStatus,
-      latestInvoiceId: invoice.id,
-      latestPaymentIntentId: paymentIntentId,
-      latestSubscriptionId: stripeSubscriptionId,
-      lastPaymentStatus: eventState.lastPaymentStatus,
-      lastPaymentAt:
-        eventState.lastPaymentStatus === "SUCCEEDED" ? occurredAt : undefined,
-      failureCode: eventState.failedAt ? failure.failureCode : null,
-      failureMessage: eventState.failedAt ? failure.failureMessage : null,
-      failedAt: eventState.failedAt,
-      gracePeriodEndsAt: eventState.gracePeriodEndsAt,
-    },
-    create: {
-      workspaceId: args.settings.workspaceId,
-      memberId: membership.memberId,
-      memberMembershipId: membership.id,
-      status: eventState.billingStatus,
-      latestInvoiceId: invoice.id,
-      latestPaymentIntentId: paymentIntentId,
-      latestSubscriptionId: stripeSubscriptionId,
-      lastPaymentStatus: eventState.lastPaymentStatus,
-      lastPaymentAt:
-        eventState.lastPaymentStatus === "SUCCEEDED" ? occurredAt : null,
-      failureCode: eventState.failedAt ? failure.failureCode : null,
-      failureMessage: eventState.failedAt ? failure.failureMessage : null,
-      failedAt: eventState.failedAt,
-      gracePeriodEndsAt: eventState.gracePeriodEndsAt,
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  if (eventState.billingStatus !== "ACTIVE") {
-    await args.db.memberMembership.updateMany({
-      where: {
-        id: membership.id,
-        workspaceId: args.settings.workspaceId,
-      },
-      data: {
-        status:
-          eventState.billingStatus === "ACTION_REQUIRED"
-            ? "PENDING_PAYMENT_METHOD"
-            : "PAST_DUE",
-      },
-    });
-  } else {
-    await args.db.memberMembership.updateMany({
-      where: {
-        id: membership.id,
-        workspaceId: args.settings.workspaceId,
-      },
-      data: {
-        status: "ACTIVE",
-      },
-    });
-  }
-
-  await createBillingRecord({
-    db: args.db,
-    workspaceId: args.settings.workspaceId,
-    memberId: membership.memberId,
-    memberMembershipId: membership.id,
-    type: eventState.recordType,
-    status: eventState.recordStatus,
-    amountCents: invoice.amount_paid || invoice.amount_due || null,
-    currency: invoice.currency ?? null,
-    stripeEventId: args.event.id,
-    stripeInvoiceId: invoice.id,
-    stripePaymentIntentId: paymentIntentId,
-    stripeSubscriptionId,
-    failureCode: eventState.failedAt ? failure.failureCode : null,
-    failureMessage: eventState.failedAt ? failure.failureMessage : null,
-  });
-}
-
-function parsePositiveMetadataInteger(value: string | undefined): number | null {
-  if (!value || !/^\d+$/.test(value)) {
-    return null;
-  }
-
-  const parsed = Number(value);
-
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
 async function handleCheckoutSessionEvent(args: {
   event: StripeWebhookEventWithAccount;
   db: StripeWebhookDatabase;
   settings: WorkspaceStripeSettingsRecord | null;
 }): Promise<void> {
-  if (!args.settings) {
+  const session = args.event.data.object as Stripe.Checkout.Session;
+  const metadata = session.metadata ?? {};
+
+  if (metadata.purpose === "public_membership") {
+    await handlePublicMembershipCheckoutWebhook(args.event);
     return;
   }
 
-  const session = args.event.data.object as Stripe.Checkout.Session;
-  const metadata = session.metadata ?? {};
+  if (metadata.purpose === "coaching") {
+    await handleCoachingCheckoutWebhook(args.event);
+    return;
+  }
+
+  if (metadata.operationId && metadata.purpose !== "coaching") {
+    await reconcileCheckoutWebhook(args.event);
+    return;
+  }
+
+  if (!args.settings) return;
 
   if (metadata.workspaceId !== args.settings.workspaceId) {
     return;
   }
 
-  if (
-    metadata.checkoutType === "drop_in_booking" &&
-    metadata.bookingId &&
-    metadata.memberId
-  ) {
-    if (args.event.type === "checkout.session.expired") {
-      await expireDropInBookingPayment({
-        workspaceId: args.settings.workspaceId,
-        bookingId: metadata.bookingId,
-        checkoutSessionId: session.id,
-      });
-
-      return;
-    }
-
-    const result = await finalizeDropInBookingPayment({
-      workspaceId: args.settings.workspaceId,
-      bookingId: metadata.bookingId,
-      checkoutSessionId: session.id,
-      paymentIntentId: getStringId(session.payment_intent),
-      expiresAt: timestampToDate(session.expires_at),
-    });
-
-    if (result !== "booked" && result !== "already_booked") {
-      return;
-    }
-
-    await createBillingRecord({
-      db: args.db,
-      workspaceId: args.settings.workspaceId,
-      memberId: metadata.memberId,
-      type: "DROP_IN_PURCHASED",
-      status: "SUCCEEDED",
-      amountCents: session.amount_total ?? null,
-      currency: session.currency ?? null,
-      stripeEventId: args.event.id,
-      stripePaymentIntentId: getStringId(session.payment_intent),
-    });
-
-    return;
-  }
-
-  if (
-    metadata.checkoutType === "punch_card_purchase" &&
-    metadata.memberId &&
-    metadata.punchCardProductId &&
-    args.event.type === "checkout.session.completed"
-  ) {
-    const originalPunches = parsePositiveMetadataInteger(metadata.punchesIncluded);
-    const priceCents = parsePositiveMetadataInteger(metadata.priceCents);
-    const currency = metadata.currency?.trim().toLowerCase();
-
-    if (!originalPunches || !priceCents || !currency) {
-      return;
-    }
-
-    const result = await finalizePunchCardCheckoutPurchase({
-      workspaceId: args.settings.workspaceId,
-      memberId: metadata.memberId,
-      punchCardProductId: metadata.punchCardProductId,
-      originalPunches,
-      priceCents,
-      currency,
-      checkoutSessionId: session.id,
-      now: timestampToDate(session.created) ?? new Date(),
-    });
-
-    if (result.status !== "created") {
-      return;
-    }
-
-    await createBillingRecord({
-      db: args.db,
-      workspaceId: args.settings.workspaceId,
-      memberId: metadata.memberId,
-      type: "PUNCH_CARD_PURCHASED",
-      status: "SUCCEEDED",
-      amountCents: priceCents,
-      currency,
-      stripeEventId: args.event.id,
-      stripePaymentIntentId: getStringId(session.payment_intent),
-    });
+  if (["drop_in_booking", "punch_card_purchase"].includes(metadata.checkoutType ?? "")) {
+    await reconcileLegacyCheckout({ workspaceId: args.settings.workspaceId, accountId: args.settings.stripeAccountId!, session });
   }
 }
 
@@ -1174,8 +752,16 @@ async function processClaimedStripeWebhookEvent(args: {
   event: StripeWebhookEventWithAccount;
   db: StripeWebhookDatabase;
   settings: WorkspaceStripeSettingsRecord | null;
+  reconcileMembershipEvent: typeof reconcileMembershipWebhook;
+  reconcileAdjustmentEvent: typeof reconcileAdjustmentWebhook;
+  recoverPublicMembershipEvent: typeof handlePublicMembershipSubscriptionWebhook;
 }): Promise<void> {
   switch (args.event.type) {
+    case "refund.created":
+    case "refund.updated":
+    case "refund.failed":
+      await args.reconcileAdjustmentEvent(args.event);
+      return;
     case "account.updated":
     case "account.application.deauthorized":
       await handleAccountEvent(args);
@@ -1183,19 +769,24 @@ async function processClaimedStripeWebhookEvent(args: {
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted":
-      await handleSubscriptionEvent(args);
+      await args.recoverPublicMembershipEvent(args.event);
+      await args.reconcileMembershipEvent(args.event);
       return;
     case "invoice.paid":
     case "invoice.payment_failed":
     case "invoice.payment_action_required":
     case "invoice.finalization_failed":
-      await handleInvoiceEvent(args);
+    case "invoice.updated":
+    case "invoice.voided":
+    case "invoice.marked_uncollectible":
+      await args.recoverPublicMembershipEvent(args.event);
+      await args.reconcileMembershipEvent(args.event);
       return;
     case "checkout.session.completed":
     case "checkout.session.expired":
+    case "checkout.session.async_payment_succeeded":
+    case "checkout.session.async_payment_failed":
       await handleCheckoutSessionEvent(args);
-      return;
-    case "invoice.updated":
       return;
     default:
       return;
@@ -1206,6 +797,9 @@ export async function processStripeWebhookEvent(args: {
   event: StripeWebhookEventWithAccount;
   db?: StripeWebhookDatabase;
   now?: Date;
+  reconcileMembershipEvent?: typeof reconcileMembershipWebhook;
+  reconcileAdjustmentEvent?: typeof reconcileAdjustmentWebhook;
+  recoverPublicMembershipEvent?: typeof handlePublicMembershipSubscriptionWebhook;
 }): Promise<StripeWebhookProcessingResult> {
   const db = args.db ?? stripeWebhookDatabase;
   const now = args.now ?? new Date();
@@ -1239,6 +833,9 @@ export async function processStripeWebhookEvent(args: {
       event: args.event,
       db,
       settings,
+      reconcileMembershipEvent: args.reconcileMembershipEvent ?? reconcileMembershipWebhook,
+      reconcileAdjustmentEvent: args.reconcileAdjustmentEvent ?? reconcileAdjustmentWebhook,
+      recoverPublicMembershipEvent: args.recoverPublicMembershipEvent ?? handlePublicMembershipSubscriptionWebhook,
     });
     await markStripeWebhookEvent({
       stripeEventId: args.event.id,

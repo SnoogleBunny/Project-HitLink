@@ -1,5 +1,10 @@
 import {
-  buildUpcomingOccurrenceDateOptions,
+  checkMemberClassEligibility,
+  addDays,
+  classOccurrenceInclude,
+  formatOccurrenceDate,
+  listClassOccurrences,
+  resolveClassOccurrence,
   canCancelClassBooking,
   cleanupExpiredPendingBookings,
   createAccessBackedBooking,
@@ -15,6 +20,7 @@ import {
   type ClassBookingStatus,
   type ClassBookingType,
   type Weekday,
+  type ClassOccurrenceTemplate,
 } from "@flowstate/db";
 
 interface BookingTemplateRecord {
@@ -35,6 +41,12 @@ interface BookingTemplateRecord {
     name: string;
     capacity: number | null;
   };
+  workspaceId?: string;
+  coachWorkspaceUserId?: string | null;
+  coachWorkspaceUser?: ClassOccurrenceTemplate["coachWorkspaceUser"];
+  scheduleRevisions?: ClassOccurrenceTemplate["scheduleRevisions"];
+  classInstances?: ClassOccurrenceTemplate["classInstances"];
+  scheduleStartsOn?: Date | null;
 }
 
 interface ExistingBookingRecord {
@@ -52,17 +64,7 @@ interface WaitlistEntryRecord {
   classTemplateId: string;
   scheduledForDate: Date;
   joinedAt: Date;
-  classTemplate: {
-    id: string;
-    title: string | null;
-    startTimeMinutes: number;
-    program: {
-      name: string;
-    };
-    room: {
-      name: string;
-    };
-  };
+  classTemplate: BookingTemplateRecord;
 }
 
 interface SeatHoldingBookingRecord {
@@ -71,13 +73,14 @@ interface SeatHoldingBookingRecord {
 }
 
 interface SelfServiceBookingDatabase {
+  programPromotion?: unknown;
   classTemplate: {
     findMany(args: Record<string, unknown>): Promise<BookingTemplateRecord[]>;
   };
   classBooking: {
-    findMany(args: Record<string, unknown>): Promise<
-      Array<ExistingBookingRecord | SeatHoldingBookingRecord>
-    >;
+    findMany(
+      args: Record<string, unknown>,
+    ): Promise<Array<ExistingBookingRecord | SeatHoldingBookingRecord>>;
   };
   waitlistEntry: {
     findMany(args: Record<string, unknown>): Promise<WaitlistEntryRecord[]>;
@@ -95,6 +98,11 @@ interface SelfServiceBookingDatabase {
 }
 
 export interface ScheduleOccurrence {
+  programId?: string;
+  coachName?: string;
+  endTimeLabel?: string;
+  bookingId?: string;
+  waitlistEntryId?: string;
   classTemplateId: string;
   scheduledForDate: string;
   displayTitle: string;
@@ -108,18 +116,20 @@ export interface ScheduleOccurrence {
     | "BOOKED"
     | "PAYMENT_PENDING"
     | "WAITLISTED"
+    | "ATTENDED"
     | "FULL";
   accessLabel: string | null;
-  action:
-    | "book"
-    | "pay_and_book"
-    | "join_waitlist"
-    | "none";
+  action: "book" | "pay_and_book" | "join_waitlist" | "none";
   actionLabel: string;
   note: string | null;
 }
 
 export interface MemberBookingSummary {
+  startsAt?: string;
+  coachName?: string;
+  endTimeLabel?: string;
+  pendingPaymentExpiresAt?: string | null;
+  classCancelled?: boolean;
   bookingId: string;
   classTemplateId: string;
   scheduledForDate: string;
@@ -134,6 +144,7 @@ export interface MemberBookingSummary {
 }
 
 export interface MemberWaitlistSummary {
+  coachName?: string;
   waitlistEntryId: string;
   classTemplateId: string;
   scheduledForDate: string;
@@ -146,6 +157,8 @@ export interface MemberWaitlistSummary {
 
 export interface EligibleSelfServiceOccurrences {
   occurrences: ScheduleOccurrence[];
+  fromDate: string;
+  toDate: string;
 }
 
 type SelfBookingMutationResult =
@@ -199,7 +212,10 @@ function isPastBookingCutoff(args: {
 }): boolean {
   const startsAt = getOccurrenceStartsAt(args);
 
-  return args.now.getTime() >= startsAt.getTime() - args.bookingCutoffMinutes * 60_000;
+  return (
+    args.now.getTime() >=
+    startsAt.getTime() - args.bookingCutoffMinutes * 60_000
+  );
 }
 
 function mapBookingItem(
@@ -210,25 +226,39 @@ function mapBookingItem(
   },
 ): MemberBookingSummary {
   const scheduledForDate = toDateOnlyString(booking.scheduledForDate);
+  const occurrence = resolveClassOccurrence({
+    template: booking.classTemplate as ClassOccurrenceTemplate,
+    scheduledForDate,
+  });
+  const schedule = occurrence ?? booking.classTemplate;
   const cancellation = canCancelClassBooking({
     bookingType: booking.bookingType,
     bookingStatus: booking.status,
     scheduledForDate,
-    startTimeMinutes: booking.classTemplate.startTimeMinutes,
-    cancellationCutoffMinutes:
-      booking.classTemplate.cancellationCutoffMinutes,
+    startTimeMinutes: schedule.startTimeMinutes,
+    cancellationCutoffMinutes: schedule.cancellationCutoffMinutes,
     timezone: args.timezone,
     now: args.now,
   });
 
   return {
     bookingId: booking.id,
+    startsAt: getOccurrenceStartsAt({
+      scheduledForDate,
+      startTimeMinutes: schedule.startTimeMinutes,
+      timezone: args.timezone,
+    }).toISOString(),
     classTemplateId: booking.classTemplateId,
     scheduledForDate,
-    displayTitle: booking.classTemplate.title ?? booking.classTemplate.program.name,
-    programName: booking.classTemplate.program.name,
-    roomName: booking.classTemplate.room.name,
-    timeLabel: formatMinutesAsTime(booking.classTemplate.startTimeMinutes),
+    displayTitle: schedule.title ?? schedule.program.name,
+    programName: schedule.program.name,
+    roomName: schedule.room.name,
+    coachName: occurrence?.coachDisplayName ?? "Coach to be confirmed",
+    timeLabel: formatMinutesAsTime(schedule.startTimeMinutes),
+    endTimeLabel: formatMinutesAsTime(schedule.endTimeMinutes),
+    pendingPaymentExpiresAt:
+      booking.pendingPaymentExpiresAt?.toISOString() ?? null,
+    classCancelled: occurrence?.status === "CANCELLED",
     bookingType: booking.bookingType,
     status: booking.status,
     canCancel: cancellation.canCancel,
@@ -237,14 +267,20 @@ function mapBookingItem(
 }
 
 function mapWaitlistItem(entry: WaitlistEntryRecord): MemberWaitlistSummary {
+  const occurrence = resolveClassOccurrence({
+    template: entry.classTemplate as ClassOccurrenceTemplate,
+    scheduledForDate: toDateOnlyString(entry.scheduledForDate),
+  });
+  const schedule = occurrence ?? entry.classTemplate;
   return {
     waitlistEntryId: entry.id,
     classTemplateId: entry.classTemplateId,
     scheduledForDate: toDateOnlyString(entry.scheduledForDate),
-    displayTitle: entry.classTemplate.title ?? entry.classTemplate.program.name,
-    programName: entry.classTemplate.program.name,
-    roomName: entry.classTemplate.room.name,
-    timeLabel: formatMinutesAsTime(entry.classTemplate.startTimeMinutes),
+    displayTitle: schedule.title ?? schedule.program.name,
+    programName: schedule.program.name,
+    roomName: schedule.room.name,
+    coachName: occurrence?.coachDisplayName ?? "Coach to be confirmed",
+    timeLabel: formatMinutesAsTime(schedule.startTimeMinutes),
     joinedAt: entry.joinedAt,
   };
 }
@@ -253,120 +289,65 @@ export async function listEligibleSelfServiceOccurrences(args: {
   workspaceId: string;
   memberId: string;
   timezone: string;
+  fromDate?: string;
+  toDate?: string;
   db?: SelfServiceBookingDatabase;
   now?: Date;
 }): Promise<EligibleSelfServiceOccurrences> {
   const db = args.db ?? selfServiceBookingDatabase;
   const now = args.now ?? new Date();
   const today = getWorkspaceDateString(now, args.timezone);
-
+  const fromDate = args.fromDate ?? today;
+  const toDate = args.toDate ?? addDays(fromDate, 55);
   await cleanupExpiredPendingBookings({
     workspaceId: args.workspaceId,
     db: db as never,
     now,
   });
-
-  const templates = await db.classTemplate.findMany({
-    where: {
-      workspaceId: args.workspaceId,
-      archivedAt: null,
-      program: {
-        archivedAt: null,
-      },
-      room: {
-        archivedAt: null,
-        isActive: true,
-      },
-    },
-    include: {
-      program: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-      room: {
-        select: {
-          name: true,
-          capacity: true,
-        },
-      },
-    },
-    orderBy: [
-      {
-        weekday: "asc",
-      },
-      {
-        startTimeMinutes: "asc",
-      },
-    ],
+  const datedClasses = await listClassOccurrences({
+    workspaceId: args.workspaceId,
+    fromDate,
+    toDate,
+    db: db as never,
   });
-
+  const availableClasses = datedClasses.filter(
+    (item) =>
+      !item.program.archivedAt &&
+      !item.room.archivedAt &&
+      item.room.isActive !== false,
+  );
+  const dateRange = {
+    gte: new Date(`${fromDate}T00:00:00.000Z`),
+    lte: new Date(`${toDate}T00:00:00.000Z`),
+  };
   const [existingBookings, waitlistEntries, accessEntries] = await Promise.all([
     db.classBooking.findMany({
       where: {
         workspaceId: args.workspaceId,
         memberId: args.memberId,
-        scheduledForDate: {
-          gte: new Date(`${today}T00:00:00.000Z`),
-        },
-        status: {
-          not: "CANCELLED",
-        },
+        scheduledForDate: dateRange,
+        status: { not: "CANCELLED" },
       },
-      include: {
-        classTemplate: {
-          include: {
-            program: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            room: {
-              select: {
-                name: true,
-                capacity: true,
-              },
-            },
-          },
-        },
-      },
+      include: { classTemplate: { include: classOccurrenceInclude } },
     }) as Promise<ExistingBookingRecord[]>,
     db.waitlistEntry.findMany({
       where: {
         workspaceId: args.workspaceId,
         memberId: args.memberId,
         status: "ACTIVE",
-        scheduledForDate: {
-          gte: new Date(`${today}T00:00:00.000Z`),
-        },
+        scheduledForDate: dateRange,
       },
-      include: {
-        classTemplate: {
-          include: {
-            program: {
-              select: {
-                name: true,
-              },
-            },
-            room: {
-              select: {
-                name: true,
-              },
-            },
-          },
-        },
-      },
+      include: { classTemplate: { include: classOccurrenceInclude } },
     }),
     Promise.all(
-      Array.from(new Set(templates.map((template) => template.programId))).map(
-        async (programId) => ({
-          programId,
+      [...new Map(availableClasses.map((item) => [`${item.programId}:${item.scheduledForDate}`, item])).values()].map(
+        async (item) => ({
+          programId: `${item.programId}:${item.scheduledForDate}`,
           access: await resolveBookingAccessForProgram({
             workspaceId: args.workspaceId,
             memberId: args.memberId,
-            programId,
+            programId: item.programId,
+            scheduledForDate: item.scheduledForDate, now,
             allowDropIn: true,
             db: db as never,
           }),
@@ -374,32 +355,24 @@ export async function listEligibleSelfServiceOccurrences(args: {
       ),
     ),
   ]);
-
-  const templateIds = templates.map((template) => template.id);
-  const seatHoldingBookings = templateIds.length
+  const templateIds = [
+    ...new Set(availableClasses.map((item) => item.classTemplateId)),
+  ];
+  const seats = templateIds.length
     ? ((await db.classBooking.findMany({
         where: {
           workspaceId: args.workspaceId,
-          classTemplateId: {
-            in: templateIds,
-          },
-          scheduledForDate: {
-            gte: new Date(`${today}T00:00:00.000Z`),
-          },
-          status: {
-            in: ["BOOKED", "PENDING_PAYMENT"],
-          },
+          classTemplateId: { in: templateIds },
+          scheduledForDate: dateRange,
+          status: { in: ["BOOKED", "PENDING_PAYMENT"] },
         },
-        select: {
-          classTemplateId: true,
-          scheduledForDate: true,
-        },
+        select: { classTemplateId: true, scheduledForDate: true },
       })) as SeatHoldingBookingRecord[])
     : [];
-  const accessByProgramId = new Map(
-    accessEntries.map((entry) => [entry.programId, entry.access]),
+  const accessByProgram = new Map(
+    accessEntries.map((item) => [item.programId, item.access]),
   );
-  const bookingByOccurrenceKey = new Map(
+  const bookingsByKey = new Map(
     existingBookings.map((booking) => [
       buildOccurrenceKey(
         booking.classTemplateId,
@@ -408,7 +381,7 @@ export async function listEligibleSelfServiceOccurrences(args: {
       booking,
     ]),
   );
-  const waitlistByOccurrenceKey = new Map(
+  const waitlistByKey = new Map(
     waitlistEntries.map((entry) => [
       buildOccurrenceKey(
         entry.classTemplateId,
@@ -417,233 +390,108 @@ export async function listEligibleSelfServiceOccurrences(args: {
       entry,
     ]),
   );
-  const activeCounts = new Map<string, number>();
-
-  for (const booking of seatHoldingBookings) {
+  const counts = new Map<string, number>();
+  for (const seat of seats) {
     const key = buildOccurrenceKey(
-      booking.classTemplateId,
-      toDateOnlyString(booking.scheduledForDate),
+      seat.classTemplateId,
+      toDateOnlyString(seat.scheduledForDate),
     );
-
-    activeCounts.set(key, (activeCounts.get(key) ?? 0) + 1);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   }
-
-  const occurrences = buildUpcomingOccurrenceDateOptions({
-    templates,
-    timezone: args.timezone,
-    now,
-    occurrenceCount: 8,
-  }).flatMap(({ template, dateOptions }) =>
-    dateOptions
-      .filter(
-        (dateOption) =>
-          !isPastBookingCutoff({
-            scheduledForDate: dateOption.scheduledForDate,
-            startTimeMinutes: template.startTimeMinutes,
-            bookingCutoffMinutes: template.bookingCutoffMinutes,
-            timezone: args.timezone,
-            now,
-          }),
-      )
-      .flatMap<ScheduleOccurrence>((dateOption) => {
-        const key = buildOccurrenceKey(
-          dateOption.classTemplateId,
-          dateOption.scheduledForDate,
-        );
-        const existingBooking = bookingByOccurrenceKey.get(key);
-        const existingWaitlistEntry = waitlistByOccurrenceKey.get(key);
-        const activeCount = activeCounts.get(key) ?? 0;
-        const effectiveCapacity = template.capacityOverride ?? template.room.capacity;
-        const isFull =
-          effectiveCapacity !== null && activeCount >= effectiveCapacity;
-        const access = accessByProgramId.get(template.programId);
-
-        if (!existingBooking && !existingWaitlistEntry && access?.type === "none") {
-          return [];
-        }
-
-        if (existingBooking?.status === "BOOKED") {
-          return [
-            {
-              classTemplateId: dateOption.classTemplateId,
-              scheduledForDate: dateOption.scheduledForDate,
-              displayTitle: template.title ?? template.program.name,
-              programName: template.program.name,
-              roomName: template.room.name,
-              dateLabel: dateOption.label,
-              timeLabel: formatMinutesAsTime(template.startTimeMinutes),
-              capacityLabel: getCapacityLabel({
-                capacityOverride: template.capacityOverride,
-                roomCapacity: template.room.capacity,
-                activeCount,
-              }),
-              bookingState: "BOOKED" as const,
-              accessLabel:
-                existingBooking.bookingType === "PUNCH_CARD"
-                  ? "Punch card"
-                  : existingBooking.bookingType === "DROP_IN"
-                    ? "Drop-in"
-                    : existingBooking.bookingType === "TRIAL"
-                      ? "Trial"
-                      : "Membership",
-              action: "none" as const,
-              actionLabel: "Already booked",
-              note: null,
-            },
-          ];
-        }
-
-        if (existingBooking?.status === "PENDING_PAYMENT") {
-          return [
-            {
-              classTemplateId: dateOption.classTemplateId,
-              scheduledForDate: dateOption.scheduledForDate,
-              displayTitle: template.title ?? template.program.name,
-              programName: template.program.name,
-              roomName: template.room.name,
-              dateLabel: dateOption.label,
-              timeLabel: formatMinutesAsTime(template.startTimeMinutes),
-              capacityLabel: getCapacityLabel({
-                capacityOverride: template.capacityOverride,
-                roomCapacity: template.room.capacity,
-                activeCount,
-              }),
-              bookingState: "PAYMENT_PENDING" as const,
-              accessLabel: "Drop-in",
-              action: "none" as const,
-              actionLabel: "Payment pending",
-              note: "Complete checkout to keep this booking.",
-            },
-          ];
-        }
-
-        if (existingWaitlistEntry) {
-          return [
-            {
-              classTemplateId: dateOption.classTemplateId,
-              scheduledForDate: dateOption.scheduledForDate,
-              displayTitle: template.title ?? template.program.name,
-              programName: template.program.name,
-              roomName: template.room.name,
-              dateLabel: dateOption.label,
-              timeLabel: formatMinutesAsTime(template.startTimeMinutes),
-              capacityLabel: getCapacityLabel({
-                capacityOverride: template.capacityOverride,
-                roomCapacity: template.room.capacity,
-                activeCount,
-              }),
-              bookingState: "WAITLISTED" as const,
-              accessLabel: null,
-              action: "none" as const,
-              actionLabel: "Already waitlisted",
-              note: "Open bookings to leave the waitlist.",
-            },
-          ];
-        }
-
-        if (isFull && access?.type !== "membership" && access?.type !== "punch_card") {
-          return [
-            {
-              classTemplateId: dateOption.classTemplateId,
-              scheduledForDate: dateOption.scheduledForDate,
-              displayTitle: template.title ?? template.program.name,
-              programName: template.program.name,
-              roomName: template.room.name,
-              dateLabel: dateOption.label,
-              timeLabel: formatMinutesAsTime(template.startTimeMinutes),
-              capacityLabel: getCapacityLabel({
-                capacityOverride: template.capacityOverride,
-                roomCapacity: template.room.capacity,
-                activeCount,
-              }),
-              bookingState: "FULL" as const,
-              accessLabel:
-                access?.type === "drop_in" ? "Drop-in" : null,
-              action: "none" as const,
-              actionLabel: "Full",
-              note:
-                access?.type === "drop_in"
-                  ? "Drop-ins cannot join the waitlist yet."
-                  : access?.message ?? "No access product allows this class.",
-            },
-          ];
-        }
-
-        if (isFull) {
-          return [
-            {
-              classTemplateId: dateOption.classTemplateId,
-              scheduledForDate: dateOption.scheduledForDate,
-              displayTitle: template.title ?? template.program.name,
-              programName: template.program.name,
-              roomName: template.room.name,
-              dateLabel: dateOption.label,
-              timeLabel: formatMinutesAsTime(template.startTimeMinutes),
-              capacityLabel: getCapacityLabel({
-                capacityOverride: template.capacityOverride,
-                roomCapacity: template.room.capacity,
-                activeCount,
-              }),
-              bookingState: "FULL" as const,
-              accessLabel: access?.type === "punch_card" ? "Punch card" : "Membership",
-              action: "join_waitlist" as const,
-              actionLabel: "Join waitlist",
-              note: "The waitlist uses membership or punch-card access only.",
-            },
-          ];
-        }
-
-        if (access?.type === "drop_in") {
-          return [
-            {
-              classTemplateId: dateOption.classTemplateId,
-              scheduledForDate: dateOption.scheduledForDate,
-              displayTitle: template.title ?? template.program.name,
-              programName: template.program.name,
-              roomName: template.room.name,
-              dateLabel: dateOption.label,
-              timeLabel: formatMinutesAsTime(template.startTimeMinutes),
-              capacityLabel: getCapacityLabel({
-                capacityOverride: template.capacityOverride,
-                roomCapacity: template.room.capacity,
-                activeCount,
-              }),
-              bookingState: "AVAILABLE" as const,
-              accessLabel: "Drop-in",
-              action: "pay_and_book" as const,
-              actionLabel: "Pay and book",
-              note: null,
-            },
-          ];
-        }
-
-        return [
-          {
-            classTemplateId: dateOption.classTemplateId,
-            scheduledForDate: dateOption.scheduledForDate,
-            displayTitle: template.title ?? template.program.name,
-            programName: template.program.name,
-            roomName: template.room.name,
-            dateLabel: dateOption.label,
-            timeLabel: formatMinutesAsTime(template.startTimeMinutes),
-            capacityLabel: getCapacityLabel({
-              capacityOverride: template.capacityOverride,
-              roomCapacity: template.room.capacity,
-              activeCount,
-            }),
-            bookingState: "AVAILABLE" as const,
-            accessLabel: access?.type === "punch_card" ? "Punch card" : "Membership",
-            action: "book" as const,
-            actionLabel: "Book class",
-            note: null,
-          },
-        ];
+  const eligibilityEntries = db.programPromotion ? await Promise.all(availableClasses.map(async (item) => ({ key: buildOccurrenceKey(item.classTemplateId, item.scheduledForDate), eligibility: await checkMemberClassEligibility({ workspaceId: args.workspaceId, memberId: args.memberId, scheduledForDate: item.scheduledForDate, occurrence: item, db: db as never }) }))) : [];
+  const eligibilityByKey = new Map(eligibilityEntries.map((item) => [item.key, item.eligibility]));
+  const occurrences = availableClasses.flatMap<ScheduleOccurrence>((item) => {
+    const key = buildOccurrenceKey(item.classTemplateId, item.scheduledForDate);
+    const booked = bookingsByKey.get(key),
+      waitlisted = waitlistByKey.get(key),
+      access = accessByProgram.get(`${item.programId}:${item.scheduledForDate}`);
+    const activeCount = counts.get(key) ?? 0;
+    const full =
+      item.effectiveCapacity !== null && activeCount >= item.effectiveCapacity;
+    const cutoffClosed = isPastBookingCutoff({
+      scheduledForDate: item.scheduledForDate,
+      startTimeMinutes: item.startTimeMinutes,
+      bookingCutoffMinutes: item.bookingCutoffMinutes,
+      timezone: args.timezone,
+      now,
+    });
+    if (!booked && !waitlisted && (cutoffClosed || access?.type === "none"))
+      return [];
+    const occurrence: ScheduleOccurrence = {
+      classTemplateId: item.classTemplateId,
+      scheduledForDate: item.scheduledForDate,
+      displayTitle: item.displayTitle,
+      programId: item.programId,
+      programName: item.program.name,
+      roomName: item.room.name,
+      coachName: item.coachDisplayName,
+      dateLabel: formatOccurrenceDate(item.scheduledForDate),
+      timeLabel: formatMinutesAsTime(item.startTimeMinutes),
+      endTimeLabel: formatMinutesAsTime(item.endTimeMinutes),
+      capacityLabel: getCapacityLabel({
+        capacityOverride: item.capacityOverride,
+        roomCapacity: item.room.capacity,
+        activeCount,
       }),
-  );
-
-  return {
-    occurrences,
-  };
+      bookingState: "AVAILABLE",
+      accessLabel:
+        access?.type === "punch_card"
+          ? "Punch card"
+          : access?.type === "drop_in"
+            ? "Drop-in"
+            : "Membership",
+      action: "book",
+      actionLabel: "Book class",
+      note: null,
+    };
+    if (booked) {
+      occurrence.bookingId = booked.id;
+      occurrence.action = "none";
+      occurrence.actionLabel = "Manage";
+      occurrence.accessLabel =
+        booked.bookingType === "PUNCH_CARD"
+          ? "Punch card"
+          : booked.bookingType === "DROP_IN"
+            ? "Drop-in"
+            : booked.bookingType === "TRIAL"
+              ? "Trial"
+              : "Membership";
+      occurrence.bookingState =
+        booked.status === "PENDING_PAYMENT"
+          ? "PAYMENT_PENDING"
+          : booked.status === "ATTENDED"
+            ? "ATTENDED"
+            : "BOOKED";
+      if (booked.status === "PENDING_PAYMENT")
+        occurrence.note =
+          "Your place is held while payment is pending. Check its status before starting another payment.";
+    } else if (waitlisted) {
+      occurrence.waitlistEntryId = waitlisted.id;
+      occurrence.bookingState = "WAITLISTED";
+      occurrence.action = "none";
+      occurrence.actionLabel = "Manage";
+      occurrence.note =
+        "You are on the waitlist. This is not a confirmed place.";
+    } else if (full) {
+      occurrence.bookingState = "FULL";
+      if (access?.type === "membership" || access?.type === "punch_card") {
+        occurrence.action = "join_waitlist";
+        occurrence.actionLabel = "Join waitlist";
+      } else {
+        occurrence.action = "none";
+        occurrence.actionLabel = "Full";
+        occurrence.note = "Drop-ins cannot join this waitlist.";
+      }
+    } else if (access?.type === "drop_in") {
+      occurrence.action = "pay_and_book";
+      occurrence.actionLabel = "Pay and book";
+    }
+    const eligibility = eligibilityByKey.get(key);
+    if (eligibility && !eligibility.eligible) { occurrence.action = "none"; occurrence.actionLabel = "Not eligible"; occurrence.note = eligibility.reason; }
+    else if (eligibility && !occurrence.note && item.program.rankPolicy) occurrence.note = `Current rank: ${eligibility.currentRank}`;
+    return [occurrence];
+  });
+  return { occurrences, fromDate, toDate };
 }
 
 export async function listMemberBookings(args: {
@@ -672,24 +520,7 @@ export async function listMemberBookings(args: {
         workspaceId: args.workspaceId,
         memberId: args.memberId,
       },
-      include: {
-        classTemplate: {
-          include: {
-            program: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            room: {
-              select: {
-                name: true,
-                capacity: true,
-              },
-            },
-          },
-        },
-      },
+      include: { classTemplate: { include: classOccurrenceInclude } },
       orderBy: [
         {
           scheduledForDate: "desc",
@@ -698,7 +529,6 @@ export async function listMemberBookings(args: {
           createdAt: "desc",
         },
       ],
-      take: 30,
     }) as Promise<ExistingBookingRecord[]>,
     db.waitlistEntry.findMany({
       where: {
@@ -706,22 +536,7 @@ export async function listMemberBookings(args: {
         memberId: args.memberId,
         status: "ACTIVE",
       },
-      include: {
-        classTemplate: {
-          include: {
-            program: {
-              select: {
-                name: true,
-              },
-            },
-            room: {
-              select: {
-                name: true,
-              },
-            },
-          },
-        },
-      },
+      include: { classTemplate: { include: classOccurrenceInclude } },
       orderBy: [
         {
           scheduledForDate: "asc",
@@ -743,7 +558,11 @@ export async function listMemberBookings(args: {
     });
     const startsAt = getOccurrenceStartsAt({
       scheduledForDate: item.scheduledForDate,
-      startTimeMinutes: booking.classTemplate.startTimeMinutes,
+      startTimeMinutes:
+        resolveClassOccurrence({
+          template: booking.classTemplate as ClassOccurrenceTemplate,
+          scheduledForDate: item.scheduledForDate,
+        })?.startTimeMinutes ?? booking.classTemplate.startTimeMinutes,
       timezone: args.timezone,
     });
 
@@ -759,8 +578,12 @@ export async function listMemberBookings(args: {
   }
 
   return {
-    upcoming,
-    history,
+    upcoming: upcoming.sort((a, b) =>
+      (a.startsAt ?? a.scheduledForDate).localeCompare(
+        b.startsAt ?? b.scheduledForDate,
+      ),
+    ),
+    history: history.slice(0, 30),
     waitlist: waitlistEntries.map(mapWaitlistItem),
   };
 }
@@ -771,6 +594,7 @@ export async function createSelfBooking(args: {
   classTemplateId: string;
   scheduledForDate: string;
   timezone: string;
+  allowDropIn?: boolean;
   db?: SelfServiceBookingDatabase;
   now?: Date;
 }): Promise<SelfBookingMutationResult> {
@@ -781,7 +605,7 @@ export async function createSelfBooking(args: {
     scheduledForDate: args.scheduledForDate,
     timezone: args.timezone,
     source: "MEMBER_PORTAL",
-    allowDropIn: true,
+    allowDropIn: args.allowDropIn ?? true,
     db: (args.db ?? selfServiceBookingDatabase) as never,
     now: args.now,
   });

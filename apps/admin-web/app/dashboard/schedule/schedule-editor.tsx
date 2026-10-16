@@ -1,0 +1,65 @@
+"use client";
+import Link from "next/link";
+import { parseClassPrerequisites, parseProgramRankPolicy } from "@flowstate/db/program-progress-policy";
+import { useActionState, useEffect, useId, useState } from "react";
+import type { ClassTemplateFormOptions } from "../../../lib/class-templates";
+import type { ClassScheduleInput } from "../../../lib/class-schedule";
+import { reviewOrSaveClassAction } from "./schedule-actions";
+
+const days = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const;
+export function ScheduleEditor({ initial, futureInitial, options, timezone, defaultCoachName, onCancel, onDirtyChange }: { initial: ClassScheduleInput; futureInitial?: ClassScheduleInput; options: ClassTemplateFormOptions; timezone: string; defaultCoachName?: string; onCancel?: () => void; onDirtyChange?: (dirty: boolean) => void }) {
+  const [state, action, pending] = useActionState(reviewOrSaveClassAction, { error: null });
+  const [draft, setDraft] = useState(initial);
+  const [reviewing, setReviewing] = useState(false);
+  const [mutationId] = useState(() => crypto.randomUUID());
+  const heading = useId();
+  const dirty = JSON.stringify(initial) !== JSON.stringify(draft);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => { const guard = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } }; window.addEventListener("beforeunload", guard); return () => window.removeEventListener("beforeunload", guard); }, [dirty]);
+  const field = (key: keyof ClassScheduleInput) => ({ name: key, "aria-label": ({ programId: "Program", roomId: "Room", recurrence: "Repeat", coachAssignmentMode: "Coach assignment", coachWorkspaceUserId: "Coach" } as Partial<Record<keyof ClassScheduleInput, string>>)[key], value: String(draft[key] ?? ""), onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => { setReviewing(false); setDraft({ ...draft, [key]: event.target.value }); } });
+  const prerequisites = parseClassPrerequisites(draft.prerequisites)!;
+  const rankPolicy = parseProgramRankPolicy(options.programs.find((program) => program.id === draft.programId)?.rankPolicy);
+  const changeRule = (key: string, value: unknown) => { setReviewing(false); setDraft({ ...draft, prerequisites: { ...prerequisites, [key]: value } }); };
+  const perDate = ["occurrence", "coach", "cancel"].includes(draft.scope);
+  const simple = draft.scope === "coach" || draft.scope === "cancel";
+  const cancel = (event?: React.MouseEvent) => { if (dirty && !window.confirm("Discard your unsaved class changes?")) { event?.preventDefault(); return; } onCancel?.(); };
+  const review = reviewing ? state.review : undefined;
+  return <div className="form-stack">
+    <form action={action} className="form-stack" onSubmit={() => setReviewing(true)} aria-labelledby={heading}>
+      <h3 id={heading}>{draft.scope === "coach" ? "Coach for this date" : draft.scope === "cancel" ? "Cancel this class" : initial.templateId ? "Edit class" : "Add class"}</h3>
+      <input type="hidden" name="templateId" value={draft.templateId ?? ""} />
+      {initial.templateId && !simple ? <label className="field"><span>Applies to</span><select name="scope" value={draft.scope} onChange={(event) => { if (dirty && !window.confirm("Discard these edits and change the edit scope?")) return; setReviewing(false); setDraft(event.target.value === "future" ? futureInitial ?? { ...initial, scope: "future" } : initial); }}><option value="occurrence">This class only</option><option value="future">This and future classes</option></select></label> : <input type="hidden" name="scope" value={draft.scope} />}
+      <label className="field"><span>{perDate ? "Class date" : initial.templateId ? "Changes start" : "Start date"}</span><input type="date" required readOnly={!!initial.templateId} {...field("date")} /></label>
+      {!simple ? <>
+        <label className="field"><span>Class name</span><input type="text" maxLength={100} {...field("title")} placeholder="Use the program name" /></label>
+        <div className="field-row"><label className="field"><span>Program</span><select required {...field("programId")}><option value="">Choose program</option>{options.programs.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="field"><span>Room</span><select required {...field("roomId")}><option value="">Choose room</option>{options.rooms.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div>
+        <div className="field-row"><label className="field"><span>Starts</span><input type="time" required {...field("startTime")} /></label><label className="field"><span>Ends</span><input type="time" required {...field("endTime")} /></label></div>
+        <div className="field-row"><label className="field"><span>Capacity</span><input type="number" min="1" step="1" {...field("capacity")} placeholder="Use room capacity" /></label><label className="field"><span>Booking cutoff (minutes)</span><input type="number" min="0" step="1" required {...field("bookingCutoffMinutes")} /></label><label className="field"><span>Cancellation cutoff (minutes)</span><input type="number" min="0" step="1" required {...field("cancellationCutoffMinutes")} /></label></div>
+        <details><summary>Class eligibility</summary><div className="form-stack"><input type="hidden" name="prerequisites" value={JSON.stringify(prerequisites)} />
+          <div className="field-row"><label className="field"><span>Minimum age (optional)</span><input type="number" min="0" max="120" value={prerequisites.minimumAge ?? ""} onChange={(event) => changeRule("minimumAge", event.target.value === "" ? null : Number(event.target.value))} /></label><label className="field"><span>Maximum age (optional)</span><input type="number" min="0" max="120" value={prerequisites.maximumAge ?? ""} onChange={(event) => changeRule("maximumAge", event.target.value === "" ? null : Number(event.target.value))} /></label></div>
+          <label className="field"><span>Required member group tag (optional)</span><input value={prerequisites.cohortTag ?? ""} maxLength={80} onChange={(event) => changeRule("cohortTag", event.target.value || null)} /><span className="field-help">The gym must assign this tag to a member before they can book.</span></label>
+          {rankPolicy?.mode === "PREREQUISITES" ? <><label className="field"><span>Minimum rank</span><select value={prerequisites.minimumRankKey ?? ""} onChange={(event) => changeRule("minimumRankKey", event.target.value || null)}><option value="">No minimum rank</option>{rankPolicy.ranks.map((rank) => <option value={rank.key} key={rank.key}>{rank.name}</option>)}</select></label><label className="field"><span>Minimum stripes at that rank</span><input type="number" min="0" max="20" value={prerequisites.minimumStripes} onChange={(event) => changeRule("minimumStripes", Number(event.target.value))} /></label><label><input type="checkbox" checked={prerequisites.allowUnranked} onChange={(event) => changeRule("allowUnranked", event.target.checked)} /> Allow members without a recorded rank</label></> : <p>Rank requirements are off for this program. Configure them in Settings → Programs.</p>}
+          <label className="field"><span>If booked members no longer qualify</span><select {...field("ineligibleResolution")}><option value="">Resolve during review</option><option value="EXCEPTION">Keep their bookings with a recorded exception</option><option value="CANCEL">Cancel their bookings without penalty</option></select></label><label className="field"><span>Reason for changing eligibility</span><textarea maxLength={1000} {...field("reason")} /></label>
+        </div></details>
+        {!perDate ? <><label className="field"><span>Repeat</span><select {...field("recurrence")}><option value="ONCE">Does not repeat</option><option value="DAILY">Every day</option><option value="WEEKLY">Selected weekdays</option></select></label>{draft.recurrence === "WEEKLY" ? <fieldset><legend>Repeat on</legend><div className="dashboard-actions">{days.map((day) => <label key={day}><input type="checkbox" name="weekdays" value={day} checked={draft.weekdays.includes(day)} onChange={(event) => { setReviewing(false); setDraft({ ...draft, weekdays: event.target.checked ? [...draft.weekdays, day] : draft.weekdays.filter((value) => value !== day) }); }} /> {day.slice(0, 3)}</label>)}</div></fieldset> : null}{draft.recurrence !== "ONCE" ? <label className="field"><span>Repeat until (optional)</span><input type="date" min={draft.date} {...field("endDate")} /><span className="field-help">Leave blank for an ongoing timetable.</span></label> : null}</> : null}
+      </> : null}
+      {draft.scope !== "cancel" ? <>
+        {perDate ? <label className="field"><span>Coach assignment</span><select {...field("coachAssignmentMode")}><option value="INHERIT">Use default coach{defaultCoachName ? ` · ${defaultCoachName}` : ""}</option><option value="ASSIGNED">Choose a coach for this date</option><option value="UNASSIGNED">Leave this date unassigned</option></select></label> : <input type="hidden" name="coachAssignmentMode" value="INHERIT" />}
+        {!perDate || draft.coachAssignmentMode === "ASSIGNED" ? <label className="field"><span>{perDate ? "Coach" : "Default coach (optional)"}</span><select {...field("coachWorkspaceUserId")} required={perDate}><option value="">{perDate ? "Choose coach" : "Assign coaches by date"}</option>{options.coaches.map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label> : <input type="hidden" name="coachWorkspaceUserId" value="" />}
+        <p className="field-help">Unassigned classes remain bookable. Scheduling checks do not confirm that a coach is available to teach.</p>
+      </> : <><input type="hidden" name="coachAssignmentMode" value={draft.coachAssignmentMode} /><label className="field"><span>Cancellation reason</span><textarea required maxLength={1000} {...field("reason")} /></label><p className="field-help">Booked and waitlisted people will be notified. Punch credits are returned. Paid bookings may need a separate refund decision.</p></>}
+      <p className="field-help">Times use {timezone}. Earlier classes and attendance stay unchanged.</p>
+      {state.error && reviewing ? <p className="form-error" role="alert">{state.error}</p> : null}
+      {!review ? <div className="dashboard-actions"><button className="button" type="submit" disabled={pending}>{pending ? "Reviewing…" : "Review changes"}</button>{onCancel ? <button className="button button-secondary" type="button" onClick={() => cancel()}>Cancel</button> : <Link className="text-link" href={`/dashboard/schedule?date=${draft.date}`} onClick={cancel}>Cancel</Link>}</div> : null}
+    </form>
+    {review ? <section className="management-card form-stack" aria-live="polite"><h3>Review {draft.scope === "coach" ? "coach assignment" : "class changes"}</h3>
+      {review.ineligibleBookings?.length ? <div className="stack-list"><h4>Members affected by eligibility changes</h4>{review.ineligibleBookings.map((item) => <p key={item.bookingId}>{item.date} · {item.memberName}: {item.reason}</p>)}</div> : null}
+      {review.errors.length ? <ul className="form-error">{review.errors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
+      <p>{review.ongoing ? `Ongoing timetable. Showing dates through ${review.previewThrough} and all affected existing bookings.` : `Review dates through ${review.previewThrough}.`} All recurring periods and existing reservations are checked before saving.</p>
+      <p>{review.bookedCount} bookings · {review.waitlistCount} waitlist entries · {review.notificationCount} email notices</p>
+      {review.affected.length ? <div className="stack-list">{review.affected.map((item) => <div className="stack-item" key={item.date}><div><strong>{item.date}</strong>{item.before ? <p>Current: {item.before}</p> : null}<p>{item.after ? `After saving: ${item.after}` : "Removed or cancelled"}</p><p>{item.bookings} bookings · {item.waitlist} waitlist entries</p></div></div>)}</div> : <p>The assignment setting changes; the published class details stay the same.</p>}
+      {review.preservedDates.length ? <p>Separately edited dates stay unchanged: {review.preservedDates.join(", ")}</p> : null}
+      <form action={action} className="dashboard-actions"><input type="hidden" name="command" value="save" /><input type="hidden" name="reviewedInput" value={JSON.stringify(review.input)} /><input type="hidden" name="reviewToken" value={review.token} /><input type="hidden" name="mutationId" value={mutationId} /><button className="button" disabled={!review.ok || pending} type="submit">{pending ? "Saving…" : draft.scope === "cancel" ? "Cancel class" : "Save changes"}</button><button className="button button-secondary" type="button" onClick={() => setReviewing(false)}>Back to edit</button></form>
+    </section> : null}
+  </div>;
+}

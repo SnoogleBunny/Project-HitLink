@@ -1,0 +1,18 @@
+.gym-public { max-width: 1180px; margin: 0 auto; padding: 0 28px; color: var(--hl-fg); }
+.gym-public-header { min-height: 100px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--hl-line); }
+.gym-public-header nav, .gym-public-footer nav { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.gym-public-brand { font: 700 28px var(--font-barlow); color: inherit; text-decoration: none; }
+.gym-public main { padding: 44px 0 80px; }
+.gym-hero { max-width: 780px; padding: 12px 0 46px; }
+.gym-hero h1 { font: 700 clamp(36px,6vw,62px)/1.08 var(--font-barlow); margin: 0 0 24px; }
+.gym-hero p { font-size: 19px; line-height: 1.6; margin: 0 0 24px; }
+.gym-offer-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,280px),1fr)); gap: 24px; align-items: stretch; }
+.gym-offer { display: flex; flex-direction: column; justify-content: space-between; gap: 24px; border: 1px solid var(--hl-line); border-radius: 16px; padding: 26px; background: var(--hl-surface); }
+.gym-offer h2 { margin: 0 0 12px; font: 600 30px var(--font-barlow); }
+.gym-offer p { line-height: 1.5; }
+.gym-offer .hl-money { font-size: 29px; }
+.gym-offer-highlighted { border: 2px solid #235744; padding: 25px; }
+.gym-offer .button { width: 100%; }
+.gym-public-footer { border-top: 1px solid var(--hl-line); padding: 30px 0; font-size: 15px; }
+.gym-public-footer p { margin: 16px 0; }
+@media(max-width:640px) { .gym-public { padding: 0 18px; } .gym-public-header { align-items: flex-start; padding: 20px 0; flex-direction: column; gap: 18px; } .gym-public-header nav { width: 100%; justify-content: space-between; gap: 14px; } .gym-public main { padding-top: 28px; } .gym-public-footer nav { gap: 16px; } }

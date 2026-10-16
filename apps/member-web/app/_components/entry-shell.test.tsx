@@ -20,9 +20,9 @@ describe("EntryShell member semantics", () => {
 
     expect(html.match(/<main(?:\s|>)/g)).toHaveLength(1);
     expect(html.match(/<h1(?:\s|>)/g)).toHaveLength(1);
-    expect(html).toContain("Flowstate member portal");
-    expect(html).toContain("Member access, provided by your gym");
-    expect(html).toContain("Your gym creates and manages your portal access");
+    expect(html).toContain("HitLink");
+    expect(html).toContain("Your member portal");
+    expect(html).toContain("Use the login supplied by your gym");
     expect(html).not.toMatch(/sign up|create (?:an |your )?account/i);
 
     const identityStart = html.indexOf('class="member-entry-identity"');

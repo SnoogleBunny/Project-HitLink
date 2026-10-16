@@ -3,16 +3,18 @@
 import { useState } from "react";
 
 interface MigrationAcknowledgmentFormProps {
+  snapshotId?: string;
   action: (formData: FormData) => void | Promise<void>;
 }
 
 export function MigrationAcknowledgmentForm({
-  action,
+  action, snapshotId,
 }: MigrationAcknowledgmentFormProps) {
   const [isConfirmed, setIsConfirmed] = useState(false);
 
   return (
     <form action={action}>
+      <input name="snapshotId" type="hidden" value={snapshotId ?? ""} />
       <label className="field migration-acknowledgment-consent">
         <input
           checked={isConfirmed}

@@ -139,6 +139,11 @@ export function PunchCardProductForm({
         )}
       </fieldset>
 
+      <fieldset className="form-stack"><legend>Class cancellation policy</legend>
+        <p className="management-copy">New purchases use these terms. Existing packs keep the terms accepted when issued.</p>
+        <label className="field-checkbox"><input type="checkbox" name="lateCancellationConsumesPunch" defaultChecked={product?.lateCancellationConsumesPunch ?? true} /><span>Late cancellations use one punch</span></label>
+        <label className="field-checkbox"><input type="checkbox" name="noShowConsumesPunch" defaultChecked={product?.noShowConsumesPunch ?? true} /><span>No-shows use one punch</span></label>
+      </fieldset>
       {state.error ? <p className="form-error">{state.error}</p> : null}
 
       <SubmitButton pendingLabel="Saving punch card...">

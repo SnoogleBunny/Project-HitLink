@@ -17,9 +17,8 @@ const {
 }));
 
 vi.mock("@flowstate/db", async () => {
-  const actual = await vi.importActual<typeof import("@flowstate/db")>(
-    "@flowstate/db",
-  );
+  const actual =
+    await vi.importActual<typeof import("@flowstate/db")>("@flowstate/db");
 
   return {
     ...actual,
@@ -55,6 +54,7 @@ function buildTemplate(args?: {
   roomCapacity?: number | null;
 }) {
   return {
+    workspaceId: "workspace_1",
     id: args?.id ?? "template_1",
     programId: args?.programId ?? "program_1",
     title: "Muay Thai Fundamentals",
@@ -128,6 +128,27 @@ describe("self-service booking helpers", () => {
     });
   });
 
+  it("uses the exact date's title, room, time, capacity and coach in discovery and booking details", async () => {
+    const base = buildTemplate();
+    const template = { ...base, classInstances: [{ ...base, id: "exception", scheduledForDate: new Date("2026-04-14T00:00:00Z"), status: "ACTIVE", isScheduleOverride: true,
+      title: "Evening padwork", startTimeMinutes: 20 * 60, endTimeMinutes: 21 * 60, capacityOverride: 8,
+      room: { id: "other-room", name: "Upstairs mat", capacity: 12 }, coachAssignmentMode: "ASSIGNED", coachWorkspaceUserId: "coach", coachWorkspaceUser: { id: "coach", user: { fullName: "Coach Alex", email: "coach@example.com" } } }] };
+    const db = createMockDb();
+    db.classTemplate.findMany = vi.fn().mockResolvedValue([template]);
+    const result = await listEligibleSelfServiceOccurrences({ workspaceId: "workspace_1", memberId: "member_1", timezone: "UTC", fromDate: "2026-04-14", toDate: "2026-04-14", now: new Date("2026-04-14T18:00:00Z"), db });
+    expect(result.occurrences).toEqual([expect.objectContaining({ displayTitle: "Evening padwork", roomName: "Upstairs mat", timeLabel: "8:00 PM", coachName: "Coach Alex", capacityLabel: "0 / 8 booked" })]);
+    db.classBooking.findMany = vi.fn().mockResolvedValue([{ ...buildExistingBooking(), classTemplate: template }]);
+    const bookings = await listMemberBookings({ workspaceId: "workspace_1", memberId: "member_1", timezone: "UTC", now: new Date("2026-04-14T18:00:00Z"), db });
+    expect(bookings.upcoming).toEqual([expect.objectContaining({ displayTitle: "Evening padwork", roomName: "Upstairs mat", timeLabel: "8:00 PM", coachName: "Coach Alex", canCancel: true })]);
+  });
+
+  it("disables drop-in allocation when the actor cannot pay, even if a crafted form asks to book", async () => {
+    const db = createMockDb();
+    createAccessBackedBookingMock.mockResolvedValue({ status: "created", bookingId: "new" });
+    await createSelfBooking({ workspaceId: "workspace_1", memberId: "member_1", classTemplateId: "template_1", scheduledForDate: "2026-04-14", timezone: "UTC", allowDropIn: false, db });
+    expect(createAccessBackedBookingMock).toHaveBeenCalledWith(expect.objectContaining({ allowDropIn: false, memberId: "member_1" }));
+  });
+
   it("lists membership-backed availability and cleans stale pending bookings first", async () => {
     const db = createMockDb();
     db.classBooking.findMany = vi
@@ -152,6 +173,8 @@ describe("self-service booking helpers", () => {
       workspaceId: "workspace_1",
       memberId: "member_1",
       programId: "program_1",
+      scheduledForDate: "2026-04-14",
+      now: new Date("2026-04-08T12:00:00.000Z"),
       allowDropIn: true,
       db,
     });
@@ -277,7 +300,7 @@ describe("self-service booking helpers", () => {
       bookingState: "FULL",
       action: "none",
       accessLabel: "Drop-in",
-      note: "Drop-ins cannot join the waitlist yet.",
+      note: "Drop-ins cannot join this waitlist.",
     });
   });
 
@@ -323,12 +346,12 @@ describe("self-service booking helpers", () => {
         expect.objectContaining({
           classTemplateId: "template_1",
           bookingState: "BOOKED",
-          actionLabel: "Already booked",
+          actionLabel: "Manage",
         }),
         expect.objectContaining({
           classTemplateId: "template_2",
           bookingState: "PAYMENT_PENDING",
-          actionLabel: "Payment pending",
+          actionLabel: "Manage",
         }),
       ]),
     );

@@ -1,4 +1,5 @@
-import { prisma, type MembershipPlan } from "@flowstate/db";
+import { formatMoney as formatKnownMoney } from "@flowstate/ui/money";
+import { prisma, defaultMembershipLifecyclePolicy, parseMembershipLifecyclePolicy, type MembershipLifecyclePolicy, type MembershipPlan } from "@flowstate/db";
 
 const currencyPattern = /^[a-z]{3}$/;
 
@@ -15,6 +16,13 @@ interface MembershipPlanRecord {
   name: string;
   description: string | null;
   monthlyPriceCents: number;
+  weeklyClassLimit?: number | null;
+  monthlyClassLimit?: number | null;
+  allowanceCountingMode?: "ATTENDANCE" | "RESERVATION";
+  lateCancellationConsumesClass?: boolean;
+  noShowConsumesClass?: boolean;
+  termsVersion?: number;
+  lifecyclePolicy?: MembershipLifecyclePolicy | null;
   currency: string;
   cancellationPolicyReference: string | null;
   freezePolicyReference: string | null;
@@ -41,8 +49,14 @@ interface MembershipPlanDatabase {
 
 export interface MembershipPlanFormInput {
   name: string;
+  lifecyclePolicy?: unknown;
   description?: string;
   monthlyPriceCents: string;
+  weeklyClassLimit?: string;
+  monthlyClassLimit?: string;
+  allowanceCountingMode?: string;
+  lateCancellationConsumesClass?: boolean;
+  noShowConsumesClass?: boolean;
   currency?: string;
   cancellationPolicyReference?: string;
   freezePolicyReference?: string;
@@ -54,6 +68,13 @@ export interface MembershipPlanSummary {
   name: string;
   description: string | null;
   monthlyPriceCents: number;
+  weeklyClassLimit?: number | null;
+  monthlyClassLimit?: number | null;
+  allowanceCountingMode?: "ATTENDANCE" | "RESERVATION";
+  lateCancellationConsumesClass?: boolean;
+  noShowConsumesClass?: boolean;
+  termsVersion?: number;
+  lifecyclePolicy?: MembershipLifecyclePolicy | null;
   currency: string;
   cancellationPolicyReference: string | null;
   freezePolicyReference: string | null;
@@ -69,6 +90,7 @@ export interface MembershipPlanSummary {
 }
 
 export interface MembershipPlanFormOptions {
+  lifecyclePolicy?: MembershipLifecyclePolicy;
   programs: Array<{
     id: string;
     name: string;
@@ -132,8 +154,14 @@ function normalizeProgramIds(value: string[] | undefined): string[] {
 function sanitizeMembershipPlanInput(input: MembershipPlanFormInput) {
   return {
     name: input.name.trim(),
+    lifecyclePolicy: input.lifecyclePolicy === undefined ? defaultMembershipLifecyclePolicy : parseMembershipLifecyclePolicy(input.lifecyclePolicy),
     description: cleanNullable(input.description),
     monthlyPriceCents: parsePositiveInteger(input.monthlyPriceCents),
+    weeklyClassLimit: input.weeklyClassLimit?.trim() ? parsePositiveInteger(input.weeklyClassLimit) : null,
+    monthlyClassLimit: input.monthlyClassLimit?.trim() ? parsePositiveInteger(input.monthlyClassLimit) : null,
+    allowanceCountingMode: input.allowanceCountingMode ?? "ATTENDANCE",
+    lateCancellationConsumesClass: input.lateCancellationConsumesClass ?? true,
+    noShowConsumesClass: input.noShowConsumesClass ?? true,
     currency: (cleanNullable(input.currency) ?? "usd").toLowerCase(),
     cancellationPolicyReference: cleanNullable(
       input.cancellationPolicyReference,
@@ -217,6 +245,13 @@ function validateSanitizedMembershipPlanInput(
         name: string;
         description: string | null;
         monthlyPriceCents: number;
+  weeklyClassLimit?: number | null;
+  monthlyClassLimit?: number | null;
+  allowanceCountingMode?: "ATTENDANCE" | "RESERVATION";
+  lateCancellationConsumesClass?: boolean;
+  noShowConsumesClass?: boolean;
+  termsVersion?: number;
+  lifecyclePolicy?: MembershipLifecyclePolicy | null;
         currency: string;
         cancellationPolicyReference: string | null;
         freezePolicyReference: string | null;
@@ -227,6 +262,9 @@ function validateSanitizedMembershipPlanInput(
       status: "error";
       message: string;
     } {
+  if (!input.lifecyclePolicy) return { status: "error", message: "Choose a valid cancellation and freeze policy." };
+  if (input.weeklyClassLimit === "invalid" || input.monthlyClassLimit === "invalid") return { status: "error", message: "Class limits must be positive whole numbers, or blank for unlimited." };
+  if (input.allowanceCountingMode !== "ATTENDANCE" && input.allowanceCountingMode !== "RESERVATION") return { status: "error", message: "Choose how to count classes." };
   if (!input.name) {
     return {
       status: "error",
@@ -253,6 +291,9 @@ function validateSanitizedMembershipPlanInput(
     value: {
       ...input,
       monthlyPriceCents: input.monthlyPriceCents,
+      weeklyClassLimit: input.weeklyClassLimit,
+      monthlyClassLimit: input.monthlyClassLimit,
+      allowanceCountingMode: input.allowanceCountingMode,
     },
   };
 }
@@ -263,6 +304,13 @@ function mapMembershipPlan(record: MembershipPlanRecord): MembershipPlanSummary 
     name: record.name,
     description: record.description,
     monthlyPriceCents: record.monthlyPriceCents,
+    weeklyClassLimit: record.weeklyClassLimit ?? null,
+    monthlyClassLimit: record.monthlyClassLimit ?? null,
+    allowanceCountingMode: record.allowanceCountingMode ?? "ATTENDANCE",
+    lateCancellationConsumesClass: record.lateCancellationConsumesClass ?? true,
+    noShowConsumesClass: record.noShowConsumesClass ?? true,
+    termsVersion: record.termsVersion ?? 1,
+    lifecyclePolicy: parseMembershipLifecyclePolicy(record.lifecyclePolicy),
     currency: record.currency,
     cancellationPolicyReference: record.cancellationPolicyReference,
     freezePolicyReference: record.freezePolicyReference,
@@ -316,6 +364,7 @@ export async function getMembershipPlanFormOptions(args: {
   });
 
   return {
+    lifecyclePolicy: defaultMembershipLifecyclePolicy,
     programs,
   };
 }
@@ -407,6 +456,12 @@ export async function createMembershipPlan(args: {
         name: input.value.name,
         description: input.value.description,
         monthlyPriceCents: input.value.monthlyPriceCents,
+        lifecyclePolicy: input.value.lifecyclePolicy,
+        weeklyClassLimit: input.value.weeklyClassLimit,
+        monthlyClassLimit: input.value.monthlyClassLimit,
+        allowanceCountingMode: input.value.allowanceCountingMode,
+        lateCancellationConsumesClass: input.value.lateCancellationConsumesClass,
+        noShowConsumesClass: input.value.noShowConsumesClass,
         currency: input.value.currency,
         cancellationPolicyReference:
           input.value.cancellationPolicyReference,
@@ -498,8 +553,15 @@ export async function updateMembershipPlan(args: {
       },
       data: {
         name: input.value.name,
+        termsVersion: { increment: 1 },
         description: input.value.description,
         monthlyPriceCents: input.value.monthlyPriceCents,
+        lifecyclePolicy: input.value.lifecyclePolicy,
+        weeklyClassLimit: input.value.weeklyClassLimit,
+        monthlyClassLimit: input.value.monthlyClassLimit,
+        allowanceCountingMode: input.value.allowanceCountingMode,
+        lateCancellationConsumesClass: input.value.lateCancellationConsumesClass,
+        noShowConsumesClass: input.value.noShowConsumesClass,
         currency: input.value.currency,
         cancellationPolicyReference:
           input.value.cancellationPolicyReference,
@@ -565,9 +627,6 @@ export async function archiveMembershipPlan(args: {
 export function formatMembershipPlanPrice(
   plan: Pick<MembershipPlan, "monthlyPriceCents" | "currency">,
 ): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: plan.currency.toUpperCase(),
-  }).format(plan.monthlyPriceCents / 100);
+  return formatKnownMoney(plan.monthlyPriceCents, plan.currency);
 }
 

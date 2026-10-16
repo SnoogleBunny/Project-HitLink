@@ -1,27 +1,20 @@
-import { type JSX, type ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 
 export function Card({
-  className,
+  className = "",
   title,
   children,
-  href,
-}: {
-  className?: string;
-  title: string;
-  children: ReactNode;
-  href: string;
-}): JSX.Element {
+  footer,
+  ...props
+}: Omit<HTMLAttributes<HTMLElement>, "title"> & {
+  title?: ReactNode;
+  footer?: ReactNode;
+}) {
   return (
-    <a
-      className={className}
-      href={`${href}?utm_source=create-turbo&utm_medium=basic&utm_campaign=create-turbo`}
-      rel="noopener noreferrer"
-      target="_blank"
-    >
-      <h2>
-        {title} <span>-&gt;</span>
-      </h2>
-      <p>{children}</p>
-    </a>
+    <section {...props} className={`hl-card ${className}`}>
+      {title ? <h2 className="hl-card-title">{title}</h2> : null}
+      <div className="hl-card-body">{children}</div>
+      {footer ? <div className="hl-card-footer">{footer}</div> : null}
+    </section>
   );
 }
