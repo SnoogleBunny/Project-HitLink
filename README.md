@@ -4,6 +4,8 @@ HitLink serves martial arts gyms and adult one-to-one coaching programs. Owners 
 
 The approved behavior is defined in [the workflow specification](docs/approved-workflows.md), with a [replacement Word document](docs/HitLink_Product_Workflows_Shipping_Specification_v1_3.docx). [Implementation status and operational setup](docs/implementation-status.md) distinguish verified local behavior from remaining work and deployment requirements. Internal `flowstate` package names remain for compatibility.
 
+The [reviewed interactive mockups](docs/mockups/README.md) include a browser preview, editable source and screenshots for the owner, member/guardian, coach, coaching client and visitor experiences. Start there when continuing the design in another Codex session.
+
 ## Current status
 
 The owner and member applications include:

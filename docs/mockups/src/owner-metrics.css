@@ -1,0 +1,40 @@
+/* The entire summary card opens its records; the footer names the destination. */
+#hitlink-prototype .hl-tabs{display:flex;flex-wrap:wrap;gap:8px}
+#hitlink-prototype button.hl-metric-link{
+ width:100%;min-width:0;text-align:left;appearance:none;color:var(--hl-fg);
+}
+#hitlink-prototype .hl-metric-link .hl-metric-label,
+#hitlink-prototype .hl-metric-link .hl-metric-value,
+#hitlink-prototype .hl-metric-link .hl-metric-description{display:block}
+#hitlink-prototype .hl-metric-link .hl-metric-detail{display:flex;flex-direction:column;gap:12px;flex:1}
+#hitlink-prototype .hl-metric-cta{
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+ margin-top:auto;min-height:20px;color:var(--hl-green);font-size:12px;font-weight:600;
+}
+#hitlink-prototype .hl-metric-cta svg{width:16px;height:16px;flex:0 0 16px}
+#hitlink-prototype button.hl-metric.hl-metric-link:disabled{
+ cursor:default;opacity:1;box-shadow:none;filter:none;transform:none;
+ background:var(--hl-surface);color:var(--hl-fg);border-color:var(--hl-line);
+}
+#hitlink-prototype .hl-metric-link:disabled .hl-metric-cta{color:var(--hl-muted);font-weight:400}
+@media(hover:hover) and (pointer:fine){
+ #hitlink-prototype button.hl-metric.hl-metric-link:not(:disabled):not([aria-disabled=true]):hover{
+  background:var(--hl-hover-bg);color:var(--hl-hover-fg);border-color:var(--hl-hover-border);
+  box-shadow:inset 0 0 0 1px var(--hl-hover-border),0 3px 8px var(--hl-hover-shadow);transform:none;
+ }
+ #hitlink-prototype .hl-metric-link:not(:disabled):hover .hl-metric-detail{
+  background:color-mix(in srgb,var(--hl-hover-bg) 70%,var(--hl-surface));
+  border-top-color:var(--hl-hover-border);color:var(--hl-hover-fg);
+ }
+ #hitlink-prototype .hl-metric-link:not(:disabled):hover .hl-metric-cta{color:var(--hl-hover-fg)}
+}
+#hitlink-prototype button.hl-metric.hl-metric-link:not(:disabled):active{
+ background:var(--hl-hover-bg);border-color:var(--hl-hover-border);transform:none;filter:none;
+}
+@media(max-width:850px){
+ #hitlink-prototype .hl-metric-link .hl-metric-detail{gap:8px}
+ #hitlink-prototype .hl-metric-link .hl-metric-cta{min-height:20px}
+}
+@media(max-width:640px){
+ #hitlink-prototype button.hl-metric.hl-metric-link{min-height:44px}
+}

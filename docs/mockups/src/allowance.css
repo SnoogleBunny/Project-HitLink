@@ -1,0 +1,27 @@
+/* Class allowance is a readable balance, with no progress or completion cue. */
+#hitlink-prototype .hl-allowance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--hl-space-inset)}
+#hitlink-prototype .hl-allowance-grid:has(>.hl-allowance-period:only-child){grid-template-columns:minmax(0,1fr)}
+#hitlink-prototype .hl-allowance-period{min-width:0}
+#hitlink-prototype .hl-allowance-period+.hl-allowance-period{border-left:1px solid var(--hl-line);padding-left:var(--hl-space-inset)}
+#hitlink-prototype .hl-allowance-period h3{font-size:14px;line-height:1.4;margin:0 0 var(--hl-space-label)}
+#hitlink-prototype .hl-allowance-value{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--hl-space-label);margin:0}
+#hitlink-prototype .hl-allowance-period .hl-allowance-num{font-size:30px;line-height:1.1;letter-spacing:-.01em;color:var(--hl-fg)}
+#hitlink-prototype .hl-allowance-label{font-size:14px;line-height:1.4;color:var(--hl-fg)}
+#hitlink-prototype .hl-allowance-period .hl-allowance-detail{margin:var(--hl-space-label) 0 0;font-size:12px;line-height:1.5;color:var(--hl-muted)}
+#hitlink-prototype .hl-allowance-period .hl-allowance-reset{margin:var(--hl-space-tight) 0 0;font-size:12px;line-height:1.5;color:var(--hl-muted)}
+#hitlink-prototype .hl-allowance-summary>.hl-allowance-policy{margin:var(--hl-space-content) 0 0;padding-top:var(--hl-space-related);border-top:1px solid var(--hl-line);font-size:12px;line-height:1.5;color:var(--hl-muted)}
+#hitlink-prototype .hl-allowance-period:only-child{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--hl-space-related);align-items:start}
+#hitlink-prototype .hl-allowance-period:only-child h3{grid-column:1;grid-row:1;margin:0}
+#hitlink-prototype .hl-allowance-period:only-child .hl-allowance-value{grid-column:2;grid-row:1/4;align-self:center;margin:0}
+#hitlink-prototype .hl-allowance-period:only-child .hl-allowance-detail{grid-column:1;grid-row:2;margin-top:var(--hl-space-tight)}
+#hitlink-prototype .hl-allowance-period:only-child .hl-allowance-reset{grid-column:1;grid-row:3}
+@media(max-width:640px){
+ #hitlink-prototype .hl-allowance-grid{grid-template-columns:minmax(0,1fr);gap:var(--hl-space-related)}
+ #hitlink-prototype .hl-allowance-period{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--hl-space-related);align-items:start}
+ #hitlink-prototype .hl-allowance-period+.hl-allowance-period{border-left:0;border-top:1px solid var(--hl-line);padding:var(--hl-space-related) 0 0}
+ #hitlink-prototype .hl-allowance-period h3{grid-column:1;grid-row:1;margin:0}
+ #hitlink-prototype .hl-allowance-value{grid-column:2;grid-row:1/4;flex-direction:column;align-items:flex-end;gap:var(--hl-space-tight);margin:0}
+ #hitlink-prototype .hl-allowance-period .hl-allowance-detail{grid-column:1;grid-row:2;margin-top:var(--hl-space-tight)}
+ #hitlink-prototype .hl-allowance-period .hl-allowance-reset{grid-column:1;grid-row:3}
+ #hitlink-prototype .hl-allowance-label{font-size:12px}
+}

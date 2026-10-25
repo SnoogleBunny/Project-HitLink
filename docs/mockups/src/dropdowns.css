@@ -1,0 +1,64 @@
+/* Keep native select semantics while giving every field the same inset.
+   Browsers without customizable selects retain their platform picker. */
+#hitlink-prototype select:not([multiple]){
+ box-sizing:border-box;max-inline-size:100%;min-inline-size:0;
+ min-block-size:40px;padding:8px 32px 8px 12px;
+ font-size:13px;line-height:20px;font-weight:400;text-align:start;
+}
+#hitlink-prototype select:not([multiple]):disabled{opacity:.65;cursor:default}
+
+@supports(appearance:base-select){
+ #hitlink-prototype select:not([multiple]),
+ #hitlink-prototype select:not([multiple])::picker(select){appearance:base-select}
+ #hitlink-prototype select:not([multiple]){
+  padding-inline:12px;align-items:center;gap:12px;
+  white-space:normal;overflow-wrap:anywhere;
+ }
+ #hitlink-prototype select:not([multiple])::picker-icon{
+  flex:0 0 16px;inline-size:16px;margin-inline-start:auto;
+  align-self:center;color:var(--hl-muted);
+ }
+ #hitlink-prototype select:not([multiple])::picker(select){
+  box-sizing:border-box;inline-size:anchor-size(width);min-inline-size:0;
+  max-inline-size:calc(100vw - 24px);max-block-size:min(360px,calc(100dvh - 24px));
+  margin-block:6px;padding:6px;overflow:auto;
+  border:1px solid var(--hl-line);border-radius:8px;
+  background:var(--hl-surface);color:var(--hl-fg);
+  box-shadow:0 6px 20px color-mix(in srgb,var(--hl-fg) 16%,transparent);
+ }
+ #hitlink-prototype select:not([multiple]) option{
+  min-block-size:40px;padding:8px 12px;gap:8px;
+  align-items:center;white-space:normal;overflow-wrap:anywhere;
+  font:inherit;font-weight:400;line-height:20px;border-radius:4px;
+  background:var(--hl-surface);color:var(--hl-fg);
+ }
+ #hitlink-prototype select:not([multiple]) option::checkmark{
+  flex:0 0 16px;inline-size:16px;margin:0;color:var(--hl-accent-mark);
+ }
+ #hitlink-prototype select:not([multiple]) option:checked{
+  background:var(--hl-success-bg);color:var(--hl-fg);
+ }
+ #hitlink-prototype select:not([multiple]) option:not(:disabled):hover,
+ #hitlink-prototype select:not([multiple]) option:focus-visible{
+  background:var(--hl-hover-bg);color:var(--hl-hover-fg);
+ }
+ #hitlink-prototype select:not([multiple]) option:focus-visible{
+  outline:2px solid var(--hl-focus);outline-offset:-2px;
+ }
+ #hitlink-prototype select:not([multiple]) optgroup{padding:0}
+ #hitlink-prototype select:not([multiple]) optgroup>legend{
+  padding:12px 12px 8px;white-space:normal;color:var(--hl-muted);font-weight:600;
+ }
+}
+
+@media(max-width:640px),(pointer:coarse){
+ #hitlink-prototype select:not([multiple]){
+  min-block-size:44px;padding-block:10px;font-size:16px;line-height:22px;
+ }
+ @supports(appearance:base-select){
+  #hitlink-prototype select:not([multiple])::picker(select){padding:8px}
+  #hitlink-prototype select:not([multiple]) option{
+   min-block-size:44px;padding-block:10px;line-height:22px;
+  }
+ }
+}

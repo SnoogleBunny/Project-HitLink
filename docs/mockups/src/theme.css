@@ -1,0 +1,85 @@
+/* Discord Light / Ash neutral ramp, verified from the public app CSS 2026-10-10.
+   https://discord.com/assets/952007.3b490a4a037fd35b.css
+   HitLink keeps its original #15392b forest green as the action/selection fill. */
+#hitlink-prototype{
+ --hl-bg:light-dark(#f3f3f4,#2c2d32);
+ --hl-surface:light-dark(#ffffff,#36373e);
+ --hl-soft:light-dark(#f3f3f4,#3c3d45);
+ --hl-fg:light-dark(#2e2e34,#f3f3f4);
+ --hl-muted:light-dark(#6c6d76,#abacb2);
+ --hl-line:light-dark(#dedee1,#4b4c54);
+ --hl-rail:light-dark(#fbfbfb,#323339);
+ --hl-rail-fg:var(--hl-fg);
+ --hl-rail-muted:light-dark(#595a63,#c5c6ca);
+ --hl-accent:#15392b;
+ --hl-accent-fg:#ffffff;
+ --hl-accent-edge:light-dark(#15392b,#7ba68e);
+ --hl-accent-mark:light-dark(#15392b,#9abda8);
+ --hl-green:light-dark(#15392b,#b3cfbf);
+ --hl-green-fg:var(--hl-accent-fg);
+ --hl-success-bg:light-dark(#e6eee9,#263e32);
+ --hl-skeleton:light-dark(#dedee1,#53545e);
+ --hl-focus:light-dark(#205c43,#9abda8);
+ --hl-scrim:#14151999;
+ --hl-hover-bg:light-dark(#dce9e2,#43594d);
+ --hl-hover-fg:light-dark(#15392b,#ffffff);
+ --hl-hover-border:light-dark(#326e4f,#9abda8);
+ --hl-hover-shadow:light-dark(#16171b24,#0006);
+ --hl-primary-hover:#24523e;
+ --hl-nav-hover:light-dark(#e5e5e8,#474850);
+ --hl-nav-current-hover:#24523e;
+ --hl-nav-hover-fg:var(--hl-fg);
+ --hl-nav-hover-edge:var(--hl-accent-edge);
+ --hl-hero-hover:var(--hl-primary-hover);
+}
+#hitlink-prototype .hl-sidebar{border-right:1px solid var(--hl-line)}
+#hitlink-prototype .hl-brand-mark b{background:var(--hl-accent-mark)}
+#hitlink-prototype .hl-workspace{background:var(--hl-soft)}
+#hitlink-prototype .hl-workspace .hl-avatar{background:var(--hl-accent);color:var(--hl-accent-fg)}
+#hitlink-prototype .hl-sidebar-foot{border-color:var(--hl-line)}
+#hitlink-prototype .hl-status-dot{background:var(--hl-accent-mark)}
+#hitlink-prototype .hl-nav-button[aria-current=page]{background:var(--hl-accent);color:var(--hl-accent-fg);box-shadow:inset 3px 0 var(--hl-accent-edge),inset 0 0 0 1px var(--hl-accent-edge)}
+#hitlink-prototype .hl-hero{background:var(--hl-surface);color:var(--hl-fg);border:1px solid var(--hl-line);border-left:3px solid var(--hl-accent-mark)}
+#hitlink-prototype .hl-hero p{color:var(--hl-muted)}
+#hitlink-prototype .hl-hero .hl-kicker{color:var(--hl-green)}
+#hitlink-prototype .hl-hero .hl-tag{background:var(--hl-soft);color:var(--hl-fg)}
+#hitlink-prototype .hl-button.primary,
+#hitlink-prototype .hl-hero .hl-button,
+#hitlink-prototype .hl-day[aria-pressed=true]{background:var(--hl-accent);color:var(--hl-accent-fg);border-color:var(--hl-accent-edge)}
+#hitlink-prototype .hl-progress span,
+#hitlink-prototype .hl-timeline>div:before{background:var(--hl-accent-mark)}
+#hitlink-prototype .hl-class-main{border-left-color:var(--hl-accent-mark)}
+#hitlink-prototype input[type=checkbox],#hitlink-prototype input[type=radio]{accent-color:var(--hl-accent)}
+#hitlink-prototype input::placeholder,#hitlink-prototype textarea::placeholder{color:var(--hl-muted);opacity:1}
+#hitlink-prototype .hl-overlay,
+#hitlink-prototype .hl-menu-backdrop{background:var(--hl-scrim)}
+#hitlink-prototype button:focus-visible,#hitlink-prototype select:focus-visible,#hitlink-prototype input:focus-visible,#hitlink-prototype textarea:focus-visible{outline-color:var(--hl-focus)}
+#hitlink-prototype .hl-theme-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;flex-shrink:0;min-width:40px;height:40px;padding:8px 11px;border:1px solid var(--hl-line);border-radius:8px;background:var(--hl-soft);color:var(--hl-fg);font-size:12px;font-weight:600;white-space:nowrap}
+#hitlink-prototype .hl-theme-button svg{width:18px;height:18px}
+@media(pointer:coarse){#hitlink-prototype .hl-theme-button{min-width:44px;min-height:44px}}
+/* The preview chrome follows its host, even when the product has the opposite theme. */
+#hitlink-prototype .hl-reviewbar,#hitlink-prototype .hl-design-map,#hitlink-prototype>.hl-feedback{color:light-dark(#2e2e34,#f3f3f4)}
+@media(max-width:850px) and (min-width:641px){
+ #hitlink-prototype .hl-topbar .hl-theme-button>span{display:none}
+ #hitlink-prototype .hl-topbar .hl-theme-button{width:40px;padding:8px}
+}
+@media(max-width:640px){
+ #hitlink-prototype .hl-mobile-header{border-bottom:1px solid var(--hl-line);gap:8px}
+ #hitlink-prototype .hl-mobile-header .hl-brand{gap:5px;font-size:22px}
+ #hitlink-prototype .hl-mobile-header .hl-theme-button{width:44px;height:44px;padding:10px}
+ #hitlink-prototype .hl-mobile-header .hl-theme-button>span{display:none}
+ #hitlink-prototype .hl-mobile-workspace{font-size:11px}
+ #hitlink-prototype .hl-mobile-workspace>span{display:none}
+ #hitlink-prototype .hl-mobile-tab[aria-current=page],
+ #hitlink-prototype .hl-mobile-tab[aria-expanded=true]{background:var(--hl-accent);color:var(--hl-accent-fg);border-color:var(--hl-accent-edge);box-shadow:inset 0 2px var(--hl-accent-edge)}
+ #hitlink-prototype #hl-mobile-menu,#hitlink-prototype .hl-mobile-menu-head button{background:var(--hl-soft);color:var(--hl-fg);border-color:var(--hl-line)}
+}
+@media(hover:hover) and (pointer:fine){
+ #hitlink-prototype .hl-design-map summary:hover>span{color:inherit}
+ #hitlink-prototype .hl-nav-button[aria-current=page]:not(:disabled):not([aria-disabled=true]):hover{color:var(--hl-accent-fg)}
+ #hitlink-prototype .hl-button.primary:not(:disabled):not([aria-disabled=true]):hover,
+ #hitlink-prototype .hl-hero .hl-button:not(.hl-text-link):not(:disabled):not([aria-disabled=true]):hover,
+ #hitlink-prototype .hl-day[aria-pressed=true]:not(:disabled):not([aria-disabled=true]):hover,
+ #hitlink-prototype .hl-mobile-tab[aria-current=page]:hover{background:var(--hl-primary-hover);color:var(--hl-accent-fg);border-color:var(--hl-accent-edge)}
+ #hitlink-prototype .hl-menu-backdrop:hover{background:var(--hl-scrim)}
+}

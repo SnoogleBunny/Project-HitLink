@@ -1,0 +1,17 @@
+/* Motion stays within the geometry established by the spacing system. */
+#hitlink-prototype{--hl-ease:cubic-bezier(.22,.68,.3,1)}
+#hitlink-prototype .hl-overlay[data-closing=true],
+#hitlink-prototype #hl-feedback[data-closing=true],
+#hitlink-prototype[data-menu-closing=true] .hl-sidebar{pointer-events:none}
+/* WAAPI owns the drawer and scrim together, including interrupted exits. */
+#hitlink-prototype .hl-sidebar,
+#hitlink-prototype .hl-menu-backdrop{transition:none}
+#hitlink-prototype[data-motion-paused=true] .hl-skeleton-shape{animation-play-state:paused}
+@media(min-width:851px){
+ #hitlink-prototype .hl-topbar .hl-theme-button{width:120px;min-width:120px}
+}
+@media(prefers-reduced-motion:no-preference){
+ #hitlink-prototype .hl-input,
+ #hitlink-prototype .hl-select,
+ #hitlink-prototype .hl-textarea{transition:border-color 140ms var(--hl-ease),background-color 140ms var(--hl-ease)}
+}

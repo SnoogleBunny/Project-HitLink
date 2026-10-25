@@ -1,0 +1,14 @@
+/* Class forms use the same fields and controls as the rest of the workspace. */
+#hitlink-prototype .ce-editor fieldset{min-width:0;margin:0;padding:0;border:0}
+#hitlink-prototype .ce-editor legend{margin-bottom:12px;padding:0;font-weight:600}
+#hitlink-prototype .ce-editor .hl-field{margin:0;min-width:0}
+#hitlink-prototype .ce-editor .hl-grid{align-items:start}
+#hitlink-prototype .ce-editor .hl-check{min-height:44px;margin:0;padding-block:8px}
+#hitlink-prototype .ce-scope>.hl-row{gap:12px 24px}
+#hitlink-prototype .ce-weekdays>.hl-row{gap:4px 20px}
+#hitlink-prototype .ce-dates{overflow-wrap:anywhere}
+#hitlink-prototype .ce-actions{gap:12px}
+#hitlink-prototype .ce-editor input[type=date],#hitlink-prototype .ce-editor input[type=time]{min-width:0;max-width:100%;box-sizing:border-box}
+#hitlink-prototype .ce-day-control{max-width:280px;margin-bottom:18px}
+#hitlink-prototype .hl-class-coach{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+@media(max-width:640px){#hitlink-prototype .ce-editor .hl-grid{grid-template-columns:minmax(0,1fr)}#hitlink-prototype .ce-scope>.hl-row{align-items:flex-start;flex-direction:column;gap:0}#hitlink-prototype .ce-weekdays .hl-check{min-width:118px}}

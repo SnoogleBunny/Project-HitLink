@@ -1,0 +1,49 @@
+#hitlink-prototype .hl-legal-document{max-width:72ch;margin-inline:auto;color:var(--hl-fg)}
+#hitlink-prototype .hl-legal-document>section{margin-top:28px}
+#hitlink-prototype .hl-legal-document h2{margin-bottom:10px;font-size:18px}
+#hitlink-prototype .hl-legal-document p{margin-top:10px;font-size:14px;line-height:1.75;overflow-wrap:anywhere}
+#hitlink-prototype .hl-not-found{max-width:520px;margin:24px auto;text-align:center}
+#hitlink-prototype .hl-error-code{display:block;font-family:var(--hl-font-heading);font-size:100px;font-weight:600;line-height:1;color:var(--hl-accent-mark)}
+#hitlink-prototype .hl-not-found h2{margin-top:20px;font-size:24px}
+#hitlink-prototype .hl-not-found p{margin:12px auto 24px;max-width:42ch;color:var(--hl-muted);font-size:14px;line-height:1.6}
+#hitlink-prototype .hl-not-found .hl-row{justify-content:center}
+#hitlink-prototype .hl-footer-links{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+#hitlink-prototype .hl-app-footer{align-items:center;padding-block:10px;gap:8px}
+#hitlink-prototype .hl-app-footer .hl-text-link{font-size:11px;min-height:28px;padding:2px}
+#hitlink-prototype .hl-search-preview{padding:16px 0}
+#hitlink-prototype .hl-search-preview h3{margin:8px 0;color:var(--hl-green);font-size:18px;line-height:1.4}
+#hitlink-prototype .hl-search-preview p{font-size:13px;line-height:1.65;color:var(--hl-muted)}
+#hitlink-prototype .hl-share-image{display:block;width:100%;height:auto;aspect-ratio:1200/630;object-fit:contain;border-radius:8px}
+#hitlink-prototype .hl-public-header{display:none}
+#hitlink-prototype[data-role=prospect] .hl-app{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);height:860px}
+#hitlink-prototype[data-role=prospect] .hl-sidebar,
+#hitlink-prototype[data-role=prospect] .hl-mobile-header,
+#hitlink-prototype[data-role=prospect] .hl-topbar,
+#hitlink-prototype[data-role=prospect] #hl-mobile-nav{display:none}
+#hitlink-prototype[data-role=prospect] .hl-public-header{display:flex;align-items:center;gap:24px;padding:16px 24px;background:var(--hl-surface);border-bottom:1px solid var(--hl-line);grid-column:1;grid-row:1;min-width:0}
+#hitlink-prototype[data-role=prospect] .hl-stage{grid-column:1;grid-row:2}
+#hitlink-prototype .hl-public-brand{display:flex;flex-direction:column;min-width:0;color:var(--hl-fg)}
+#hitlink-prototype .hl-public-brand strong{font-family:var(--hl-font-heading);font-size:24px;font-weight:600;line-height:1.1}
+#hitlink-prototype .hl-public-brand span{font-size:12px;color:var(--hl-muted)}
+#hitlink-prototype .hl-public-header nav{display:flex;gap:16px;align-items:center;margin-left:auto}
+#hitlink-prototype .hl-public-header nav .hl-button{padding:8px 4px}
+#hitlink-prototype .hl-public-header [aria-current=page]{font-weight:700;text-decoration-thickness:2px;text-decoration-color:currentColor;color:var(--hl-fg)}
+#hitlink-prototype[data-role=prospect] .hl-app-footer{display:flex;background:var(--hl-surface)}
+#hitlink-prototype[data-role=prospect] .hl-app-footer .hl-text-link{font-size:12px}
+#hitlink-prototype[data-role=prospect] #hl-main .hl-route{max-width:1100px;margin-inline:auto}
+@media(max-width:640px){
+ #hitlink-prototype .visitor-trial-grid>.hl-panel:last-child{order:-1}
+ #hitlink-prototype[data-role=prospect] .hl-app{height:740px;grid-template-rows:auto minmax(0,1fr)}
+ #hitlink-prototype[data-role=prospect] .hl-public-header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;padding:12px 16px 8px}
+ #hitlink-prototype .hl-public-header nav{grid-column:1/-1;grid-row:2;justify-content:flex-start;margin-left:0;gap:24px}
+ #hitlink-prototype .hl-public-header nav .hl-button{min-height:44px;padding-inline:0}
+ #hitlink-prototype .hl-public-header>.hl-theme-button{grid-column:2;grid-row:1;width:44px;min-height:44px}
+ #hitlink-prototype .hl-public-header>.hl-theme-button span{display:none}
+ #hitlink-prototype[data-role=prospect] .hl-app-footer{padding:8px 16px;gap:0}
+ #hitlink-prototype[data-role=prospect] .hl-app-footer>span{width:100%;font-size:11px}
+ #hitlink-prototype[data-role=prospect] .hl-footer-links{gap:16px}
+ #hitlink-prototype[data-role=prospect] .hl-footer-links .hl-button{min-height:44px;font-size:12px;padding:0}
+ #hitlink-prototype .hl-not-found{margin:12px auto}
+ #hitlink-prototype .hl-not-found .hl-row{flex-direction:column}
+ #hitlink-prototype .hl-not-found .hl-button{width:100%}
+}

@@ -1,0 +1,267 @@
+{
+  "draft": true,
+  "draftNotice": "Draft for review. These pages are part of the HitLink mockup and are not the published terms or privacy policy. Bracketed details require confirmation before launch.",
+  "effectiveDate": "[EFFECTIVE DATE]",
+  "terms": {
+    "title": "Terms of Service",
+    "description": "How HitLink accounts, gym workspaces, bookings and adult coaching records may be used.",
+    "sections": [
+      {
+        "title": "Who provides HitLink",
+        "paragraphs": [
+          "HitLink is software operated by [LEGAL BUSINESS NAME], at [BUSINESS CONTACT ADDRESS] (\"HitLink\", \"we\" or \"us\"). These terms govern access to our software by workspace customers, staff, members, guardians and adult coaching clients.",
+          "A gym or coach using HitLink supplies their own classes, memberships and coaching. Their service agreement, cancellation rules and participation forms apply separately. These terms do not replace those agreements or make HitLink the provider of that training."
+        ]
+      },
+      {
+        "title": "Accounts and authority",
+        "paragraphs": [
+          "Provide accurate account details, keep your sign-in credentials private and tell us promptly about suspected unauthorised access at [PUBLIC SUPPORT EMAIL]. Use only the records and workspaces you have permission to access.",
+          "If you open or manage a workspace for a business, you must have authority to act for it. Account holders must be able to enter the relevant agreement. [CONFIRM ACCOUNT ELIGIBILITY RULES]. Workspace owners must assign appropriate staff permissions and remove access when it is no longer needed."
+        ]
+      },
+      {
+        "title": "Members, guardians and children",
+        "paragraphs": [
+          "You may act for another person only within the authority you have and the permissions confirmed by the gym. A family relationship or responsibility for payment does not automatically grant access to every record.",
+          "A verified guardian may manage the child's permitted bookings and forms. Keep the selected participant accurate when booking, signing or cancelling. The gym must confirm who may consent for a child and review access when circumstances change. HitLink's one-to-one coaching workflow is for adult clients."
+        ]
+      },
+      {
+        "title": "Bookings and provider rules",
+        "paragraphs": [
+          "Your gym or coach sets class eligibility, capacity, allowances, booking deadlines, attendance rules and cancellation terms. Review the rules shown for the named participant before confirming a booking or purchase.",
+          "A request is confirmed only when the service shows a confirmation. Report a booking or allowance error to the provider. Attendance records, forms and payment records must be kept accurate; using HitLink does not excuse the provider from correcting an error."
+        ]
+      },
+      {
+        "title": "Coaching and participation",
+        "paragraphs": [
+          "HitLink stores schedules, programs and coach-authored notes. These features support training administration and do not provide medical diagnosis, treatment or emergency monitoring.",
+          "Discuss training suitability, injuries and changes to your circumstances with the provider and, when needed, a qualified health professional. The provider remains responsible for the training they deliver and for explaining their participation requirements. Any waiver must be presented and accepted separately."
+        ]
+      },
+      {
+        "title": "Charges and refunds",
+        "paragraphs": [
+          "HitLink software fees are payable by the customer named in the software order. The price, currency, applicable taxes, billing interval, renewal terms and cancellation method must be shown in that order or checkout before agreement. [CONFIRM HITLINK SUBSCRIPTION AND REFUND TERMS].",
+          "Gym membership, class and coaching charges are separate and are set by the provider. Direct questions about those charges and refunds to that provider. Contact [PUBLIC SUPPORT EMAIL] about a HitLink software charge, billing error or refund request. Any refund or cancellation rights required by law continue to apply."
+        ]
+      },
+      {
+        "title": "Cancelling a booking, membership or account",
+        "paragraphs": [
+          "Use the cancellation method given for the service you are cancelling and check the result. Cancelling one booking does not cancel a membership or software subscription.",
+          "Closing a HitLink sign-in account does not, by itself, cancel a separate agreement with a gym or coach. The provider must explain how to cancel that agreement. These terms do not limit a cancellation method or remedy available under applicable law."
+        ]
+      },
+      {
+        "title": "Responsible use",
+        "paragraphs": [
+          "Do not access another person's records without authority, impersonate a member or guardian, falsify attendance or consent, upload material you have no right to use, or use HitLink to harass or discriminate unlawfully.",
+          "Do not attempt to bypass permissions, disrupt the service, introduce malicious code or extract other users' information. Tell [PUBLIC SUPPORT EMAIL] if you find a security issue."
+        ]
+      },
+      {
+        "title": "Your records and HitLink's software",
+        "paragraphs": [
+          "You retain the rights you already have in material you provide. You give HitLink the permission needed to store, process and display that material to deliver the agreed service, subject to the Privacy Policy. Personal information remains subject to the rights of the people it concerns.",
+          "HitLink and its licensors retain their rights in the software, branding and other materials they provide. You may use them through the service within your authorised access. This does not transfer ownership of the software."
+        ]
+      },
+      {
+        "title": "Workspace data and coaching notes",
+        "paragraphs": [
+          "A workspace customer must have authority to enter or import records, give people the required notices, and keep information relevant to the service. This includes member lists, guardian links, billing records, waiver documents and coaching notes.",
+          "Client-shared coaching notes are available to the client and authorised coaching staff. Private coach notes stay outside the client's ordinary view and are restricted to authorised coaching staff. Front-desk access or household payment responsibility does not grant access to private coaching notes. A private label does not override a lawful access request."
+        ]
+      },
+      {
+        "title": "Availability and changes to the service",
+        "paragraphs": [
+          "Maintenance, faults or events outside our control may interrupt HitLink. We do not promise uninterrupted access, a particular training outcome or that every feature will remain unchanged.",
+          "We will explain material changes affecting a paid subscription and any available options under the agreed order and applicable law. [CONFIRM SERVICE NOTICE PROCESS]. Providers should keep a workable way to manage time-sensitive attendance, cancellations and participant safety during an outage."
+        ]
+      },
+      {
+        "title": "Suspension, ending service and records",
+        "paragraphs": [
+          "We may restrict access when reasonably needed to address misuse, a security issue, unlawful activity or an unpaid software account. Where practical, we will explain the reason and how to resolve it. A workspace owner may also remove staff access within their authority.",
+          "A customer may end its HitLink subscription under the agreed order. Before access ends, contact [PUBLIC SUPPORT EMAIL] about the available export process. [CONFIRM EXPORT FORMAT, REQUEST WINDOW AND POST-CLOSURE PROCESS]. Ending access does not itself erase records that must still be retained, and retention remains subject to the Privacy Policy."
+        ]
+      },
+      {
+        "title": "Responsibility and legal rights",
+        "paragraphs": [
+          "Each party remains responsible for its own obligations under these terms and applicable law. A gym or coach remains responsible for its services, staff and decisions; HitLink remains responsible for its software obligations.",
+          "Nothing in these terms removes a consumer protection, privacy right or remedy that cannot lawfully be excluded. [APPROVED LIABILITY TERMS]. Any agreed limitation must be clear about its scope and preserve liabilities and rights that applicable law does not permit the parties to limit."
+        ]
+      },
+      {
+        "title": "Changes, disputes and contact",
+        "paragraphs": [
+          "We will identify the effective date of an updated version and give notice of material changes before they apply where required. A new use of personal information may also need a separate privacy notice or consent. [CONFIRM TERMS NOTICE AND ACCEPTANCE PROCESS].",
+          "Contact [PUBLIC SUPPORT EMAIL] about the service or these terms. The intended governing law and court location are [GOVERNING LAW AND COURT LOCATION], subject to any mandatory rights that apply to you."
+        ]
+      }
+    ]
+  },
+  "privacy": {
+    "title": "Privacy Policy",
+    "description": "What HitLink handles, why it is needed, who can access it and how to raise a privacy request.",
+    "sections": [
+      {
+        "title": "Who is responsible",
+        "paragraphs": [
+          "HitLink is operated by [LEGAL BUSINESS NAME]. Our privacy contact is [PRIVACY CONTACT NAME OR ROLE], reachable at [PUBLIC PRIVACY EMAIL] or [BUSINESS CONTACT ADDRESS].",
+          "We handle account and service-administration information for our own operations. Gyms and coaches decide what member and client records they need for their services; HitLink handles those records on their behalf as agreed with them. The provider's own privacy notice should explain those decisions. This division of work does not remove either organisation's responsibilities under applicable law."
+        ]
+      },
+      {
+        "title": "Account and workspace information",
+        "paragraphs": [
+          "Depending on how you use HitLink, we handle your name, email address, account credentials, account role, gym or coaching business details, contact information and workspace settings.",
+          "We use this information to create accounts, identify the correct workspace, manage permissions, administer the software subscription and respond to service requests."
+        ]
+      },
+      {
+        "title": "Member, booking and payment records",
+        "paragraphs": [
+          "A provider may enter or import a member's name, contact details, date of birth, status, tags, relevant notes, guardian contact details and confirmed family links. Records may also include memberships, class bookings, attendance, billing history and payment status.",
+          "These records support eligibility checks, booking and attendance, membership allowances, billing and authorised guardian actions. An imported member list may also remain in the source file and import records until it is removed under the applicable retention process."
+        ]
+      },
+      {
+        "title": "Forms and coaching information",
+        "paragraphs": [
+          "A provider may store forms and waiver documents. A signing record may include the typed name, email address, signing time, IP address and browser details, so the provider can identify the document and record of acceptance.",
+          "Adult coaching records may include a program, training activities and coach-authored daily notes. Notes can reveal sensitive information. Providers should collect only what is needed for the agreed training purpose and explain any sensitive collection when it occurs."
+        ]
+      },
+      {
+        "title": "Who can see records",
+        "paragraphs": [
+          "Members see the records made available to their own account. A guardian sees only the people and actions for which authority and access have been confirmed. Paying for another person's service does not give access to that person's private coaching notes.",
+          "Client-shared coaching notes are visible to the client and authorised coaching staff. Private coach notes are restricted to authorised coaching staff and are not included in the client's ordinary view. A private label does not determine the outcome of a legal access request.",
+          "HitLink personnel and service providers may need limited access to run the service, resolve an issue or meet a legal obligation. [CONFIRM SUPPORT ACCESS CONTROLS AND PROVIDER ACCESS]."
+        ]
+      },
+      {
+        "title": "Service providers and other disclosures",
+        "paragraphs": [
+          "Some functions may require providers that process information for HitLink, such as hosting, file storage, payment processing and service email. [APPROVED PROVIDERS, THEIR FUNCTIONS AND INFORMATION SHARED]. Payment processing: [CONFIRM STRIPE'S PRODUCTION ROLE AND PRIVACY NOTICE].",
+          "We may disclose information when required or permitted by applicable law, including to respond to a valid legal demand or a serious safety issue. Any disclosure must have an appropriate basis and be limited to what the circumstances require.",
+          "[CONFIRM ANY OPTIONAL ANALYTICS, MARKETING, SALE OR OTHER INDEPENDENT DATA SHARING]. This draft does not establish an approved purpose for any of those activities."
+        ]
+      },
+      {
+        "title": "Consent and choices",
+        "paragraphs": [
+          "We explain the information needed for a feature when you provide it. Sensitive or unexpected uses need an appropriate, clear choice. Optional uses must be distinguishable from what is needed to deliver the service.",
+          "You can contact the responsible provider or [PUBLIC PRIVACY EMAIL] to ask about withdrawing consent. We will explain the effect on the service and any lawful limits before acting on the request. Agreeing to the Terms of Service is not blanket consent to unrelated uses of personal information."
+        ]
+      },
+      {
+        "title": "Cookies and browser storage",
+        "paragraphs": [
+          "HitLink uses sign-in cookies to maintain authenticated access. [CONFIRM COOKIE AND BROWSER-STORAGE INVENTORY, PURPOSES AND DURATIONS]. Blocking necessary cookies may prevent sign-in or other requested features from working.",
+          "Any optional analytics or marketing technology must be identified separately, with the applicable consent choice and a way to change it. [CONFIRM WHETHER OPTIONAL TECHNOLOGIES ARE USED AND HOW CHOICES ARE MANAGED]."
+        ]
+      },
+      {
+        "title": "Children and guardian access",
+        "paragraphs": [
+          "Children may have gym member records managed through authorised adults. The provider must assess who can meaningfully consent and who has authority to act for the child, taking account of the child's understanding and applicable law.",
+          "Guardian access must match that authority and the purpose of the request. A shared household or payer account is not enough on its own. The one-to-one coaching workflow described here is for adults."
+        ]
+      },
+      {
+        "title": "Where information is processed",
+        "paragraphs": [
+          "[CONFIRMED PROCESSING AND STORAGE COUNTRIES, INCLUDING PROVIDER SUPPORT ACCESS]. The production locations have not yet been confirmed for this draft.",
+          "Where information is processed outside Canada, the laws of that location may allow courts or public authorities to access it. The published policy must explain the actual arrangements and the protections used for service-provider processing."
+        ]
+      },
+      {
+        "title": "Protection and retention",
+        "paragraphs": [
+          "We are responsible for reasonable safeguards suited to the sensitivity of the information we handle. [CONFIRMED ADMINISTRATIVE, TECHNICAL AND PHYSICAL SAFEGUARDS]. No method of storage or transmission can promise complete security.",
+          "Retention depends on why a record is needed, whether the service is active, legal recordkeeping duties and unresolved disputes. Records used for decisions affecting a person may have a required minimum retention period. After the applicable purposes and obligations end, information should be securely deleted or made no longer identifiable.",
+          "[APPROVED RETENTION SCHEDULE, INCLUDING IMPORT FILES, WAIVERS, COACHING NOTES, LOGS AND BACKUPS]. Account closure does not promise immediate deletion of every copy."
+        ]
+      },
+      {
+        "title": "Access, correction and deletion requests",
+        "paragraphs": [
+          "Contact [PUBLIC PRIVACY EMAIL] to request access to your personal information, ask how it has been used or shared, request correction, or ask for deletion. For a gym or coaching record, you may also contact that provider. We will help identify who is responsible for responding.",
+          "We may need to verify your identity and authority without collecting more than necessary. Requests are subject to applicable law, including limits protecting other people's information and required retention. We will explain an applicable limit or refusal and how to raise a concern. A deletion request is not a promise that every record can be erased."
+        ]
+      },
+      {
+        "title": "Concerns and policy changes",
+        "paragraphs": [
+          "Send a privacy concern to [PUBLIC PRIVACY EMAIL], addressed to [PRIVACY CONTACT NAME OR ROLE]. Describe the record or practice involved without sending unnecessary sensitive information.",
+          "You may also contact the privacy regulator with jurisdiction over your concern, which may be the Office of the Information and Privacy Commissioner for British Columbia or the Office of the Privacy Commissioner of Canada.",
+          "The effective date identifies the current version. We will explain material changes and obtain fresh consent where required before introducing a new use or disclosure. [CONFIRM PRIVACY NOTICE PROCESS]."
+        ]
+      }
+    ]
+  },
+  "businessPlaceholders": [
+    "[LEGAL BUSINESS NAME]",
+    "[BUSINESS CONTACT ADDRESS]",
+    "[PUBLIC SUPPORT EMAIL]",
+    "[PUBLIC PRIVACY EMAIL]",
+    "[PRIVACY CONTACT NAME OR ROLE]",
+    "[EFFECTIVE DATE]",
+    "[GOVERNING LAW AND COURT LOCATION]",
+    "[CONFIRM ACCOUNT ELIGIBILITY RULES]",
+    "[CONFIRM HITLINK SUBSCRIPTION AND REFUND TERMS]",
+    "[APPROVED LIABILITY TERMS]",
+    "[APPROVED PROVIDERS, THEIR FUNCTIONS AND INFORMATION SHARED]",
+    "[CONFIRM STRIPE'S PRODUCTION ROLE AND PRIVACY NOTICE]",
+    "[CONFIRMED PROCESSING AND STORAGE COUNTRIES, INCLUDING PROVIDER SUPPORT ACCESS]",
+    "[APPROVED RETENTION SCHEDULE, INCLUDING IMPORT FILES, WAIVERS, COACHING NOTES, LOGS AND BACKUPS]",
+    "[CONFIRMED ADMINISTRATIVE, TECHNICAL AND PHYSICAL SAFEGUARDS]",
+    "[CONFIRM EXPORT FORMAT, REQUEST WINDOW AND POST-CLOSURE PROCESS]",
+    "[CONFIRM SUPPORT ACCESS CONTROLS AND PROVIDER ACCESS]",
+    "[CONFIRM COOKIE AND BROWSER-STORAGE INVENTORY, PURPOSES AND DURATIONS]",
+    "[CONFIRM WHETHER OPTIONAL TECHNOLOGIES ARE USED AND HOW CHOICES ARE MANAGED]",
+    "[CONFIRM ANY OPTIONAL ANALYTICS, MARKETING, SALE OR OTHER INDEPENDENT DATA SHARING]",
+    "[CONFIRM SERVICE NOTICE PROCESS]",
+    "[CONFIRM TERMS NOTICE AND ACCEPTANCE PROCESS]",
+    "[CONFIRM PRIVACY NOTICE PROCESS]"
+  ],
+  "sources": [
+    {
+      "title": "B.C. Personal Information Protection Act",
+      "url": "https://www.bclaws.gov.bc.ca/civix/document/id/complete/statreg/03063_01",
+      "accessedDate": "2026-10-11",
+      "note": "Primary statute reviewed for access and correction (sections 23–24), reasonable safeguards (section 34), and retention (section 35). The draft preserves legal limits and leaves operational periods to the confirmed retention schedule."
+    },
+    {
+      "title": "Joint guidance on obtaining meaningful consent",
+      "url": "https://www.priv.gc.ca/en/privacy-topics/privacy-for-businesses/appropriate-handling-of-personal-information/collecting-personal-information-and-consent/consent/gl_omc_201805/",
+      "accessedDate": "2026-10-11",
+      "note": "Canadian, B.C. and Alberta regulators' guidance on clear purposes, sensitive information, optional choices, changing practices and children. B.C. guidance considers capacity rather than imposing a universal consent age."
+    },
+    {
+      "title": "OPC guidelines for processing personal data across borders",
+      "url": "https://www.priv.gc.ca/en/privacy-topics/airports-and-borders/gl_dab_090127/",
+      "accessedDate": "2026-10-11",
+      "note": "Supports checking provider contracts, accountability and disclosure of foreign processing. Does not establish where HitLink data is or will be stored."
+    },
+    {
+      "title": "Provincial laws that may apply instead of PIPEDA",
+      "url": "https://www.priv.gc.ca/en/privacy-topics/privacy-laws-in-canada/the-personal-information-protection-and-electronic-documents-act-pipeda/r_o_p/prov-pipeda/",
+      "accessedDate": "2026-10-11",
+      "note": "Explains that applicable privacy law depends on the activity and that provincial and federal law can both apply. The drafts do not assert exclusive B.C. jurisdiction or certified compliance."
+    },
+    {
+      "title": "B.C. Business Practices and Consumer Protection Act",
+      "url": "https://www.bclaws.gov.bc.ca/civix/document/id/complete/statreg/04002_00_multi",
+      "accessedDate": "2026-10-11",
+      "note": "Primary statute reviewed to preserve mandatory consumer rights. Software subscription terms and each provider's consumer contracts still require review against the rules applicable at launch."
+    }
+  ]
+}

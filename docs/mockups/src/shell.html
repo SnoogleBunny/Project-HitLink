@@ -1,0 +1,24 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans+Condensed:wght@600;700&amp;family=Manrope:wght@600;700&amp;family=Source+Sans+3:wght@400;500;600;700&amp;display=swap">
+<div id="hitlink-prototype" aria-label="HitLink workflow mockups">
+  <div class="hl-reviewbar"><span class="hl-review-title">HitLink <span>Design preview · v1.2</span></span><div class="hl-review-tools"><label>Explore as <select id="hl-role"><option value="owner">Gym owner</option><option value="member">Member / guardian</option><option value="coach">Life coach</option><option value="client">Coaching client</option><option value="prospect">New visitor</option></select></label><label id="hl-scenario-wrap" hidden>Scenario <select id="hl-scenario"><option value="ready">Ready to book</option><option value="limit">Weekly limit reached</option><option value="monthly">Monthly limit reached</option><option value="pending">Connection interrupted</option><option value="forms">Signature required</option><option value="debt">Payment needs attention</option><option value="late">Late cancellation</option><optgroup label="Maya’s membership examples"><option value="weekly-only">Weekly limit only</option><option value="monthly-only">Monthly limit only</option><option value="unlimited">Unlimited classes</option></optgroup></select></label></div></div>
+  <div class="hl-app">
+    <header class="hl-public-header" hidden>
+      <div class="hl-public-brand"><strong>Northstar</strong><span>Martial Arts</span></div>
+      <nav aria-label="Website navigation"><button type="button" class="hl-button ghost hl-text-link" data-page="v-pricing">Memberships</button><button type="button" class="hl-button ghost hl-text-link" data-page="v-trial">Try a class</button></nav>
+      <button type="button" class="hl-theme-button cursor-interaction" data-theme-toggle aria-label="Switch to dark mode"><i data-lucide="moon" aria-hidden="true"></i><span>Dark mode</span></button>
+    </header>
+    <header class="hl-mobile-header">
+      <div class="hl-brand"><span class="hl-brand-mark" aria-hidden="true"><b></b><b></b><b></b></span>HitLink</div>
+      <div data-member-slot="mobile" hidden></div><div class="hl-mobile-workspace"><strong>Northstar</strong><span id="hl-mobile-context">Gym workspace</span></div>
+      <button type="button" class="hl-theme-button cursor-interaction" data-theme-toggle aria-label="Switch to dark mode"><i data-lucide="moon" aria-hidden="true"></i><span>Dark mode</span></button>
+      <button type="button" id="hl-mobile-menu" class="hl-mobile-menu-button" data-mobile-menu="open" aria-label="Open workspace menu" aria-controls="hl-sidebar" aria-expanded="false"><i data-lucide="menu" aria-hidden="true"></i></button>
+    </header>
+    <div id="hl-menu-backdrop" class="hl-menu-backdrop" data-mobile-menu="close" aria-hidden="true" hidden></div>
+    <aside id="hl-sidebar" class="hl-sidebar">
+      <div class="hl-mobile-menu-head"><strong id="hl-mobile-menu-title">Workspace menu</strong><button type="button" id="hl-mobile-menu-close" class="hl-mobile-menu-button" data-mobile-menu="close" aria-label="Close workspace menu"><i data-lucide="x" aria-hidden="true"></i></button></div>
+      <div class="hl-brand"><span class="hl-brand-mark" aria-hidden="true"><b></b><b></b><b></b></span>HitLink</div><div class="hl-workspace"><span class="hl-avatar">N</span><div><strong>Northstar</strong><span>Martial Arts & Coaching</span></div></div><nav id="hl-nav" aria-label="Workspace navigation"></nav><div class="hl-sidebar-foot"><span class="hl-status-dot"></span> Vancouver · CAD<span class="hl-small">Sample workspace</span></div>
+    </aside>
+    <div class="hl-stage"><header class="hl-topbar"><span id="hl-breadcrumb">Gym workspace</span><div data-member-slot="desktop" hidden></div><div class="hl-row"><button type="button" class="hl-theme-button cursor-interaction" data-theme-toggle aria-label="Switch to dark mode"><i data-lucide="moon" aria-hidden="true"></i><span>Dark mode</span></button><span class="hl-small hl-muted hl-header-date">Fri, 9 Oct 2026</span><span class="hl-avatar hl-avatar-small" id="hl-user-avatar">JL</span></div></header><main id="hl-main"></main><nav id="hl-mobile-nav" class="hl-mobile-nav" aria-label="Primary workspace navigation"></nav><footer class="hl-app-footer"><span>Northstar Martial Arts</span><span>Concept screens · fictional people & transactions</span></footer></div><div id="hl-overlay" class="hl-overlay" hidden></div>
+  </div>
+  <div id="hl-feedback" class="hl-feedback" aria-live="polite"></div>
+</div>

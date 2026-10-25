@@ -1,0 +1,31 @@
+/* Text links use text feedback; button surfaces keep their stronger feedback. */
+#hitlink-prototype .hl-button.hl-text-link{
+ min-height:28px;min-width:0;padding:4px 0;border:0;border-radius:0;
+ justify-content:flex-start;text-align:left;gap:6px;
+ background:transparent;box-shadow:none;color:var(--hl-green);
+ text-decoration-line:underline;text-decoration-thickness:1px;
+ text-decoration-color:color-mix(in srgb,currentColor 65%,transparent);
+ text-underline-offset:3px;text-decoration-skip-ink:auto;
+}
+/* Footer and heading actions still align with their neighboring buttons. */
+#hitlink-prototype :is(.hl-pagehead,.hl-dialog-foot) .hl-button.hl-text-link{
+ min-height:var(--hl-control-height);padding:8px 12px;
+ justify-content:center;text-align:center;
+}
+/* The visible label stays aligned; extra height provides the touch target. */
+@media(max-width:640px),(pointer:coarse){
+ #hitlink-prototype .hl-button.hl-text-link{min-height:44px;min-width:44px;padding-block:10px}
+ #hitlink-prototype :is(.hl-pagehead,.hl-dialog-foot) .hl-button.hl-text-link{min-height:44px}
+}
+@media(hover:hover) and (pointer:fine){
+ #hitlink-prototype .hl-button.hl-text-link:not(:disabled):not([aria-disabled=true]):hover{
+  color:var(--hl-fg);text-decoration-color:currentColor;text-decoration-thickness:2px;
+ }
+}
+#hitlink-prototype .hl-button.hl-text-link:not(:disabled):not([aria-disabled=true]):active{
+ color:var(--hl-fg);text-decoration-color:currentColor;text-decoration-thickness:2px;
+}
+#hitlink-prototype .hl-text-link:focus-visible{text-decoration-color:currentColor;text-decoration-thickness:2px}
+@media(prefers-reduced-motion:no-preference){
+ #hitlink-prototype .hl-button.hl-text-link{transition:color 140ms var(--hl-ease),text-decoration-color 140ms var(--hl-ease)}
+}
