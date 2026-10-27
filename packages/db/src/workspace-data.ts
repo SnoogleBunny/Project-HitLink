@@ -1,9 +1,31 @@
+import { projectCoachingBookingPolicy } from "./coaching-booking-export-projection.js";
+import {
+  projectFormRequirementTerms,
+  projectFormLegacyBaseline,
+  projectFormBookingSnapshot,
+  projectFormRecoveryEvidence,
+} from "./form-export-projection.js";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "./client.js";
 import { lockClassSchedule } from "./class-occurrences.js";
+import { lockStaffAuthorityTx } from "./staff-access.js";
 import { workspaceExportFields } from "./workspace-export-fields.js";
+import {
+  projectDisputeEvidence,
+  projectDisputeState,
+} from "./dispute-export-projection.js";
+import { projectSetupSnapshot } from "./setup-export-projection.js";
+import { projectMemberProfileState } from "./profile-export-projection.js";
+import { projectPaymentConfirmationSnapshot } from "./payment-confirmation-export-projection.js";
+import {
+  exportedWorkspaceEventKinds,
+  projectExportedWorkspaceEvent,
+  projectSchedulingPolicy,
+  projectSchedulingSnapshot,
+  projectWaitlistHistory,
+} from "./scheduling-export-projection.js";
 import { inspectWorkspaceBillingHandover } from "./workspace-billing-handover.js";
 
 export class WorkspaceDataError extends Error {}
@@ -48,6 +70,7 @@ export async function requireWorkspaceDataOwner(
   db: Tx,
   actor: WorkspaceDataActor,
 ) {
+  await lockStaffAuthorityTx(db, actor);
   const owner = await db.workspaceUser.findFirst({
     where: {
       workspaceId: actor.workspaceId,
@@ -122,11 +145,13 @@ async function snapshot(db: Tx, workspaceId: string) {
         "An export model is unavailable. Apply the required migration before exporting.",
       );
     const where =
-      model === "Room"
-        ? { location: { workspaceId } }
-        : model === "MembershipLifecycleEvent"
-          ? { request: { workspaceId } }
-          : { workspaceId };
+      model === "WorkspaceDataEvent"
+        ? { workspaceId, kind: { in: [...exportedWorkspaceEventKinds] } }
+        : model === "Room"
+          ? { location: { workspaceId } }
+          : model === "MembershipLifecycleEvent"
+            ? { request: { workspaceId } }
+            : { workspaceId };
     const rows = await delegate.findMany({
       where,
       select: Object.fromEntries(fields.map((field) => [field, true])),
@@ -138,6 +163,78 @@ async function snapshot(db: Tx, workspaceId: string) {
         "This export needs a larger batch. Contact your named records contact; no records have been omitted.",
       );
     for (const row of rows) {
+      if (model === "FormRequirementRevision") {
+        row.terms = projectFormRequirementTerms(row.terms);
+        row.legacyBaseline = projectFormLegacyBaseline(row.legacyBaseline);
+      }
+      if (model === "BookingFormRecovery")
+        row.evidence = projectFormRecoveryEvidence(row.evidence);
+      if (model === "ClassBooking")
+        row.formRequirementSnapshot = projectFormBookingSnapshot(
+          row.formRequirementSnapshot,
+        );
+
+      if (model === "MemberOperationalRevision") {
+        const knownNote =
+          row.recordKind === "NOTE" &&
+          ["ADD", "AMEND", "RETRACT"].includes(String(row.action));
+        const knownTag =
+          row.recordKind === "TAG" &&
+          ["ADD", "AMEND", "RETRACT", "CLASSIFY"].includes(
+            String(row.action),
+          ) &&
+          ["OPERATIONAL", "COHORT_ELIGIBILITY"].includes(
+            String(row.tagPurpose),
+          );
+        if (
+          !(knownNote || knownTag) ||
+          !["OWNER_ONLY", "ASSIGNED_OPERATIONS"].includes(
+            String(row.visibility),
+          ) ||
+          !["OWNER", "COACH"].includes(String(row.actorRoleSnapshot))
+        )
+          fail(
+            "An operational history kind needs export review. No records have been omitted.",
+          );
+        // The reviewed SQL enforces the same disjoint payloads. Keep export
+        // projection explicit if future schema changes introduce another kind.
+        if (knownNote) {
+          row.tagLabel = null;
+          row.tagPurpose = null;
+        } else row.noteBody = null;
+      }
+      if (model === "CoachingBookingPolicy")
+        row.policy = projectCoachingBookingPolicy(row.policy);
+      if (model === "WorkspaceSchedulingPolicyRevision")
+        row.policy = projectSchedulingPolicy(row.policy);
+      if (model === "MemberProfileEvent") {
+        const emergency = String(row.kind).startsWith("EMERGENCY_CONTACT_");
+        row.before = projectMemberProfileState(row.before, emergency);
+        row.after = projectMemberProfileState(row.after, emergency);
+      }
+      if (model === "PaymentConfirmation")
+        row.snapshot = projectPaymentConfirmationSnapshot(row.snapshot);
+      if (model === "WorkspaceDataEvent")
+        row.metadata = projectExportedWorkspaceEvent(
+          String(row.kind),
+          row.metadata,
+        );
+      if (model === "ClassBooking" || model === "WaitlistEntry") {
+        row.schedulingPolicySnapshot =
+          row.schedulingPolicySnapshot == null
+            ? null
+            : projectSchedulingSnapshot(row.schedulingPolicySnapshot);
+      }
+      if (model === "WaitlistEntry")
+        row.promotionHistory = projectWaitlistHistory(row.promotionHistory);
+      if (model === "WorkspaceSetupActivation")
+        row.snapshot = projectSetupSnapshot(row.snapshot);
+      if (model === "PaymentDispute")
+        row.evidence = projectDisputeEvidence(row.evidence);
+      if (model === "PaymentDisputeEvent") {
+        row.before = projectDisputeState(row.before);
+        row.after = projectDisputeState(row.after);
+      }
       if (row.fileData instanceof Uint8Array) {
         const bytes = Buffer.from(row.fileData);
         const checksum = hash(bytes);
@@ -156,35 +253,97 @@ async function snapshot(db: Tx, workspaceId: string) {
         delete row.fileData;
         row.fileReference = `files/${row.id}`;
       }
-      if(model === "SourceMembershipLifecycleEvidence") {
-        if(!(row.receiptData instanceof Uint8Array)) fail("The original-system lifecycle receipt bytes are missing.");
-        const bytes=Buffer.from(row.receiptData);
-        if(!bytes.subarray(0,5).equals(Buffer.from("%PDF-")) || hash(bytes)!==row.receiptHash) fail("An original-system lifecycle receipt failed its type or checksum check.");
-        files.push({id:`source-lifecycle-${row.id}`,name:`source-lifecycle-${row.id}.pdf`,mimeType:"application/pdf",sha256:hash(bytes),bytes:bytes.length,base64:bytes.toString("base64")});
-        delete row.receiptData;row.receiptReference=`files/source-lifecycle-${row.id}`;
+      if (model === "SourceMembershipLifecycleEvidence") {
+        if (!(row.receiptData instanceof Uint8Array))
+          fail("The original-system lifecycle receipt bytes are missing.");
+        const bytes = Buffer.from(row.receiptData);
+        if (
+          !bytes.subarray(0, 5).equals(Buffer.from("%PDF-")) ||
+          hash(bytes) !== row.receiptHash
+        )
+          fail(
+            "An original-system lifecycle receipt failed its type or checksum check.",
+          );
+        files.push({
+          id: `source-lifecycle-${row.id}`,
+          name: `source-lifecycle-${row.id}.pdf`,
+          mimeType: "application/pdf",
+          sha256: hash(bytes),
+          bytes: bytes.length,
+          base64: bytes.toString("base64"),
+        });
+        delete row.receiptData;
+        row.receiptReference = `files/source-lifecycle-${row.id}`;
       }
-      if(model === "SourceBillingEvidence" && (row.sourceReceiptData || row.sourceReceiptHash)) {
-        if(!(row.sourceReceiptData instanceof Uint8Array)) fail("The paid source receipt bytes are missing.");
-        const bytes=Buffer.from(row.sourceReceiptData);
-        if(!bytes.subarray(0,5).equals(Buffer.from("%PDF-")) || hash(bytes)!==row.sourceReceiptHash || hash(bytes)!==row.sourceFileHash) fail("A paid source receipt failed its type or checksum check.");
-        files.push({id:`source-paid-${row.id}`,name:`source-paid-${row.id}.pdf`,mimeType:"application/pdf",sha256:hash(bytes),bytes:bytes.length,base64:bytes.toString("base64")});
-        delete row.sourceReceiptData;row.sourceReceiptReference=`files/source-paid-${row.id}`;
+      if (
+        model === "SourceBillingEvidence" &&
+        (row.sourceReceiptData || row.sourceReceiptHash)
+      ) {
+        if (!(row.sourceReceiptData instanceof Uint8Array))
+          fail("The paid source receipt bytes are missing.");
+        const bytes = Buffer.from(row.sourceReceiptData);
+        if (
+          !bytes.subarray(0, 5).equals(Buffer.from("%PDF-")) ||
+          hash(bytes) !== row.sourceReceiptHash ||
+          hash(bytes) !== row.sourceFileHash
+        )
+          fail("A paid source receipt failed its type or checksum check.");
+        files.push({
+          id: `source-paid-${row.id}`,
+          name: `source-paid-${row.id}.pdf`,
+          mimeType: "application/pdf",
+          sha256: hash(bytes),
+          bytes: bytes.length,
+          base64: bytes.toString("base64"),
+        });
+        delete row.sourceReceiptData;
+        row.sourceReceiptReference = `files/source-paid-${row.id}`;
       }
       if (model === "ImportedSignatureEvidence") {
-        if (!(row.signatureReceiptData instanceof Uint8Array)) fail("The source signature receipt is missing its original bytes.");
-        const bytes=Buffer.from(row.signatureReceiptData);
-        if(!bytes.subarray(0,5).equals(Buffer.from("%PDF-")) || hash(bytes)!==row.signatureReceiptHash) fail("A source signature receipt failed its type or checksum check.");
-        files.push({id:`source-signature-${row.id}`,name:`source-signature-${row.id}.pdf`,mimeType:"application/pdf",sha256:hash(bytes),bytes:bytes.length,base64:bytes.toString("base64")});
+        if (!(row.signatureReceiptData instanceof Uint8Array))
+          fail("The source signature receipt is missing its original bytes.");
+        const bytes = Buffer.from(row.signatureReceiptData);
+        if (
+          !bytes.subarray(0, 5).equals(Buffer.from("%PDF-")) ||
+          hash(bytes) !== row.signatureReceiptHash
+        )
+          fail("A source signature receipt failed its type or checksum check.");
+        files.push({
+          id: `source-signature-${row.id}`,
+          name: `source-signature-${row.id}.pdf`,
+          mimeType: "application/pdf",
+          sha256: hash(bytes),
+          bytes: bytes.length,
+          base64: bytes.toString("base64"),
+        });
         delete row.signatureReceiptData;
-        row.signatureReceiptReference=`files/source-signature-${row.id}`;
+        row.signatureReceiptReference = `files/source-signature-${row.id}`;
       }
-      if(model === "ImportedFinancialEvidence") {
-        const source=row.sourceSnapshot as {kind?:string;receiptBase64?:string;receiptHash?:string;receiptReference?:string}|null;
-        if(source?.kind === "LIVE_SOURCE_REFUND") {
-          const bytes=Buffer.from(source.receiptBase64??"","base64");
-          if(!bytes.subarray(0,5).equals(Buffer.from("%PDF-")) || hash(bytes)!==source.receiptHash || hash(bytes)!==row.sourceFileHash) fail("A source refund receipt failed its type or checksum check.");
-          files.push({id:`source-refund-${row.id}`,name:`source-refund-${row.id}.pdf`,mimeType:"application/pdf",sha256:hash(bytes),bytes:bytes.length,base64:bytes.toString("base64")});
-          delete source.receiptBase64;source.receiptReference=`files/source-refund-${row.id}`;
+      if (model === "ImportedFinancialEvidence") {
+        const source = row.sourceSnapshot as {
+          kind?: string;
+          receiptBase64?: string;
+          receiptHash?: string;
+          receiptReference?: string;
+        } | null;
+        if (source?.kind === "LIVE_SOURCE_REFUND") {
+          const bytes = Buffer.from(source.receiptBase64 ?? "", "base64");
+          if (
+            !bytes.subarray(0, 5).equals(Buffer.from("%PDF-")) ||
+            hash(bytes) !== source.receiptHash ||
+            hash(bytes) !== row.sourceFileHash
+          )
+            fail("A source refund receipt failed its type or checksum check.");
+          files.push({
+            id: `source-refund-${row.id}`,
+            name: `source-refund-${row.id}.pdf`,
+            mimeType: "application/pdf",
+            sha256: hash(bytes),
+            bytes: bytes.length,
+            base64: bytes.toString("base64"),
+          });
+          delete source.receiptBase64;
+          source.receiptReference = `files/source-refund-${row.id}`;
         }
       }
     }
@@ -197,11 +356,12 @@ async function snapshot(db: Tx, workspaceId: string) {
         name: field.name,
         type: field.type,
         optional: !field.isRequired,
-        units: field.name.endsWith("Cents")
-          ? "integer minor currency units; use the row's currency"
-          : field.type === "DateTime"
-            ? "ISO 8601; date-only fields retain YYYY-MM-DD semantics"
-            : undefined,
+        units:
+          field.name.endsWith("Cents") || field.name.endsWith("Minor")
+            ? "integer minor currency units; use the row's currency"
+            : field.type === "DateTime"
+              ? "ISO 8601; date-only fields retain YYYY-MM-DD semantics"
+              : undefined,
       }));
   }
   tables.Workspace = [
@@ -240,15 +400,65 @@ async function snapshot(db: Tx, workspaceId: string) {
     },
     orderBy: { id: "asc" },
   });
-  const sourceFiles=await db.importSourceFile.findMany({where:{workspaceId,stagingRecords:{some:{importedAt:{not:null},recordKind:{in:["MEMBER","MEMBERSHIP_PLAN","MEMBER_MEMBERSHIP","PUNCH_CARD_BALANCE","ALLOWANCE_USAGE","FUTURE_BOOKING","DROP_IN_PRODUCT","SCHEDULE_TEMPLATE","BILLING_HISTORY","SOURCE_SIGNATURE"]}}}},orderBy:{id:"asc"},take:50001});
-  if(sourceFiles.length>50000) fail("Source files need a larger export batch. No source files were omitted.");
-  tables.ImportSourceFile=[];
-  for(const source of sourceFiles) {
-    if(source.rawContent===null) fail("An imported source file is missing its original bytes. Resolve this before exporting.");
-    const bytes=Buffer.from(source.rawContent,"utf8");
-    if(hash(bytes)!==source.fileSha256 || bytes.length!==source.fileSizeBytes) fail("An imported source file failed its checksum check.");
-    files.push({id:`source-${source.id}`,name:source.fileName,mimeType:source.mimeType??"text/csv",sha256:source.fileSha256,bytes:bytes.length,base64:bytes.toString("base64")});
-    tables.ImportSourceFile.push({id:source.id,workspaceId,importJobId:source.importJobId,fileName:source.fileName,fileSha256:source.fileSha256,fileSizeBytes:source.fileSizeBytes,fileReference:`files/source-${source.id}`});
+  const sourceFiles = await db.importSourceFile.findMany({
+    where: {
+      workspaceId,
+      stagingRecords: {
+        some: {
+          importedAt: { not: null },
+          recordKind: {
+            in: [
+              "MEMBER",
+              "MEMBERSHIP_PLAN",
+              "MEMBER_MEMBERSHIP",
+              "PUNCH_CARD_BALANCE",
+              "ALLOWANCE_USAGE",
+              "FUTURE_BOOKING",
+              "DROP_IN_PRODUCT",
+              "SCHEDULE_TEMPLATE",
+              "BILLING_HISTORY",
+              "SOURCE_SIGNATURE",
+            ],
+          },
+        },
+      },
+    },
+    orderBy: { id: "asc" },
+    take: 50001,
+  });
+  if (sourceFiles.length > 50000)
+    fail(
+      "Source files need a larger export batch. No source files were omitted.",
+    );
+  tables.ImportSourceFile = [];
+  for (const source of sourceFiles) {
+    if (source.rawContent === null)
+      fail(
+        "An imported source file is missing its original bytes. Resolve this before exporting.",
+      );
+    const bytes = Buffer.from(source.rawContent, "utf8");
+    if (
+      hash(bytes) !== source.fileSha256 ||
+      bytes.length !== source.fileSizeBytes
+    )
+      fail("An imported source file failed its checksum check.");
+    files.push({
+      id: `source-${source.id}`,
+      name: source.fileName,
+      mimeType: source.mimeType ?? "text/csv",
+      sha256: source.fileSha256,
+      bytes: bytes.length,
+      base64: bytes.toString("base64"),
+    });
+    tables.ImportSourceFile.push({
+      id: source.id,
+      workspaceId,
+      importJobId: source.importJobId,
+      fileName: source.fileName,
+      fileSha256: source.fileSha256,
+      fileSizeBytes: source.fileSizeBytes,
+      fileReference: `files/source-${source.id}`,
+    });
   }
   const sourceHash = hash(JSON.stringify({ tables, files }));
   const csv = Object.fromEntries(
@@ -284,72 +494,74 @@ export async function createWorkspaceDataExport(
     },
   });
   try {
-    return await db.$transaction(
-      async (tx) => {
-        await lockClassSchedule(tx, actor.workspaceId);
-        await requireWorkspaceDataOwner(tx, actor);
-        const data = await snapshot(tx, actor.workspaceId);
-        const manifest = {
-          format: "HitLink relational export",
-          version: 1,
-          workspaceId: actor.workspaceId,
-          sourceHash: data.sourceHash,
-          exportedAt: now.toISOString(),
-          tables: Object.fromEntries(
-            Object.entries(data.tables).map(([name, rows]) => [
-              name,
-              rows.length,
-            ]),
-          ),
-          files: data.files.map((file) => ({
-            id: file.id,
-            name: file.name,
-            mimeType: file.mimeType,
-            sha256: file.sha256,
-            bytes: file.bytes,
-          })),
-          exclusions: [
-            "Authentication secrets and session tokens",
-            "Private coaching working notes and unpublished drafts",
-            "Coaching intake and published client content: client-scoped export only",
-            "Temporary migration source files and unrelated household/workspace records",
-          ],
-          relationships:
-            "Stable IDs and *Id columns preserve links between the named tables. FormVersion.fileReference resolves to files/<id>; SignedDocument.formVersionId identifies the exact signed version.",
-          csv: "CSV strings beginning with formula characters are prefixed with an apostrophe. JSON preserves original values.",
-        };
-        const source = JSON.stringify({ manifest, ...data });
-        if (Buffer.byteLength(source) > 100 * 1024 * 1024)
-          fail(
-            "This export requires a larger batch. No partial archive has been marked complete.",
-          );
-        const artifact = gzipSync(source);
-        const saved = await tx.workspaceDataExport.update({
-          where: { id: job.id },
-          data: {
-            state: "READY",
-            artifact,
-            sha256: hash(artifact),
-            byteCount: artifact.length,
-            manifest: json(manifest),
-          },
-          select: {
-            id: true,
-            state: true,
-            sha256: true,
-            byteCount: true,
-            expiresAt: true,
-            manifest: true,
-          },
-        });
-        await audit(tx, actor, "EXPORT_READY", {
-          exportId: job.id,
-          sha256: saved.sha256,
-          byteCount: saved.byteCount,
-        });
-        return saved;
-      },
-      { isolationLevel: "RepeatableRead", timeout: 120000 },
+    return await retrySerialization(() =>
+      db.$transaction(
+        async (tx) => {
+          await lockClassSchedule(tx, actor.workspaceId);
+          await requireWorkspaceDataOwner(tx, actor);
+          const data = await snapshot(tx, actor.workspaceId);
+          const manifest = {
+            format: "HitLink relational export",
+            version: 1,
+            workspaceId: actor.workspaceId,
+            sourceHash: data.sourceHash,
+            exportedAt: now.toISOString(),
+            tables: Object.fromEntries(
+              Object.entries(data.tables).map(([name, rows]) => [
+                name,
+                rows.length,
+              ]),
+            ),
+            files: data.files.map((file) => ({
+              id: file.id,
+              name: file.name,
+              mimeType: file.mimeType,
+              sha256: file.sha256,
+              bytes: file.bytes,
+            })),
+            exclusions: [
+              "Authentication secrets and session tokens",
+              "Private coaching working notes and unpublished drafts",
+              "Coaching intake and published client content: client-scoped export only",
+              "Temporary migration source files and unrelated household/workspace records",
+            ],
+            relationships:
+              "Stable IDs and *Id columns preserve links between the named tables. FormVersion.fileReference resolves to files/<id>; SignedDocument.formVersionId identifies the exact signed version.",
+            csv: "CSV strings beginning with formula characters are prefixed with an apostrophe. JSON preserves original values.",
+          };
+          const source = JSON.stringify({ manifest, ...data });
+          if (Buffer.byteLength(source) > 100 * 1024 * 1024)
+            fail(
+              "This export requires a larger batch. No partial archive has been marked complete.",
+            );
+          const artifact = gzipSync(source);
+          const saved = await tx.workspaceDataExport.update({
+            where: { id: job.id },
+            data: {
+              state: "READY",
+              artifact,
+              sha256: hash(artifact),
+              byteCount: artifact.length,
+              manifest: json(manifest),
+            },
+            select: {
+              id: true,
+              state: true,
+              sha256: true,
+              byteCount: true,
+              expiresAt: true,
+              manifest: true,
+            },
+          });
+          await audit(tx, actor, "EXPORT_READY", {
+            exportId: job.id,
+            sha256: saved.sha256,
+            byteCount: saved.byteCount,
+          });
+          return saved;
+        },
+        { isolationLevel: "RepeatableRead", timeout: 120000 },
+      ),
     );
   } catch (error) {
     await db.workspaceDataExport.update({
@@ -562,8 +774,10 @@ async function inventory(tx: Tx, workspaceId: string, now: Date) {
   const blockers: string[] = [];
   if (!plan)
     return { plan: null, blockers: ["Prepare an agreed offboarding plan."] };
-  const handover = plan.customerBillingDisposition === "HANDOVER"
-    ? await inspectWorkspaceBillingHandover(tx, plan, now) : null;
+  const handover =
+    plan.customerBillingDisposition === "HANDOVER"
+      ? await inspectWorkspaceBillingHandover(tx, plan, now)
+      : null;
   if (handover && !handover.valid) blockers.push(handover.reason!);
   const owners = await tx.workspaceUser.findMany({
     where: { workspaceId, role: "OWNER", isActive: true },
@@ -613,21 +827,23 @@ async function inventory(tx: Tx, workspaceId: string, now: Date) {
   if (await tx.refund.count({ where: { workspaceId, status: "PENDING" } }))
     blockers.push("Resolve pending refunds.");
   if (
-    !handover?.valid && await tx.memberPunchCard.count({
+    !handover?.valid &&
+    (await tx.memberPunchCard.count({
       where: { workspaceId, remainingPunches: { gt: 0 } },
-    })
+    }))
   )
     blockers.push(
       "Resolve unused class-pack units, including archived packs, through a recorded settlement or handover.",
     );
   if (
-    !handover?.valid && await tx.accountCredit.count({
+    !handover?.valid &&
+    (await tx.accountCredit.count({
       where: {
         workspaceId,
         status: "ACTIVE",
         remainingAmountCents: { gt: 0 },
       },
-    })
+    }))
   )
     blockers.push(
       "Resolve remaining account credits through a recorded settlement or handover.",
@@ -642,8 +858,17 @@ async function inventory(tx: Tx, workspaceId: string, now: Date) {
     })
   )
     blockers.push("Resolve future coaching appointments.");
-  if (await tx.membershipLifecycleRequest.count({ where: { workspaceId, state: { notIn: ["COMPLETE", "WITHDRAWN", "SUPERSEDED", "REJECTED"] } } }))
-    blockers.push("Resolve pending membership lifecycle changes before handing over billing or ending access.");
+  if (
+    await tx.membershipLifecycleRequest.count({
+      where: {
+        workspaceId,
+        state: { notIn: ["COMPLETE", "WITHDRAWN", "SUPERSEDED", "REJECTED"] },
+      },
+    })
+  )
+    blockers.push(
+      "Resolve pending membership lifecycle changes before handing over billing or ending access.",
+    );
   const coaching = await tx.coachingEnrollment.findMany({
     where: { workspaceId },
     select: { status: true, settlementState: true, retrievalUntil: true },
@@ -724,7 +949,11 @@ async function inventory(tx: Tx, workspaceId: string, now: Date) {
     now.getTime() - new Date(String(evidence.verifiedAt)).getTime() > 300000 ||
     evidence.version !== plan.version
   )
-    blockers.push(plan.customerBillingDisposition === "HANDOVER" ? "Freshly verify the agreed customer billing handover." : "Freshly verify every customer subscription's renewal stop.");
+    blockers.push(
+      plan.customerBillingDisposition === "HANDOVER"
+        ? "Freshly verify the agreed customer billing handover."
+        : "Freshly verify every customer subscription's renewal stop.",
+    );
   return { plan, blockers };
 }
 export async function getWorkspaceDataManagement(
@@ -763,7 +992,10 @@ export async function getWorkspaceDataManagement(
       take: 30,
     }),
     inventory(db, actor.workspaceId, options.now ?? new Date()),
-    db.workspaceRetentionCase.findUnique({ where: { workspaceId: actor.workspaceId }, select: { id: true, version: true } }),
+    db.workspaceRetentionCase.findUnique({
+      where: { workspaceId: actor.workspaceId },
+      select: { id: true, version: true },
+    }),
   ]);
   const safePlan = (value: NonNullable<typeof state.plan>) => {
     const { exportJob, ...record } = value;
@@ -804,12 +1036,24 @@ export async function finalizeWorkspaceOffboarding(
           fail(
             "Records changed after the export. Prepare, download and verify a fresh archive, then update the plan.",
           );
-        const approvedOwnerUserIds = (await tx.workspaceUser.findMany({
-          where: { workspaceId: actor.workspaceId, role: "OWNER", isActive: true },
-          select: { userId: true },
-        })).map((owner) => owner.userId).sort();
+        const approvedOwnerUserIds = (
+          await tx.workspaceUser.findMany({
+            where: {
+              workspaceId: actor.workspaceId,
+              role: "OWNER",
+              isActive: true,
+            },
+            select: { userId: true },
+          })
+        )
+          .map((owner) => owner.userId)
+          .sort();
         await tx.workspaceRetentionCase.updateMany({
-          where: { workspaceId: actor.workspaceId, offboardingPlanVersion: plan.version, executedAt: null },
+          where: {
+            workspaceId: actor.workspaceId,
+            offboardingPlanVersion: plan.version,
+            executedAt: null,
+          },
           data: { authorizationFrozenAt: now },
         });
         await tx.workspace.update({

@@ -577,6 +577,12 @@ export async function importEntitlement(
     )
       fail("The source payment has insufficient unallocated net paid money.");
     const result = await createImportedClassBookingTx({
+      sourceProof: {
+        stagingRecordId: args.stagingRecord.id,
+        importJobId: args.importJobId,
+        sourceRowHash,
+        actorId: args.actorId,
+      },
       db: args.db,
       workspaceId: args.workspaceId,
       memberId,
@@ -630,6 +636,12 @@ export async function importEntitlement(
           fundingType === "MEMBERSHIP" ? "MemberMembership" : "MemberPunchCard",
         );
   const result = await createImportedClassBookingTx({
+    sourceProof: {
+      stagingRecordId: args.stagingRecord.id,
+      importJobId: args.importJobId,
+      sourceRowHash,
+      actorId: args.actorId,
+    },
     db: args.db,
     workspaceId: args.workspaceId,
     memberId,

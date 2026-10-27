@@ -11,15 +11,15 @@ const {
 }));
 
 vi.mock("@flowstate/db", async () => {
-  const actual = await vi.importActual<typeof import("@flowstate/db")>(
-    "@flowstate/db",
-  );
+  const actual =
+    await vi.importActual<typeof import("@flowstate/db")>("@flowstate/db");
 
   return {
     ...actual,
     listOccurrenceWaitlist: listOccurrenceWaitlistMock,
     promoteNextWaitlistEntry: promoteNextWaitlistEntryMock,
     removeWaitlistEntry: removeWaitlistEntryMock,
+    evaluateBookingFormsTx: vi.fn().mockResolvedValue({ kind: "CLEAR" }),
   };
 });
 
@@ -105,6 +105,23 @@ function buildBookingRecord() {
 function createMockDb(): RosterTestDb {
   const db = {
     $transaction: vi.fn(async (callback) => callback(db)),
+    workspaceUser: {
+      findFirst: vi
+        .fn()
+        .mockResolvedValue({
+          id: access.workspaceUserId,
+          role: "COACH",
+          user: { fullName: "Casey Coach" },
+        }),
+    },
+    attendanceOperation: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: "operation_1" }),
+    },
+    attendanceEvent: {
+      findMany: vi.fn().mockResolvedValue([]),
+      createMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
     member: {
       findFirst: vi.fn().mockResolvedValue({
         id: "member_1",
@@ -129,7 +146,7 @@ function createMockDb(): RosterTestDb {
     },
     classBooking: {
       findMany: vi.fn().mockResolvedValue([buildBookingRecord()]),
-      findFirst: vi.fn().mockResolvedValue(null),
+      findFirst: vi.fn().mockResolvedValue(buildBookingRecord()),
       create: vi.fn().mockResolvedValue({
         id: "booking_1",
       }),
@@ -155,6 +172,7 @@ function createMockDb(): RosterTestDb {
       }),
     },
     attendanceRecord: {
+      findFirst: vi.fn().mockResolvedValue(null),
       findMany: vi.fn().mockResolvedValue([
         {
           id: "attendance_1",
@@ -251,8 +269,8 @@ describe("roster helpers", () => {
       memberName: "Jordan Lee",
       bookingType: "TRIAL",
       guardianName: "Alex Lee",
-      tags: ["Trial", "Youth"],
-      notes: "First class",
+      tags: [],
+      notes: null,
       attendanceState: "PRESENT",
       attendanceNote: "Ready",
     });
@@ -296,7 +314,6 @@ describe("roster helpers", () => {
       update: {
         state: "LATE",
         note: "Arrived during warmup",
-        coachWorkspaceUserId: "coach_workspace_user_1",
       },
       create: {
         workspaceId: "workspace_1",
@@ -313,12 +330,10 @@ describe("roster helpers", () => {
     });
     expect(db.classBooking.updateMany).toHaveBeenCalledWith({
       where: {
+        id: "booking_1",
         workspaceId: "workspace_1",
-        memberId: "member_1",
-        classTemplateId: "template_1",
-        scheduledForDate: new Date("2026-04-07T00:00:00.000Z"),
         status: {
-          not: "CANCELLED",
+          in: ["BOOKED", "ATTENDED", "ABSENT", "NO_SHOW"],
         },
       },
       data: {
@@ -363,7 +378,12 @@ describe("roster helpers", () => {
       now: new Date("2026-04-06T12:00:00.000Z"),
     });
 
-    db.waitlistEntry.findFirst = vi.fn().mockResolvedValue({ classTemplateId: "template_1", scheduledForDate: new Date("2026-04-07T00:00:00.000Z") });
+    db.waitlistEntry.findFirst = vi
+      .fn()
+      .mockResolvedValue({
+        classTemplateId: "template_1",
+        scheduledForDate: new Date("2026-04-07T00:00:00.000Z"),
+      });
     await expect(
       removeRosterWaitlist({
         access,
@@ -397,7 +417,8 @@ describe("roster helpers", () => {
       }),
     ).resolves.toEqual({
       status: "error",
-      message: "Attendance can only be recorded for today or a past class date.",
+      message:
+        "Attendance can only be recorded for today or a past class date.",
     });
     expect(db.attendanceRecord.upsert).not.toHaveBeenCalled();
 
@@ -415,7 +436,7 @@ describe("roster helpers", () => {
       }),
     ).resolves.toEqual({
       status: "error",
-      message: "Class roster not found.",
+      message: "You no longer have access to this class roster.",
     });
   });
 });

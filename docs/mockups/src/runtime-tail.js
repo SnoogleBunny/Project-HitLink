@@ -16,7 +16,7 @@ const flowMap=[
 flowMap.push(['CF-23','Public pricing & highlighted plan','a-website'],['CF-24','Legal pages, search & sharing','a-discovery']);
 const map=document.createElement('details');map.className='hl-design-map';map.innerHTML=`<summary>Browse ${flowMap.length} workflows <span>Owner · member · guardian · coach · client</span></summary><div class="hl-flow-map">${flowMap.map(([id,title,page])=>`<button type="button" data-page="${page}"><span>${id}</span>${title}${icon('arrow-up-right')}</button>`).join('')}</div>`;root.appendChild(map);
 function roleFor(page){return Object.keys(roles).find(role=>roles[role].pages.includes(canonicalPage(page)))||'owner';}
-function navigate(page,options={}){page=contextualPage(page);if(!views[page])page='v-not-found';if(uiState.page==='a-class-editor'&&page!==uiState.page&&classEditorRequestLeave(page,options)){root.querySelector('#hl-role').value=uiState.role;return;}preparePublicNavigation(page);if(page==='v-pricing'&&!options.pricingPreview)websiteState.view='published';const fromMenu=mobileMenuOpen;setMobileMenu(false,{restoreFocus:false,focusDestination:fromMenu});uiState.page=page;uiState.role=roleFor(page);closeDialog({restoreFocus:false,immediate:true});render();if(fromMenu&&phoneMedia.matches&&!mobileMenuClosing)focusPhoneDestination();saveSelection();}
+function navigate(page,options={}){page=contextualPage(page);if(!views[page])page='v-not-found';if(uiState.page==='a-class-editor'&&page!==uiState.page&&classEditorRequestLeave(page,options)){root.querySelector('#hl-role').value=uiState.role;return;}preparePublicNavigation(page);if(page==='v-pricing'&&!options.pricingPreview)websiteState.view='published';const fromMenu=mobileMenuOpen;setMobileMenu(false,{restoreFocus:false,focusDestination:fromMenu});uiState.page=page;uiState.role=roleFor(page);closeDialog({restoreFocus:false,immediate:true});render();if(fromMenu&&compactNavigationMedia.matches&&!mobileMenuClosing)focusPhoneDestination();saveSelection();}
 let renderedPage=null;
 function render(options={}){
  uiState.page=contextualPage(uiState.page);uiState.role=roleFor(uiState.page);
@@ -49,7 +49,7 @@ function render(options={}){
  syncMobileNavigation();
  syncPublicFooter();
  syncPageMetadata();
- if(routeChanged&&focused&&(!focused.isConnected||!focused.getClientRects().length)){if(uiState.role==='prospect')focusPublicDestination();else if(phoneMedia.matches)focusPhoneDestination();else nav.querySelector('[aria-current="page"]')?.focus({preventScroll:true});}
+ if(routeChanged&&focused&&(!focused.isConnected||!focused.getClientRects().length)){if(uiState.role==='prospect')focusPublicDestination();else if(compactNavigationMedia.matches)focusPhoneDestination();else nav.querySelector('[aria-current="page"]')?.focus({preventScroll:true});}
  else if(!needsLoading&&focused&&!focused.isConnected)restoreMotionFocus(focusRecord,false);
  renderedPage=uiState.page;
  root.querySelectorAll('button').forEach(b=>b.classList.add('cursor-interaction'));

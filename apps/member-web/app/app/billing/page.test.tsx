@@ -44,6 +44,20 @@ const context = {
   location: { timezone: "America/Toronto" },
 };
 
+describe("workspace locale billing presentation", () => {
+  it("uses configured German date and decimal conventions without changing accepted amounts", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const summary = billingSummary();
+    getBillingMock.mockResolvedValue(summary);
+    requireContextMock.mockResolvedValue({ ...context, workspace: { ...context.workspace, settings: { locale: "de-DE" } } });
+    const html = renderToStaticMarkup(await BillingPage());
+    expect(html).toContain("129,00");
+    expect(html).toContain("15. Jan. 2027");
+    expect(summary.recentRecords[0]?.amountCents).toBe(12900);
+    expect(summary.recentRecords[0]?.occurredAt.toISOString()).toBe("2027-01-15T21:30:00.000Z");
+  });
+});
+
 function billingSummary() {
   return {
     currentMembership: {

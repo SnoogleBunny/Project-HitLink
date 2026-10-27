@@ -12,10 +12,10 @@ import {
   updatePunchCardProductAction,
 } from "./actions";
 
-function getSelectedProgramIds(
-  product?: PunchCardProductSummary,
-): Set<string> {
-  return new Set(product?.programRestrictions.map((program) => program.id) ?? []);
+function getSelectedProgramIds(product?: PunchCardProductSummary): Set<string> {
+  return new Set(
+    product?.programRestrictions.map((program) => program.id) ?? [],
+  );
 }
 
 export function PunchCardProductForm({
@@ -89,11 +89,13 @@ export function PunchCardProductForm({
         <label className="field">
           <span>Currency</span>
           <input
-            defaultValue={product?.currency ?? "usd"}
+            defaultValue={(product?.currency ?? "usd").toUpperCase()}
             disabled={isStripeSynced}
             maxLength={3}
             name="currency"
-            placeholder="usd"
+            placeholder="USD"
+            autoCapitalize="characters"
+            style={{ textTransform: "uppercase" }}
             type="text"
           />
         </label>
@@ -106,8 +108,16 @@ export function PunchCardProductForm({
             type="hidden"
             value={product?.punchesIncluded ?? ""}
           />
-          <input name="priceCents" type="hidden" value={product?.priceCents ?? ""} />
-          <input name="currency" type="hidden" value={product?.currency ?? "usd"} />
+          <input
+            name="priceCents"
+            type="hidden"
+            value={product?.priceCents ?? ""}
+          />
+          <input
+            name="currency"
+            type="hidden"
+            value={product?.currency ?? "usd"}
+          />
           <p className="management-copy">
             This product is synced to Stripe. Archive it and create a new one to
             change punch count, price, or currency.
@@ -139,10 +149,28 @@ export function PunchCardProductForm({
         )}
       </fieldset>
 
-      <fieldset className="form-stack"><legend>Class cancellation policy</legend>
-        <p className="management-copy">New purchases use these terms. Existing packs keep the terms accepted when issued.</p>
-        <label className="field-checkbox"><input type="checkbox" name="lateCancellationConsumesPunch" defaultChecked={product?.lateCancellationConsumesPunch ?? true} /><span>Late cancellations use one punch</span></label>
-        <label className="field-checkbox"><input type="checkbox" name="noShowConsumesPunch" defaultChecked={product?.noShowConsumesPunch ?? true} /><span>No-shows use one punch</span></label>
+      <fieldset className="form-stack">
+        <legend>Class cancellation policy</legend>
+        <p className="management-copy">
+          New purchases use these terms. Existing packs keep the terms accepted
+          when issued.
+        </p>
+        <label className="field-checkbox">
+          <input
+            type="checkbox"
+            name="lateCancellationConsumesPunch"
+            defaultChecked={product?.lateCancellationConsumesPunch ?? true}
+          />
+          <span>Late cancellations use one punch</span>
+        </label>
+        <label className="field-checkbox">
+          <input
+            type="checkbox"
+            name="noShowConsumesPunch"
+            defaultChecked={product?.noShowConsumesPunch ?? true}
+          />
+          <span>No-shows use one punch</span>
+        </label>
       </fieldset>
       {state.error ? <p className="form-error">{state.error}</p> : null}
 

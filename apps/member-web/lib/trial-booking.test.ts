@@ -1,3 +1,4 @@
+import { fixtureSchedulingRevision } from "../../../packages/db/tests/scheduling-policy-fixture.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildTrialBookingDateOptions,
@@ -61,6 +62,7 @@ function buildTemplateRecord(args?: {
 
 function createMockDb(): TrialBookingTestDb {
   const db = {
+    workspaceSchedulingPolicyRevision: { findFirst: vi.fn().mockResolvedValue(fixtureSchedulingRevision()) },
     workspace: {
       findFirst: vi.fn().mockResolvedValue({
         id: "workspace_1",
@@ -203,35 +205,78 @@ describe("trial booking date helpers", () => {
 });
 
 describe("trial booking helpers", () => {
+  it("offers no public trial dates until class rules are confirmed", async () => {
+    const db = createMockDb(); db.workspaceSchedulingPolicyRevision!.findFirst = vi.fn().mockResolvedValue(null);
+    expect(await listTrialBookingOptions({ workspaceId: "workspace_1", db, now: new Date("2026-04-01T12:00:00Z") })).toMatchObject({ status: "no-eligible-dates" });
+  });
+
+  it("uses the published gym's locale for trial labels without changing trial dates", async () => {
+    const db = createMockDb();
+    const args = {
+      workspaceId: "workspace_1",
+      db,
+      now: new Date("2026-04-07T16:00:00Z"),
+    };
+    const baseline = await listTrialBookingOptions(args);
+    db.workspace.findFirst = vi
+      .fn()
+      .mockResolvedValue({
+        id: "workspace_1",
+        name: "Fictional gym",
+        status: "ACTIVE",
+        settings: { locale: "de-DE" },
+        location: { id: "location_1", timezone: "America/Vancouver" },
+      });
+    const localized = await listTrialBookingOptions(args);
+    if (baseline?.status !== "available" || localized?.status !== "available")
+      throw new Error("Expected eligible trial dates");
+    expect(localized.templates[0]?.dateOptions[0]?.label).toContain(
+      "Dienstag, 07.04.2026 at 18:00",
+    );
+    expect(
+      localized.templates[0]?.dateOptions.map(
+        ({ scheduledForDate, classTemplateId }) => ({
+          scheduledForDate,
+          classTemplateId,
+        }),
+      ),
+    ).toEqual(
+      baseline.templates[0]?.dateOptions.map(
+        ({ scheduledForDate, classTemplateId }) => ({
+          scheduledForDate,
+          classTemplateId,
+        }),
+      ),
+    );
+  });
   it("uses the dated coach, time and capacity rather than the recurring defaults", async () => {
     const db = createMockDb();
     const original = buildTemplateRecord();
-    db.classTemplate.findMany = vi
-      .fn()
-      .mockResolvedValue([
-        {
-          ...original,
-          classInstances: [
-            {
-              ...original,
-              id: "dated",
-              scheduledForDate: new Date("2026-04-07T00:00:00Z"),
-              status: "ACTIVE",
-              isScheduleOverride: true,
-              coachAssignmentMode: "ASSIGNED",
-              coachWorkspaceUserId: "substitute",
-              coachWorkspaceUser: {
-                user: {
-                  fullName: "Substitute Coach",
-                  email: "sub@example.test",
-                },
+    db.classTemplate.findMany = vi.fn().mockResolvedValue([
+      {
+        ...original,
+        classInstances: [
+          {
+            ...original,
+            id: "dated",
+            scheduledForDate: new Date("2026-04-07T00:00:00Z"),
+            status: "ACTIVE",
+            isScheduleOverride: true,
+            coachAssignmentMode: "ASSIGNED",
+            coachWorkspaceUserId: "substitute",
+            coachWorkspaceUser: {
+              user: {
+                fullName: "Substitute Coach",
+                email: "sub@example.test",
               },
-              startTimeMinutes: 19 * 60,
-              capacityOverride: 5,
             },
-          ],
-        },
-      ]);
+            startTimeMinutes: 19 * 60,
+            endTimeMinutes: 20 * 60,
+            capacityOverride: 5,
+          },
+        ],
+      },
+    ]);
     const options = await listTrialBookingOptions({
       workspaceId: "workspace_1",
       db,

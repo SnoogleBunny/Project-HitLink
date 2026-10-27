@@ -12,6 +12,7 @@ import {
   checkCoachingPayment,
   startCoachingPayment,
 } from "../../../lib/coaching-payments";
+import { coachingFeedback, coachingReturnPath } from "./navigation";
 
 export async function coachingAction(formData: FormData): Promise<void> {
   const context = await requireMemberPortalContext({ scope: "account" });
@@ -21,9 +22,12 @@ export async function coachingAction(formData: FormData): Promise<void> {
     userId: context.session.userId,
   };
   const payerGrantId = String(formData.get("returnPayerGrantId") ?? "");
-  const returnPath = payerGrantId
-    ? `/app/coaching/payments/${encodeURIComponent(payerGrantId)}`
-    : `/app/coaching/${encodeURIComponent(enrollmentId)}`;
+  const returnPath = coachingReturnPath({
+    enrollmentId,
+    kind: String(formData.get("kind")),
+    returnView: formData.get("returnView"),
+    payerGrantId,
+  });
   let destination = returnPath;
   try {
     const kind = String(formData.get("kind"));
@@ -31,7 +35,11 @@ export async function coachingAction(formData: FormData): Promise<void> {
       destination = await startCoachingPayment(actor, enrollmentId);
     else if (kind === "checkPayment") {
       const status = await checkCoachingPayment(actor, enrollmentId);
-      destination += `?payment=${status.toLowerCase()}`;
+      destination = coachingFeedback(
+        destination,
+        "payment",
+        status.toLowerCase(),
+      );
     } else if (kind === "confirmExportReceipt") {
       if (formData.get("confirmConsequences") !== "on")
         throw new CoachingError(
@@ -43,7 +51,7 @@ export async function coachingAction(formData: FormData): Promise<void> {
         String(formData.get("exportId")),
         String(formData.get("checksum")),
       );
-      destination += "?saved=1";
+      destination = coachingFeedback(destination, "saved", "1");
     } else {
       const input: Record<string, unknown> = Object.fromEntries(
         formData.entries(),
@@ -57,10 +65,16 @@ export async function coachingAction(formData: FormData): Promise<void> {
         expectedVersion: Number(formData.get("expectedVersion")),
         input,
       });
-      destination += "?saved=1";
+      destination = coachingFeedback(destination, "saved", "1");
     }
   } catch (error) {
-    destination = `${returnPath}?error=${encodeURIComponent(error instanceof CoachingError ? error.message : "The change could not be saved. Reload the page and try again.")}`;
+    destination = coachingFeedback(
+      returnPath,
+      "error",
+      error instanceof CoachingError
+        ? error.message
+        : "The change could not be saved. Reload the page and try again.",
+    );
   }
   revalidatePath("/app/coaching", "layout");
   redirect(destination);

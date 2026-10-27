@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 import { createOwnerWorkspaceOnboarding } from "./onboarding";
 
@@ -111,6 +112,7 @@ describe("owner workspace onboarding", () => {
     expect(created.workspaceSetting).toEqual({
       workspaceId: "workspace_1",
       allowMultipleRooms: false,
+      classReminderLeadMinutes: 1440,
     });
     expect(created.workspaceMigration).toEqual({
       workspaceId: "workspace_1",
@@ -133,6 +135,60 @@ describe("owner workspace onboarding", () => {
       expectedNextMilestone:
         "Flowstate will confirm the migration review schedule after access or exports are received.",
     });
+  });
+
+  it("persists the same 24-hour default for a fresh import-free new business", async () => {
+    const workspaceSettingCreate = vi.fn().mockResolvedValue({});
+    const workspaceSetupCreate = vi.fn().mockResolvedValue({});
+    const workspaceMigrationCreate = vi.fn().mockResolvedValue({});
+    const db = {
+      workspaceUser: { findUnique: vi.fn().mockResolvedValue(null) },
+      $transaction: vi.fn(async (callback) =>
+        callback({
+          workspace: {
+            create: vi.fn().mockResolvedValue({ id: "new_business_1" }),
+          },
+          location: { create: vi.fn().mockResolvedValue({}) },
+          workspaceUser: { create: vi.fn().mockResolvedValue({}) },
+          workspaceSetting: { create: workspaceSettingCreate },
+          workspaceSetup: { create: workspaceSetupCreate },
+          workspaceMigration: { create: workspaceMigrationCreate },
+        }),
+      ),
+    };
+
+    await expect(
+      createOwnerWorkspaceOnboarding({
+        input: {
+          ...buildInput(),
+          kind: "NEW_BUSINESS",
+          serviceMode: "HYBRID",
+          currency: "cad",
+          locale: "en-CA",
+          contactEmail: "owner@example.test",
+        },
+        db,
+      }),
+    ).resolves.toEqual({ status: "created", workspaceId: "new_business_1" });
+    expect(workspaceSettingCreate).toHaveBeenCalledOnce();
+    expect(workspaceSettingCreate).toHaveBeenCalledWith({
+      data: {
+        workspaceId: "new_business_1",
+        allowMultipleRooms: false,
+        classReminderLeadMinutes: 1440,
+        currency: "cad",
+        locale: "en-CA",
+        contactEmail: "owner@example.test",
+      },
+    });
+    expect(workspaceSetupCreate).toHaveBeenCalledWith({
+      data: {
+        workspaceId: "new_business_1",
+        ownerUserId: "user_1",
+        serviceMode: "HYBRID",
+      },
+    });
+    expect(workspaceMigrationCreate).not.toHaveBeenCalled();
   });
 
   it("redirects immediately when an active membership already exists", async () => {
@@ -216,12 +272,12 @@ describe("owner workspace onboarding", () => {
           },
           workspaceUser: {
             create: vi.fn(async () => {
-              throw {
+              throw new Prisma.PrismaClientKnownRequestError("Duplicate fixture", { clientVersion: "6.19.3",
                 code: "P2002",
                 meta: {
                   target: ["userId"],
                 },
-              };
+              });
             }),
           },
           workspaceSetting: {
@@ -273,12 +329,12 @@ describe("owner workspace onboarding", () => {
           },
           workspaceUser: {
             create: vi.fn(async () => {
-              throw {
+              throw new Prisma.PrismaClientKnownRequestError("Duplicate fixture", { clientVersion: "6.19.3",
                 code: "P2002",
                 meta: {
                   target: ["userId"],
                 },
-              };
+              });
             }),
           },
           workspaceSetting: {
@@ -324,12 +380,12 @@ describe("owner workspace onboarding", () => {
           },
           workspaceUser: {
             create: vi.fn(async () => {
-              throw {
+              throw new Prisma.PrismaClientKnownRequestError("Duplicate fixture", { clientVersion: "6.19.3",
                 code: "P2002",
                 meta: {
                   target: ["userId"],
                 },
-              };
+              });
             }),
           },
           workspaceSetting: {

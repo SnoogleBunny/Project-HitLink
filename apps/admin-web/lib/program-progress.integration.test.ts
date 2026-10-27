@@ -1,3 +1,4 @@
+import { createFixtureClassSchedulingPolicy } from "../../../packages/db/tests/scheduling-policy-fixture.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -83,6 +84,7 @@ describe("program eligibility calendar rules", () => {
         })
       ).id;
       workspaces.push(workspaceId);
+    await createFixtureClassSchedulingPolicy(db, workspaceId);
       for (const role of ["OWNER", "COACH", "CUSTOMER"] as const) {
         const user = await db.user.create({
           data: {
@@ -360,6 +362,8 @@ describe("program eligibility calendar rules", () => {
           scheduledForDate: "2030-01-07",
           timezone: "UTC",
           source: "MEMBER_PORTAL",
+          autoPromotionOptIn: true,
+          consentUserId: memberUserId,
           db: db as never,
           now,
         }),

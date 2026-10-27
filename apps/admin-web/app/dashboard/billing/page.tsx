@@ -1,3 +1,4 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import { formatMoney as formatKnownMoney } from "@flowstate/ui/money";
 import Link from "next/link";
 import { AdminShell } from "../../_components/admin-shell";
@@ -21,38 +22,6 @@ const failureCodeLabels: Record<string, string> = {
   authentication_required: "Payment authentication is required.",
 };
 
-function createInstantFormatter(timeZone: string): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat("en-CA", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone,
-    timeZoneName: "short",
-  });
-}
-
-function formatGymDateTime(
-  value: Date | null,
-  gymTimeZone: string,
-  nullLabel: string,
-): string {
-  if (!value) {
-    return nullLabel;
-  }
-
-  try {
-    return createInstantFormatter(gymTimeZone).format(value);
-  } catch (error) {
-    if (!(error instanceof RangeError)) {
-      throw error;
-    }
-
-    return `${createInstantFormatter("UTC").format(value)} (gym timezone unavailable)`;
-  }
-}
-
 function formatPaymentIssue(
   failureMessage: string | null,
   failureCode: string | null,
@@ -70,16 +39,49 @@ function formatPaymentIssue(
   return "Payment issue details are unavailable.";
 }
 
-function formatMoney(amountCents: number, currency: string): string {
-  return formatKnownMoney(amountCents, currency);
-}
-
 export default async function BillingPage({
   searchParams,
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 } = {}) {
   const { location, session, workspace } = await requireOwnerWorkspaceContext();
+  const locale = resolveDisplayLocale(workspace.settings?.locale);
+  function formatMoney(amountCents: number, currency: string): string {
+    return formatKnownMoney(amountCents, currency, locale);
+  }
+
+  function createInstantFormatter(timeZone: string): Intl.DateTimeFormat {
+    return new Intl.DateTimeFormat(locale, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone,
+      timeZoneName: "short",
+    });
+  }
+
+  function formatGymDateTime(
+    value: Date | null,
+    gymTimeZone: string,
+    nullLabel: string,
+  ): string {
+    if (!value) {
+      return nullLabel;
+    }
+
+    try {
+      return createInstantFormatter(gymTimeZone).format(value);
+    } catch (error) {
+      if (!(error instanceof RangeError)) {
+        throw error;
+      }
+
+      return `${createInstantFormatter("UTC").format(value)} (gym timezone unavailable)`;
+    }
+  }
+
   const params = await searchParams;
   const history = params?.view === "history";
   const [queue, reviews] = await Promise.all([
@@ -105,9 +107,24 @@ export default async function BillingPage({
         </Link>
       }
     >
-      {typeof params?.error === "string" ? <p role="alert" className="form-error">{params.error}</p> : null}
+      {typeof params?.error === "string" ? (
+        <p role="alert" className="form-error">
+          {params.error}
+        </p>
+      ) : null}
       <nav className="hl-payment-tabs" aria-label="Billing views">
-        <Link className="text-link" href="/dashboard/billing/adjustments">Payments and credits</Link>
+        <Link className="text-link" href="/dashboard/billing/summary">
+          Financial summary
+        </Link>
+        <Link className="text-link" href="/dashboard/billing/adjustments">
+          Payments and credits
+        </Link>
+        <Link
+          className="text-link"
+          href="/dashboard/settings/email#payment-confirmations"
+        >
+          Payment receipts
+        </Link>
         <Link
           className="text-link"
           href="/dashboard/billing?filter=attention"
@@ -124,6 +141,7 @@ export default async function BillingPage({
         </Link>
       </nav>
       <FinancialReviewQueue
+        locale={locale}
         items={reviews}
         timezone={location.timezone}
         history={history}

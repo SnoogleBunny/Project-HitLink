@@ -1,5 +1,7 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   getCoachingDetail,
   getCoachingWorkspace,
@@ -13,20 +15,27 @@ import { requireOperationsWorkspaceContext } from "../../../../lib/operations-wo
 import {
   CoachingField as Field,
   coachingDay,
+  coachingDayLabel as knownCoachingDayLabel,
   coachingLabel,
-  coachingTime,
+  coachingTime as knownCoachingTime,
 } from "../../../../lib/coaching-fields";
 import { CoachingForm } from "../form";
 import { CoachingRecordsPanel } from "./records-panel";
+import { coachingHref, coachingView } from "../navigation";
 
 export default async function CoachingClientPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; saved?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; view?: string }>;
 }) {
   const context = await requireOperationsWorkspaceContext();
+  const locale = resolveDisplayLocale(context.workspace.settings?.locale);
+  const coachingDayLabel = (value: Date) =>
+    knownCoachingDayLabel(value, locale);
+  const coachingTime = (value: Date, timezone: string) =>
+    knownCoachingTime(value, timezone, locale);
   const { id } = await params;
   const actor = {
     workspaceId: context.workspace.id,
@@ -39,94 +48,141 @@ export default async function CoachingClientPage({
     getCoachingSettlement(actor, id),
     getCoachingExportHistory(actor, id),
   ]);
-  const form = { enrollmentId: id, version: data.version };
+  const view = coachingView(feedback.view);
+  if (
+    (view === "appointments" && data.includedUnits === 0) ||
+    (view === "notes" && !data.coach) ||
+    (view === "manage" && !data.owner)
+  )
+    redirect(coachingHref(id));
+  const form = { enrollmentId: id, version: data.version, returnView: view };
   return (
     <AdminShell
       session={context.session}
       workspaceName={context.workspace.name}
       title={data.memberName}
-      description={`${data.programName} · ${data.coachName}`}
+      description={`${data.programName} · ${data.coachName} · ${view === "manage" ? "Program actions" : view === "appointments" ? "Appointments" : view === "notes" ? "Notes" : "Plan"}`}
       actions={<Link href="/dashboard/coaching">All clients</Link>}
     >
+      <nav
+        className="hl-section-nav"
+        aria-label="Client sections"
+        data-coaching-view={view}
+      >
+        <Link
+          href={coachingHref(id)}
+          aria-current={view === "plan" ? "page" : undefined}
+        >
+          Plan
+        </Link>
+        {data.coach ? (
+          <Link
+            href={coachingHref(id, "notes")}
+            aria-current={view === "notes" ? "page" : undefined}
+          >
+            Notes
+          </Link>
+        ) : null}
+        {data.includedUnits > 0 ? (
+          <Link
+            href={coachingHref(id, "appointments")}
+            aria-current={view === "appointments" ? "page" : undefined}
+          >
+            Appointments
+          </Link>
+        ) : null}
+        {data.owner ? (
+          <Link
+            href={coachingHref(id, "manage")}
+            aria-current={view === "manage" ? "page" : undefined}
+          >
+            Program actions
+          </Link>
+        ) : null}
+      </nav>
       {feedback.error ? (
         <Notice tone="danger">{feedback.error}</Notice>
       ) : feedback.saved ? (
         <Notice tone="success">Saved.</Notice>
       ) : null}
-      <section className="management-card">
-        <div className="member-stack-heading">
-          <h2>Program</h2>
-          <Badge>{coachingLabel(data.status)}</Badge>
-        </div>
-        <p>
-          {coachingDay(data.startsOn)} – {coachingDay(data.endsOn)} ·{" "}
-          {data.timezone}
-        </p>
-        <p>
-          Payment: {coachingLabel(data.paymentState)}. Settlement:{" "}
-          {coachingLabel(data.settlementState)}.
-        </p>
-        {data.proposedCoachName ? (
-          <p>Waiting for the client to accept {data.proposedCoachName}.</p>
-        ) : null}
-        {data.plan ? (
-          <>
-            <h3>Agreed plan, version {data.plan.number}</h3>
-            <p style={{ whiteSpace: "pre-wrap" }}>{data.plan.goals}</p>
-            <p>
-              Reply window: {data.plan.responseHours} hours. Upfront price:{" "}
-              <Money
-                amountMinor={data.plan.priceCents}
-                currency={data.plan.currency}
-              />
-              .
-            </p>
-            <details>
-              <summary>Program terms</summary>
-              <p style={{ whiteSpace: "pre-wrap" }}>{data.plan.terms}</p>
-            </details>
-          </>
-        ) : (
+      {view === "plan" ? (
+        <section className="management-card">
+          <div className="member-stack-heading">
+            <h2>Program</h2>
+            <Badge>{coachingLabel(data.status)}</Badge>
+          </div>
           <p>
-            Coaching content is available to the client and their accepted
-            coach. Operational access does not include intake or notes.
+            {coachingDayLabel(data.startsOn)} – {coachingDayLabel(data.endsOn)}{" "}
+            · {data.timezone}
           </p>
-        )}
-        {data.settlementNote ? <p>{data.settlementNote}</p> : null}
-      </section>
-      {data.coach ? (
-        <>
-          <section className="management-card">
-            <h2>Intake and milestones</h2>
-            <p style={{ whiteSpace: "pre-wrap" }}>
-              {data.intake?.content ??
-                "The client has not submitted their intake yet."}
+          <p>
+            Payment: {coachingLabel(data.paymentState)}. Settlement:{" "}
+            {coachingLabel(data.settlementState)}.
+          </p>
+          {data.proposedCoachName ? (
+            <p>Waiting for the client to accept {data.proposedCoachName}.</p>
+          ) : null}
+          {data.plan ? (
+            <>
+              <h3>Agreed plan, version {data.plan.number}</h3>
+              <p style={{ whiteSpace: "pre-wrap" }}>{data.plan.goals}</p>
+              <p>
+                Reply window: {data.plan.responseHours} hours. Upfront price:{" "}
+                <Money
+                  amountMinor={data.plan.priceCents}
+                  currency={data.plan.currency}
+                />
+                .
+              </p>
+              <details>
+                <summary>Program terms</summary>
+                <p style={{ whiteSpace: "pre-wrap" }}>{data.plan.terms}</p>
+              </details>
+            </>
+          ) : (
+            <p>
+              Coaching content is available to the client and their accepted
+              coach. Operational access does not include intake or notes.
             </p>
-            {data.milestones.map((milestone) => (
-              <div className="member-stack-item" key={milestone.id}>
-                <div>
-                  <h3>{milestone.title}</h3>
-                  <Badge tone={milestone.completedAt ? "success" : "neutral"}>
-                    {milestone.completedAt ? "Complete" : "In progress"}
-                  </Badge>
-                </div>
-                {!data.closedAt && !milestone.completedAt ? (
-                  <CoachingForm
-                    {...form}
-                    operationId={randomUUID()}
-                    kind="completeMilestone"
-                    submit="Mark complete"
-                  >
-                    <input
-                      type="hidden"
-                      name="milestoneId"
-                      value={milestone.id}
-                    />
-                  </CoachingForm>
-                ) : null}
+          )}
+          {data.settlementNote ? <p>{data.settlementNote}</p> : null}
+        </section>
+      ) : null}
+      {data.coach && view === "plan" ? (
+        <section className="management-card">
+          <h2>Intake and milestones</h2>
+          <p style={{ whiteSpace: "pre-wrap" }}>
+            {data.intake?.content ??
+              "The client has not submitted their intake yet."}
+          </p>
+          {data.milestones.map((milestone) => (
+            <div className="member-stack-item" key={milestone.id}>
+              <div>
+                <h3>{milestone.title}</h3>
+                <Badge tone={milestone.completedAt ? "success" : "neutral"}>
+                  {milestone.completedAt ? "Complete" : "In progress"}
+                </Badge>
               </div>
-            ))}
-          </section>
+              {!data.closedAt && !milestone.completedAt ? (
+                <CoachingForm
+                  {...form}
+                  operationId={randomUUID()}
+                  kind="completeMilestone"
+                  submit="Mark complete"
+                >
+                  <input
+                    type="hidden"
+                    name="milestoneId"
+                    value={milestone.id}
+                  />
+                </CoachingForm>
+              ) : null}
+            </div>
+          ))}
+        </section>
+      ) : null}
+      {data.coach && view === "notes" ? (
+        <>
           <section className="management-card">
             <h2>Client notes</h2>
             <p>
@@ -137,7 +193,7 @@ export default async function CoachingClientPage({
               <article className="member-stack-item" key={note.id}>
                 <div style={{ width: "100%" }}>
                   <h3>
-                    {coachingDay(note.localDate)}{" "}
+                    {coachingDayLabel(note.localDate)}{" "}
                     <Badge>{coachingLabel(note.status)}</Badge>
                   </h3>
                   <p style={{ whiteSpace: "pre-wrap" }}>{note.draftBody}</p>
@@ -201,7 +257,7 @@ export default async function CoachingClientPage({
                             required
                           />{" "}
                           I reviewed this note for {data.memberName}, dated{" "}
-                          {coachingDay(note.localDate)}.
+                          {coachingDayLabel(note.localDate)}.
                         </label>
                       </CoachingForm>
                       {note.publishedAt ? (
@@ -274,7 +330,7 @@ export default async function CoachingClientPage({
             </p>
             {data.privateNotes.map((note) => (
               <details key={note.id}>
-                <summary>{coachingDay(note.localDate)}</summary>
+                <summary>{coachingDayLabel(note.localDate)}</summary>
                 <p style={{ whiteSpace: "pre-wrap" }}>{note.body}</p>
                 {!data.closedAt ? (
                   <CoachingForm
@@ -330,13 +386,14 @@ export default async function CoachingClientPage({
           </section>
         </>
       ) : null}
-      {data.published.length ? (
+      {view === "notes" && data.published.length ? (
         <section className="management-card">
           <h2>Published record</h2>
           {data.published.map((note) => (
             <details key={note.id}>
               <summary>
-                {coachingDay(note.localDate)} · {coachingLabel(note.status)}
+                {coachingDayLabel(note.localDate)} ·{" "}
+                {coachingLabel(note.status)}
               </summary>
               {note.revisions.map((revision) => (
                 <article key={revision.number}>
@@ -351,7 +408,7 @@ export default async function CoachingClientPage({
           ))}
         </section>
       ) : null}
-      {data.includedUnits > 0 ? (
+      {view === "appointments" && data.includedUnits > 0 ? (
         <section className="management-card">
           <h2>Appointments</h2>
           <p>
@@ -550,7 +607,7 @@ export default async function CoachingClientPage({
           ))}
         </section>
       ) : null}
-      {data.owner ? (
+      {view === "manage" && data.owner ? (
         <section className="management-card">
           <h2>Program administration</h2>
           {!data.closedAt ? (
@@ -778,13 +835,14 @@ export default async function CoachingClientPage({
           ) : null}
         </section>
       ) : null}
-      {data.deliveryExceptions.length ? (
+      {view === "manage" && data.deliveryExceptions.length ? (
         <section className="management-card">
           <h2>Delivery needs review</h2>
           {data.deliveryExceptions.map((issue) => (
             <article key={issue.id}>
               <h3>
-                {coachingDay(issue.localDate)} · {coachingLabel(issue.kind)}
+                {coachingDayLabel(issue.localDate)} ·{" "}
+                {coachingLabel(issue.kind)}
               </h3>
               <p>{coachingLabel(issue.status)}</p>
               {issue.status === "OPEN" ? (
@@ -812,13 +870,17 @@ export default async function CoachingClientPage({
           ))}
         </section>
       ) : null}
-      <CoachingRecordsPanel
-        actor={actor}
-        enrollmentId={id}
-        version={data.version}
-        owner={data.owner}
-        coaches={list.coaches}
-      />
+      {view === "notes" || view === "manage" ? (
+        <CoachingRecordsPanel
+          locale={locale}
+          actor={actor}
+          enrollmentId={id}
+          version={data.version}
+          owner={data.owner}
+          coaches={list.coaches}
+          returnView={view}
+        />
+      ) : null}
     </AdminShell>
   );
 }

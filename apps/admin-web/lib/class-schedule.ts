@@ -83,6 +83,7 @@ async function inspectSchedule(args: { access: ClassScheduleAccess; input: Class
   if (input.date < getWorkspaceDateString(now, access.timezone)) { errors.push("Past classes cannot be changed."); return { review: empty }; }
   const rawTemplates = await db.classTemplate.findMany({ where: { workspaceId: access.workspaceId, archivedAt: null }, include: classOccurrenceInclude, orderBy: { id: "asc" } });
   const templates = rawTemplates as unknown as ClassOccurrenceTemplate[];
+  const timezoneWorkspace = templates[0]?.workspace ?? await db.workspace?.findUnique({ where: { id: access.workspaceId }, select: { location: { select: { timezone: true } }, timezoneRevisions: true } }) ?? undefined;
   const current = templates.find((item) => item.id === input.templateId);
   const previous = current ? resolveClassOccurrence({ template: current, scheduledForDate: input.date }) : null;
   if (input.scope !== "new" && (!current || !previous || previous.status !== "ACTIVE")) { errors.push("This class date is no longer available to edit."); return { review: empty }; }
@@ -122,6 +123,7 @@ async function inspectSchedule(args: { access: ClassScheduleAccess; input: Class
   const fields: ClassScheduleFields = { prerequisites: prerequisites!, title: simple ? previous!.title : input.title || null, programId: program!.id, roomId: room!.id, coachWorkspaceUserId: coach?.id ?? null, startTimeMinutes: start!, endTimeMinutes: end!, capacityOverride: capacity, bookingCutoffMinutes: bookingCutoff!, cancellationCutoffMinutes: cancellationCutoff!, program: program!, room: room!, coachWorkspaceUser: coach };
   const revision: ClassScheduleRevisionRecord = { ...fields, id: "candidate", effectiveFrom: dateOnlyStringToUtcDate(input.date), startDate: dateOnlyStringToUtcDate(input.date), endDate: input.recurrence === "ONCE" ? dateOnlyStringToUtcDate(input.date) : input.endDate ? dateOnlyStringToUtcDate(input.endDate) : null, recurrence: input.recurrence, weekdays: [...new Set(input.weekdays)] };
   const candidate: ClassOccurrenceTemplate = current ? { ...current, scheduleRevisions: [...(current.scheduleRevisions ?? [])], classInstances: [...(current.classInstances ?? [])] } : { ...fields, id: "new", workspaceId: access.workspaceId, weekday: getWeekdayForDateString(input.date), scheduleStartsOn: dateOnlyStringToUtcDate(input.date), scheduleVersion: 0, scheduleRevisions: [], classInstances: [] };
+  candidate.workspace = timezoneWorkspace;
   if (!perDate) candidate.scheduleRevisions = [...(candidate.scheduleRevisions ?? []).filter((item) => toDateOnlyString(item.effectiveFrom) < input.date), revision];
   else {
     const existing = candidate.classInstances!.find((item) => toDateOnlyString(item.scheduledForDate) === input.date);
@@ -164,7 +166,7 @@ async function inspectSchedule(args: { access: ClassScheduleAccess; input: Class
     const queued = waitlist.filter((item) => toDateOnlyString(item.scheduledForDate) === date);
     const attended = attendance.some((item) => toDateOnlyString(item.scheduledForDate) === date);
     if (attended) errors.push(`${date}: Attendance is already recorded. This class must stay unchanged.`);
-    if ((before || after) && getZonedDateTimeAsUtc({ dateString: date, minutes: (before ?? after)!.startTimeMinutes, timezone: access.timezone }) <= now) errors.push(`${date}: This class has already started.`);
+    if ((before || after) && getZonedDateTimeAsUtc({ dateString: date, minutes: (before ?? after)!.startTimeMinutes, timezone: (before ?? after)!.timezone ?? access.timezone }) <= now) errors.push(`${date}: This class has already started.`);
     if (booked.some((item) => item.status === "PENDING_PAYMENT" && (!item.pendingPaymentExpiresAt || item.pendingPaymentExpiresAt > now))) errors.push(`${date}: Resolve the pending booking payment before changing this class.`);
     if (!after && (booked.length || queued.length)) errors.push(`${date}: Keep this booked or waitlisted date, or cancel it separately first.`);
     if (after && after.status !== "CANCELLED" && after.effectiveCapacity !== null && booked.length > after.effectiveCapacity) errors.push(`${date}: Capacity cannot be below ${booked.length} existing reservations.`);
@@ -179,10 +181,10 @@ async function inspectSchedule(args: { access: ClassScheduleAccess; input: Class
       if (before && noticeChanged(before, after) && booked.length + queued.length) notices.push({ date, before, after });
     }
     if (!after || after.status === "CANCELLED" || !changed) continue;
-    const startAt = getZonedDateTimeAsUtc({ dateString: date, minutes: after.startTimeMinutes, timezone: access.timezone });
-    const endAt = getZonedDateTimeAsUtc({ dateString: date, minutes: after.endTimeMinutes, timezone: access.timezone });
+    const startAt = getZonedDateTimeAsUtc({ dateString: date, minutes: after.startTimeMinutes, timezone: after.timezone ?? access.timezone });
+    const endAt = getZonedDateTimeAsUtc({ dateString: date, minutes: after.endTimeMinutes, timezone: after.timezone ?? access.timezone });
     if (after.coachWorkspaceUserId && staffLeave.some((leave) => leave.coachWorkspaceUserId === after.coachWorkspaceUserId && leave.startsAt < endAt && leave.endsAt > startAt)) errors.push(`${date}: This coach is on leave. Assign another coach, leave this date unassigned, or review leave under Settings → Coaches and staff.`);
-    if (!isUnambiguousClassTime(date, after.startTimeMinutes, access.timezone) || !isUnambiguousClassTime(date, after.endTimeMinutes, access.timezone)) errors.push(`${date}: This local time is missing or ambiguous because of daylight saving. Choose an unambiguous time.`);
+    if (!isUnambiguousClassTime(date, after.startTimeMinutes, after.timezone ?? access.timezone) || !isUnambiguousClassTime(date, after.endTimeMinutes, after.timezone ?? access.timezone)) errors.push(`${date}: This local time is missing or ambiguous because of daylight saving. Choose an unambiguous time.`);
     for (const otherTemplate of templates) {
       if (otherTemplate.id === candidate.id) continue;
       const other = resolveClassOccurrence({ template: otherTemplate, scheduledForDate: date });

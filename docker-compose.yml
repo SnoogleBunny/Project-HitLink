@@ -1,15 +1,247 @@
+name: ${COMPOSE_PROJECT_NAME:-hitlink}
+
+x-image: &image
+  image: hitlink-local:${HITLINK_IMAGE_TAG:-dev}
+  pull_policy: never
+
+x-environment: &environment
+  DATABASE_URL: postgresql://postgres:postgres@postgres:5432/hitlink_demo?schema=public
+  NEXT_PUBLIC_APP_URL: http://localhost:${HITLINK_ADMIN_PORT:-3000}
+  NEXT_PUBLIC_MEMBER_APP_URL: http://localhost:${HITLINK_MEMBER_PORT:-3001}
+  NEXT_PUBLIC_MEMBER_WEB_URL: http://localhost:${HITLINK_MEMBER_PORT:-3001}
+  NEXT_PUBLIC_FLOWSTATE_APP_URL: http://localhost:${HITLINK_LANDING_PORT:-3003}
+  # This local stack never inherits live-provider credentials from a host .env.
+  STRIPE_SECRET_KEY: ""
+  STRIPE_WEBHOOK_SECRET: ""
+  RESEND_API_KEY: ""
+  HITLINK_EMAIL_FROM: ""
+
+x-app: &app
+  <<: *image
+  init: true
+  restart: unless-stopped
+  depends_on:
+    bootstrap:
+      condition: service_completed_successfully
+  volumes:
+    - local-secrets:/run/hitlink:ro
+  command:
+    - /bin/sh
+    - -ec
+    - |
+      export FORMS_MAGIC_LINK_SECRET="$$(cat /run/hitlink/forms-secret)"
+      export HITLINK_WORKER_SECRET="$$(cat /run/hitlink/worker-secret)"
+      export HITLINK_AUTH_THROTTLE_SECRET="$$(cat /run/hitlink/auth-throttle-secret)"
+      exec pnpm --filter "$$HITLINK_APP" start
+  healthcheck:
+    test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+process.env.HITLINK_PORT+process.env.HITLINK_HEALTH_PATH).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+    interval: 15s
+    timeout: 5s
+    retries: 10
+    start_period: 30s
+
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: flowstate-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: flowstate_dev
+      POSTGRES_DB: hitlink_demo
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${HITLINK_POSTGRES_PORT:-55432}:5432"
     volumes:
-      - flowstate-postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hitlink_demo"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  bootstrap:
+    <<: *image
+    build: &build
+      context: .
+      args:
+        NEXT_PUBLIC_APP_URL: http://localhost:${HITLINK_ADMIN_PORT:-3000}
+        NEXT_PUBLIC_MEMBER_APP_URL: http://localhost:${HITLINK_MEMBER_PORT:-3001}
+        NEXT_PUBLIC_MEMBER_WEB_URL: http://localhost:${HITLINK_MEMBER_PORT:-3001}
+        NEXT_PUBLIC_FLOWSTATE_APP_URL: http://localhost:${HITLINK_LANDING_PORT:-3003}
+    # The existing disposable-demo guard only permits loopback database hosts.
+    # Share Postgres's network namespace instead of weakening that safeguard.
+    network_mode: service:postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *environment
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hitlink_demo?schema=public
+      NODE_ENV: development
+      FLOWSTATE_DEMO_DATABASE_NAME: hitlink_demo
+      FLOWSTATE_DEMO_DATABASE_ACKNOWLEDGEMENT: I_ACKNOWLEDGE_THIS_DATABASE_IS_DISPOSABLE
+    volumes:
+      - local-secrets:/run/hitlink
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        pnpm --filter @flowstate/db exec prisma migrate deploy --schema prisma/schema.prisma
+        node --input-type=module <<'NODE'
+        import { randomBytes } from 'node:crypto';
+        import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+        import { spawnSync } from 'node:child_process';
+        import { PrismaClient } from '@prisma/client';
+        for (const name of ['forms-secret', 'worker-secret', 'auth-throttle-secret']) {
+          const path = '/run/hitlink/' + name;
+          if (!existsSync(path)) writeFileSync(path, randomBytes(48).toString('hex'), { mode: 0o600, flag: 'wx' });
+          if (readFileSync(path, 'utf8').trim().length < 32) throw new Error('Invalid local secret: ' + name);
+        }
+        const marker = '/run/hitlink/initialized';
+        const db = new PrismaClient();
+        let empty;
+        try { empty = (await db.user.count()) === 0 && (await db.workspace.count()) === 0; }
+        finally { await db.$$disconnect(); }
+        if (!existsSync(marker) && empty) {
+          const seeded = spawnSync('pnpm', ['--filter', '@flowstate/db', 'db:seed'], { stdio: 'inherit', env: process.env });
+          if (seeded.status !== 0) process.exit(seeded.status || 1);
+          console.log('Initialized fictional demo data. No payment or email was sent.');
+        } else {
+          console.log('Preserving existing database records; demo seed skipped.');
+        }
+        writeFileSync(marker, 'Local initialization complete.\n', { mode: 0o600 });
+        NODE
+
+  admin-web:
+    <<: *app
+    environment:
+      <<: *environment
+      HITLINK_APP: admin-web
+      HITLINK_PORT: "3000"
+      HITLINK_HEALTH_PATH: /login
+    ports:
+      - "127.0.0.1:${HITLINK_ADMIN_PORT:-3000}:3000"
+
+  member-web:
+    <<: *app
+    environment:
+      <<: *environment
+      HITLINK_APP: member-web
+      HITLINK_PORT: "3001"
+      HITLINK_HEALTH_PATH: /login
+    ports:
+      - "127.0.0.1:${HITLINK_MEMBER_PORT:-3001}:3001"
+
+  api:
+    <<: *app
+    environment:
+      <<: *environment
+      HITLINK_APP: api
+      HITLINK_PORT: "3002"
+      HITLINK_HEALTH_PATH: /api/v1/health
+    ports:
+      - "127.0.0.1:${HITLINK_API_PORT:-3002}:3002"
+
+  landing-web:
+    <<: *app
+    environment:
+      <<: *environment
+      HITLINK_APP: landing-web
+      HITLINK_PORT: "3003"
+      HITLINK_HEALTH_PATH: /
+      FLOWSTATE_WAITLIST_PATH: /app/apps/landing-web/data/waitlist-submissions.jsonl
+    volumes:
+      - local-secrets:/run/hitlink:ro
+      - landing-data:/app/apps/landing-web/data
+    ports:
+      - "127.0.0.1:${HITLINK_LANDING_PORT:-3003}:3003"
+
+  test-postgres:
+    image: postgres:16-alpine
+    profiles: [test]
+    environment:
+      POSTGRES_DB: hitlink_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hitlink_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  checks:
+    <<: *image
+    profiles: [test]
+    build: *build
+    init: true
+    # Keep destructive test guards restricted to a disposable loopback database.
+    network_mode: service:test-postgres
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+    environment:
+      <<: *environment
+      NODE_ENV: test
+      # One blocker + two lock waiters + their observer need four pool slots.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hitlink_test?schema=public&connection_limit=4
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hitlink_test?schema=public&connection_limit=4
+      TURBO_FORCE: "true"
+      TURBO_CONCURRENCY: "1"
+      # Current admin TypeScript analysis needs the same bounded heap as builds.
+      # This belongs only to checks; application runtime keeps its normal heap.
+      NODE_OPTIONS: --max-old-space-size=3072
+      FORMS_MAGIC_LINK_SECRET: local-isolated-checks-only-forms-secret
+      HITLINK_WORKER_SECRET: local-isolated-checks-only-worker-secret
+      HITLINK_AUTH_THROTTLE_SECRET: local-isolated-checks-only-auth-throttle-secret
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        pnpm --filter @flowstate/db exec prisma migrate deploy --schema prisma/schema.prisma
+        pnpm test
+        pnpm lint
+        pnpm check-types
+
+  maintenance:
+    <<: *image
+    init: true
+    restart: unless-stopped
+    depends_on:
+      admin-web:
+        condition: service_healthy
+    volumes:
+      - local-secrets:/run/hitlink:ro
+    command:
+      - node
+      - --input-type=module
+      - -e
+      - |
+        import { readFileSync } from 'node:fs';
+        const secret = readFileSync('/run/hitlink/worker-secret', 'utf8').trim();
+        const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+        while (true) {
+          let cursor = '', failures = 0;
+          try {
+            while (true) {
+              const response = await fetch('http://admin-web:3000/api/internal/maintenance' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''), {
+                method: 'POST', headers: { authorization: 'Bearer ' + secret }, signal: AbortSignal.timeout(290000)
+              });
+              if (!response.ok) {
+                if (response.status === 503 && ++failures <= 3) { await pause(5000); continue; }
+                throw new Error('Maintenance returned HTTP ' + response.status);
+              }
+              failures = 0;
+              const result = await response.json();
+              if (result.done) break;
+              if (!result.nextCursor || result.nextCursor === cursor) throw new Error('Maintenance returned no advancing cursor');
+              cursor = result.nextCursor;
+            }
+          } catch (error) { console.error(error.message); }
+          await pause(60000);
+        }
 
 volumes:
-  flowstate-postgres-data:
+  postgres-data:
+  landing-data:
+  local-secrets:

@@ -1,9 +1,11 @@
+import { loginToWorkspace } from "./support/workspace-login";
+import { ensureDemoSchedulingPolicy } from "./support/demo-scheduling-policy";
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
-import type { Browser, BrowserContext, Page, TestInfo } from "@playwright/test";
-import { expect, test } from "./support/browser-diagnostics";
+import type { Browser, BrowserContext, Page, TestInfo, Response } from "@playwright/test";
+import { expect, test, type BrowserDiagnosticsCollector } from "./support/browser-diagnostics";
 import { prepareCleanEvidence } from "./support/clean-evidence";
 
 const prisma = new PrismaClient();
@@ -28,32 +30,30 @@ const viewports = [
   { height: 900, name: "1440", width: 1440 },
 ] as const;
 
-async function loginAdmin(page: Page): Promise<void> {
-  await page.goto(`${adminBaseURL}/login`, { waitUntil: "networkidle" });
-  const email = page.getByLabel("Email");
-  if (await email.isVisible()) {
-    await email.fill("demo-owner@flowstate.local");
-    await page.getByLabel("Password").fill("DemoPass123!");
-    await page.getByRole("button", { name: "Log in" }).click();
-  }
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await page.waitForLoadState("networkidle");
+async function loginAdmin(page: Page, diagnostics?: BrowserDiagnosticsCollector): Promise<void> {
+  await loginToWorkspace({
+    page,
+    origin: adminBaseURL,
+    email: "demo-owner@flowstate.local",
+    password: "DemoPass123!",
+    expectedRedirect: "/dashboard;push",
+    destination: { path: "/dashboard", heading: "Today" },
+    diagnostics,
+    allowExistingSession: true,
+  });
 }
 
-async function loginMember(page: Page): Promise<void> {
-  await page.goto(`${memberBaseURL}/login`, { waitUntil: "networkidle" });
-  const email = page.getByLabel("Email");
-  if (!(await email.isVisible())) {
-    await expect(page).toHaveURL(/\/app\/schedule$/);
-    await page.waitForLoadState("networkidle");
-    return;
-  }
-
-  await email.fill("demo-member@flowstate.local");
-  await page.getByLabel("Password").fill("MemberPass123!");
-  await page.getByRole("button", { name: "Log in" }).click();
-  await expect(page).toHaveURL(/\/app\/schedule$/);
-  await page.waitForLoadState("networkidle");
+async function loginMember(page: Page, diagnostics?: BrowserDiagnosticsCollector): Promise<void> {
+  await loginToWorkspace({
+    page,
+    origin: memberBaseURL,
+    email: "demo-member@flowstate.local",
+    password: "MemberPass123!",
+    expectedRedirect: "/app;push",
+    destination: { path: "/app/schedule", heading: "Classes" },
+    diagnostics,
+    allowExistingSession: true,
+  });
 }
 
 async function expectNoTenantDisclosure(
@@ -299,7 +299,7 @@ test.describe("RP-20 every-visible-feature certification evidence", () => {
     request,
   }) => {
     expect(browserName).toBe("chromium");
-    await loginAdmin(page);
+    await loginAdmin(page, browserDiagnostics);
 
     const document = await prisma.formDocument.findFirstOrThrow({
       include: { currentVersion: true, workspace: true },
@@ -502,7 +502,7 @@ test.describe("RP-20 every-visible-feature certification evidence", () => {
     await fs.mkdir(evidenceDir, { recursive: true });
     for (const viewport of viewports) {
       await page.setViewportSize(viewport);
-      await loginAdmin(page);
+      await loginAdmin(page, browserDiagnostics);
       for (const route of adminRoutes) {
         const response = await page.goto(`${adminBaseURL}${route}`, {
           waitUntil: "networkidle",
@@ -519,7 +519,7 @@ test.describe("RP-20 every-visible-feature certification evidence", () => {
         path: path.join(evidenceDir, `admin-forms-${viewport.name}.png`),
       });
 
-      await loginMember(page);
+      await loginMember(page, browserDiagnostics);
       for (const route of memberRoutes) {
         const response = await page.goto(`${memberBaseURL}${route}`, {
           waitUntil: "networkidle",
@@ -553,14 +553,14 @@ test.describe("RP-20 every-visible-feature certification evidence", () => {
   }) => {
     // Opening the member screen reconciles the pending demonstration contract
     // into the payment-method-needed queue without inventing an invoice.
-    await loginMember(page);
+    await loginMember(page, browserDiagnostics);
     await page.goto(`${memberBaseURL}/app/billing`, {
       waitUntil: "networkidle",
     });
     await expect(
       page.getByRole("button", { name: "Payment method unavailable" }),
     ).toBeDisabled();
-    await loginAdmin(page);
+    await loginAdmin(page, browserDiagnostics);
     await page.goto(`${adminBaseURL}/dashboard/settings/billing`, {
       waitUntil: "networkidle",
     });
@@ -600,7 +600,7 @@ test.describe("RP-20 every-visible-feature certification evidence", () => {
       "migration-corrections@example.test",
     );
 
-    await loginMember(page);
+    await loginMember(page, browserDiagnostics);
     await page.goto(`${memberBaseURL}/app/billing`, {
       waitUntil: "networkidle",
     });
@@ -654,7 +654,7 @@ test.describe("RP-20 every-visible-feature certification evidence", () => {
     browserDiagnostics,
     page,
   }) => {
-    await loginAdmin(page);
+    await loginAdmin(page, browserDiagnostics);
     await page.goto(`${adminBaseURL}/dashboard/migration`, {
       waitUntil: "networkidle",
     });
@@ -681,3 +681,5 @@ test.describe("RP-20 every-visible-feature certification evidence", () => {
     browserDiagnostics.assertNoExternalRequests();
   });
 });
+
+test.beforeAll(async () => { await ensureDemoSchedulingPolicy(prisma); });

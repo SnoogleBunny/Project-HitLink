@@ -1,4 +1,4 @@
-import { prisma } from "@flowstate/db";
+import { readDatabaseFailure, prisma } from "@flowstate/db";
 
 export interface ProgramFormInput {
   name: string;
@@ -85,22 +85,11 @@ function sanitizeProgramInput(input: ProgramFormInput) {
 }
 
 function isProgramNameUniqueConstraint(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const maybeError = error as {
-    code?: string;
-    meta?: {
-      target?: string[];
-    };
-  };
-
-  return (
-    maybeError.code === "P2002" &&
-    Array.isArray(maybeError.meta?.target) &&
-    maybeError.meta.target.includes("workspaceId") &&
-    maybeError.meta.target.includes("name")
+  const failure = readDatabaseFailure(error);
+  return Boolean(
+    failure?.code === "P2002" &&
+    failure.target?.includes("workspaceId") &&
+    failure.target?.includes("name"),
   );
 }
 

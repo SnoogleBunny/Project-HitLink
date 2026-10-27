@@ -1,3 +1,4 @@
+import { type WorkspaceSetupActivationReadiness, resolveWorkspaceClockTimezone } from "@flowstate/db";
 import { prisma, type WorkspaceStatus } from "@flowstate/db";
 import { redirect } from "next/navigation";
 import {
@@ -24,7 +25,10 @@ interface OwnerWorkspaceRecord {
   } | null;
   settings: {
     allowMultipleRooms: boolean;
+    locale?: string | null;
   } | null;
+  setup?: { id: string } | null;
+  setupActivation?: WorkspaceSetupActivationReadiness | null;
   migration: {
     stage: string;
     ownerReviewAcknowledgedAt: Date | null;
@@ -43,6 +47,8 @@ interface OwnerWorkspaceDatabase {
       include: {
         location: true;
         settings: true;
+        setup: { select: { id: true } };
+        setupActivation: true;
         migration: true;
       };
     }): Promise<OwnerWorkspaceRecord | null>;
@@ -83,6 +89,8 @@ export async function requireOwnerWorkspaceContext(args?: {
       include: {
         location: true,
         settings: true,
+        setup: { select: { id: true } },
+        setupActivation: true,
         migration: true,
       },
     }),
@@ -107,13 +115,21 @@ export async function requireOwnerWorkspaceContext(args?: {
     redirect("/unauthorized");
   }
 
+  const location = {
+    ...workspace.location,
+    timezone: await resolveWorkspaceClockTimezone({
+      workspaceId: workspace.id,
+      baselineTimezone: workspace.location.timezone,
+      db: db as never,
+    }),
+  };
   return {
     session: ownerSession,
     workspaceUserId: workspaceUser.id,
     workspace: {
       ...workspace,
-      location: workspace.location,
+      location,
     },
-    location: workspace.location,
+    location,
   };
 }

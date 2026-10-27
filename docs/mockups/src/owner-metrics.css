@@ -31,10 +31,10 @@
 #hitlink-prototype button.hl-metric.hl-metric-link:not(:disabled):active{
  background:var(--hl-hover-bg);border-color:var(--hl-hover-border);transform:none;filter:none;
 }
-@media(max-width:850px){
+@media(max-width:1023px){
  #hitlink-prototype .hl-metric-link .hl-metric-detail{gap:8px}
  #hitlink-prototype .hl-metric-link .hl-metric-cta{min-height:20px}
 }
-@media(max-width:640px){
+@media(max-width:767px){
  #hitlink-prototype button.hl-metric.hl-metric-link{min-height:44px}
 }

@@ -14,8 +14,6 @@
   "scenarios": {
     "EVF-ADMIN-CONNECTED": {
       "kind": "browser",
-      "testFile": "tests/e2e/flowstate-demo.spec.ts",
-      "testTitle": "admin, member, public trial, and API flows are connected",
       "assertions": [
         "owner-routes",
         "member-routes",
@@ -24,6 +22,39 @@
         "roster",
         "attendance",
         "api-readiness"
+      ],
+      "testCases": [
+        {
+          "testFile": "tests/e2e/flowstate-demo.spec.ts",
+          "testTitle": "owner metrics link to their records and the demo exposes the five approved daily classes",
+          "assertions": [
+            "owner-routes",
+            "api-readiness"
+          ]
+        },
+        {
+          "testFile": "tests/e2e/flowstate-demo.spec.ts",
+          "testTitle": "a member books, moves and cancels a dated place with one pack debit and a matching owner roster",
+          "assertions": [
+            "member-routes",
+            "booking",
+            "roster"
+          ]
+        },
+        {
+          "testFile": "tests/e2e/trial-booking-recovery.spec.ts",
+          "testTitle": "keeps zero-date, populated, invalid, and server-failure states recoverable",
+          "assertions": [
+            "trial"
+          ]
+        },
+        {
+          "testFile": "tests/e2e/approved-gym-workflows.spec.ts",
+          "testTitle": "CF04 future attendance and unsigned consent are rejected; present and correction survive reload",
+          "assertions": [
+            "attendance"
+          ]
+        }
       ]
     },
     "EVF-CONTROL-CATALOG": {
@@ -75,8 +106,6 @@
     },
     "EVF-LANDING-RESPONSIVE": {
       "kind": "browser",
-      "testFile": "tests/e2e/landing-target-sizes.spec.ts",
-      "testTitle": "landing navigation targets and recovery constraints",
       "assertions": [
         "390px",
         "768px",
@@ -87,12 +116,26 @@
         "reduced-motion",
         "zero-external-requests",
         "screenshots"
+      ],
+      "testCases": [
+        {
+          "testFile": "tests/e2e/landing-target-sizes.spec.ts",
+          "testTitle": "mobile-390: landing navigation targets and recovery constraints"
+        },
+        {
+          "testFile": "tests/e2e/landing-target-sizes.spec.ts",
+          "testTitle": "tablet-768: landing navigation targets and recovery constraints"
+        },
+        {
+          "testFile": "tests/e2e/landing-target-sizes.spec.ts",
+          "testTitle": "desktop-1440: landing navigation targets and recovery constraints"
+        }
       ]
     },
     "EVF-MEMBER-SCHEDULE-RECOVERY": {
       "kind": "browser",
       "testFile": "tests/e2e/flowstate-demo.spec.ts",
-      "testTitle": "a lower schedule action keeps its pending and failure feedback in context",
+      "testTitle": "booking review keeps pending and rejected submissions in the same dialog without consuming a visit",
       "assertions": [
         "pending",
         "disabled-repeat-suppression",
@@ -103,7 +146,7 @@
     "EVF-MEMBER-SCHEDULE-RESPONSIVE": {
       "kind": "browser",
       "testFile": "tests/e2e/flowstate-demo.spec.ts",
-      "testTitle": "member schedule actions remain readable and responsive",
+      "testTitle": "class buttons have visible hover and focus, readable contrast, and responsive sizing",
       "assertions": [
         "390px",
         "1024px",

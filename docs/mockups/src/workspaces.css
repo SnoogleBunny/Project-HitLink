@@ -13,7 +13,7 @@
 #hitlink-prototype .hl-coaching-context .hl-context-back,
 #hitlink-prototype .hl-coaching-context .hl-context-client,
 #hitlink-prototype .hl-coaching-context .hl-context-tabs{margin:0}
-@media(max-width:640px){
+@media(max-width:767px){
  #hitlink-prototype .hl-context-tabs{gap:8px;margin-bottom:20px;padding-bottom:16px}
  #hitlink-prototype .hl-context-tabs .hl-button{flex:1 1 auto;padding-inline:12px}
  #hitlink-prototype .hl-context-back .hl-button{min-height:44px}

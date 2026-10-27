@@ -2,6 +2,7 @@
 import type { ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import { coachingAction } from "./actions";
+import { coachingViewForAction, type CoachingView } from "./navigation";
 
 function Submit({ children }: { children: ReactNode }) {
   const { pending } = useFormStatus();
@@ -16,6 +17,7 @@ export function CoachingForm({
   operationId,
   enrollmentId,
   version,
+  returnView,
   children,
   submit = "Save",
 }: {
@@ -23,6 +25,7 @@ export function CoachingForm({
   operationId: string;
   enrollmentId?: string;
   version?: number;
+  returnView?: CoachingView;
   children?: ReactNode;
   submit?: string;
 }) {
@@ -32,6 +35,11 @@ export function CoachingForm({
       <input type="hidden" name="operationId" value={operationId} />
       <input type="hidden" name="enrollmentId" value={enrollmentId ?? ""} />
       <input type="hidden" name="expectedVersion" value={version ?? 0} />
+      <input
+        type="hidden"
+        name="returnView"
+        value={returnView ?? coachingViewForAction(kind)}
+      />
       {children}
       <div className="dashboard-actions">
         <Submit>{submit}</Submit>

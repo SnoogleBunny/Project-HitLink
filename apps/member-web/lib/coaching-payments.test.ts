@@ -15,6 +15,10 @@ const mock = vi.hoisted(() => ({
   operationCreate: vi.fn(),
   operationUpdate: vi.fn(),
   reviewUpsert: vi.fn(),
+  issueConfirmation: vi.fn(),
+  newPurchase: vi.fn(),
+  captureTime: vi.fn(),
+  recordDisclosure: vi.fn(),
 }));
 vi.mock("stripe", () => ({
   default: class {
@@ -25,9 +29,14 @@ vi.mock("stripe", () => ({
 }));
 vi.mock("@flowstate/db", () => ({
   CoachingError: class CoachingError extends Error {},
+  CoachingBookingPolicyError: class CoachingBookingPolicyError extends Error {},
   requireCoachingPaymentViewer: mock.detail,
   requireCoachingPaymentAuthority: mock.authority,
   lockClassSchedule: mock.lock,
+  issuePaymentConfirmationTx: mock.issueConfirmation,
+  requireNewCoachingPurchaseTx: mock.newPurchase,
+  coachingCheckoutCaptureTimeTx: mock.captureTime,
+  recordCoachingCheckoutDisclosureTx: mock.recordDisclosure,
   prisma: {
     coachingEnrollment: {
       findUniqueOrThrow: mock.findEnrollment,
@@ -44,6 +53,7 @@ import {
   handleCoachingCheckoutWebhook,
   startCoachingPayment,
 } from "./coaching-payments";
+import { CoachingBookingPolicyError } from "@flowstate/db";
 import type Stripe from "stripe";
 
 describe("coaching payment provider evidence", () => {
@@ -91,6 +101,9 @@ describe("coaching payment provider evidence", () => {
   };
   beforeEach(() => {
     vi.clearAllMocks();
+    mock.newPurchase.mockReset().mockResolvedValue(null);
+    mock.captureTime.mockReset().mockResolvedValue(new Date("2026-10-26T12:34:56.789Z"));
+    mock.recordDisclosure.mockReset().mockResolvedValue("disclosure-receipt");
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fixture");
     vi.stubEnv("NEXT_PUBLIC_MEMBER_WEB_URL", "https://member.example.test");
     mock.detail.mockResolvedValue({
@@ -148,7 +161,13 @@ describe("coaching payment provider evidence", () => {
     );
   });
   it("retrieves the stored session on its Connect account before recording one settled payment", async () => {
+    // A later delivery-policy gap cannot erase provider-confirmed cash.
+    mock.newPurchase.mockRejectedValue(new CoachingBookingPolicyError(
+      "The client's appointment delivery and booking-help contact need review before a new purchase. No new payment was started.",
+    ));
     expect(await checkCoachingPayment(actor, "enrollment")).toBe("PAID");
+    expect(mock.newPurchase).not.toHaveBeenCalled();
+    expect(mock.createSession).not.toHaveBeenCalled();
     expect(mock.retrieve).toHaveBeenCalledWith(
       "cs_123",
       { expand: ["payment_intent"] },
@@ -163,6 +182,7 @@ describe("coaching payment provider evidence", () => {
         }),
       }),
     );
+    expect(mock.issueConfirmation).toHaveBeenCalledWith(expect.anything(), { paymentId: "payment", description: "Coaching program payment" });
     expect(mock.enrollmentUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -185,6 +205,7 @@ describe("coaching payment provider evidence", () => {
     });
     expect(await checkCoachingPayment(actor, "enrollment")).toBe("PENDING");
     expect(mock.paymentCreate).not.toHaveBeenCalled();
+    expect(mock.issueConfirmation).not.toHaveBeenCalled();
   });
   it.each([
     { amount_total: 1 },
@@ -274,6 +295,9 @@ describe("coaching payment provider evidence", () => {
       "https://checkout.stripe.com/new",
     );
     expect(mock.createSession).toHaveBeenCalledOnce();
+    expect(mock.newPurchase).toHaveBeenCalledExactlyOnceWith(
+      expect.anything(), "workspace", "enrollment", new Date("2026-10-26T12:34:56.789Z"),
+    );
     expect(mock.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
         customer_email: "client@example.test",
@@ -295,6 +319,126 @@ describe("coaching payment provider evidence", () => {
         }),
       }),
     );
+  });
+  it.each([
+    "unconfigured appointment policy",
+    "missing booking-help case owner",
+  ])("denies a new checkout for %s before reserving or dispatching a provider request", async () => {
+    mock.findEnrollment.mockResolvedValue({
+      ...enrollment,
+      checkoutSessionId: null,
+    });
+    mock.operationFind.mockResolvedValue(null);
+    const message = "The client's appointment delivery and booking-help contact need review before a new purchase. No new payment was started.";
+    mock.newPurchase.mockRejectedValue(new CoachingBookingPolicyError(message));
+
+    await expect(startCoachingPayment(actor, "enrollment")).rejects.toThrow(message);
+    expect(mock.authority).toHaveBeenCalledTimes(2);
+    expect(mock.newPurchase).toHaveBeenCalledExactlyOnceWith(
+      expect.anything(), "workspace", "enrollment", new Date("2026-10-26T12:34:56.789Z"),
+    );
+    expect(mock.operationCreate).not.toHaveBeenCalled();
+    expect(mock.createSession).not.toHaveBeenCalled();
+    expect(mock.retrieve).not.toHaveBeenCalled();
+    expect(mock.enrollmentUpdate).not.toHaveBeenCalled();
+    expect(mock.paymentCreate).not.toHaveBeenCalled();
+    expect(mock.issueConfirmation).not.toHaveBeenCalled();
+  });
+  it.each(["RESERVED", "SUBMITTED"])("replays a %s operation with its exact original provider payload and key despite a current policy gap", async (status) => {
+    const originalPayload = {
+      mode: "payment",
+      customer_email: "original-payer@example.test",
+      client_reference_id: "enrollment",
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: "cad",
+          unit_amount: 12000,
+          product_data: { name: "Original accepted program" },
+        },
+      }],
+      metadata: {
+        ...settled.metadata,
+        payerAccountId: "payer-account",
+        payerUserId: "user",
+        payerGrantId: "",
+        payerGrantVersion: "",
+        appointmentBookingPolicyEventId: "accepted-policy-event",
+        appointmentBookingPolicyVersion: "2",
+        appointmentBookingPolicyHash: "accepted-policy-hash",
+        appointmentAvailabilityHash: "original-availability-hash",
+        appointmentAvailableCount: "3",
+        appointmentNotOpenCount: "1",
+        appointmentBookingResolutionHours: "24",
+        appointmentBookingCaseOwnerId: "original-case-owner",
+        appointmentTimesNotHeld: "true",
+        appointmentAvailabilityReviewedAt: "2026-10-25T00:00:00.000Z",
+      },
+      payment_intent_data: {
+        metadata: { purpose: "coaching", workspaceId: "workspace", enrollmentId: "enrollment" },
+      },
+      success_url: "https://original.example.test/app/coaching/enrollment?payment=returned",
+      cancel_url: "https://original.example.test/app/coaching/enrollment?payment=cancelled",
+    };
+    const originalSnapshot = structuredClone(originalPayload);
+    const originalKey = "coaching-checkout:enrollment:original-request";
+    mock.findEnrollment.mockResolvedValue({
+      ...enrollment,
+      checkoutSessionId: null,
+      programVersion: {
+        ...enrollment.programVersion,
+        program: { name: "Current display name must not replace accepted payload" },
+      },
+    });
+    mock.operationFind.mockResolvedValue({
+      id: "original-operation",
+      status,
+      actorUserId: "user",
+      payerAccountId: "payer-account",
+      amountCents: 12000,
+      currency: "cad",
+      providerReference: null,
+      providerAccountId: "acct_correct",
+      providerIdempotencyKey: originalKey,
+      submittedAt: new Date(Date.now() - 60_000),
+      payload: originalPayload,
+    });
+    mock.newPurchase.mockRejectedValue(new CoachingBookingPolicyError(
+      "Current appointment policy or case owner is unavailable.",
+    ));
+    mock.createSession.mockImplementation(async (request) => ({
+      ...settled,
+      metadata: request.metadata,
+      status: "open",
+      payment_status: "unpaid",
+      payment_intent: null,
+      expires_at: Math.floor(Date.now() / 1000) + 1800,
+      url: "https://checkout.stripe.com/original",
+    }));
+
+    expect(await startCoachingPayment(actor, "enrollment")).toBe(
+      "https://checkout.stripe.com/original",
+    );
+    expect(mock.newPurchase).not.toHaveBeenCalled();
+    expect(mock.captureTime).not.toHaveBeenCalled();
+    expect(mock.recordDisclosure).not.toHaveBeenCalled();
+    expect(mock.operationCreate).not.toHaveBeenCalled();
+    expect(mock.createSession).toHaveBeenCalledExactlyOnceWith(originalSnapshot, {
+      stripeAccount: "acct_correct",
+      idempotencyKey: originalKey,
+    });
+    expect(mock.createSession.mock.calls[0]![0]).toBe(originalPayload);
+    expect(originalPayload).toEqual(originalSnapshot);
+    expect(mock.operationUpdate).toHaveBeenCalledExactlyOnceWith({
+      where: { id: "original-operation" },
+      data: expect.objectContaining({ providerReference: "cs_123", providerUrl: "https://checkout.stripe.com/original" }),
+    });
+    expect(mock.enrollmentUpdate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      data: expect.objectContaining({ checkoutSessionId: "cs_123", paymentState: "PENDING" }),
+    }));
+    expect(mock.paymentCreate).not.toHaveBeenCalled();
+    expect(mock.issueConfirmation).not.toHaveBeenCalled();
+    expect(mock.reviewUpsert).not.toHaveBeenCalled();
   });
   it("requires owner reconciliation for a lost checkout beyond the provider replay window", async () => {
     mock.findEnrollment.mockResolvedValue({
@@ -341,6 +485,7 @@ describe("coaching payment provider evidence", () => {
       "REVIEW_REQUIRED",
     );
     expect(mock.paymentCreate).toHaveBeenCalledOnce();
+    expect(mock.issueConfirmation).toHaveBeenCalledOnce();
     expect(mock.enrollmentUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

@@ -1,3 +1,4 @@
+import { createFixtureClassSchedulingPolicy } from "../../../packages/db/tests/scheduling-policy-fixture.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { PrismaClient, snapshotMembershipTerms, snapshotPunchCardTerms, membershipAllowanceWindows, createAccessBackedBooking, cancelAccessBackedBooking, moveAccessBackedBooking, getMembershipAllowanceSummary, settleMembershipAllowance, lockClassSchedule, finalizeDropInBookingPayment, finalizePunchCardCheckoutPurchase, adjustMembershipAllowance, adjustPunchCardUnits, cancelMembershipFundedBookingsTx, shouldDeliverNotification } from "@flowstate/db";
@@ -25,6 +26,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL;
   let workspaceId: string, memberId: string, membershipId: string, planId: string, firstId: string, secondId: string;
   beforeEach(async () => {
     workspaceId = (await db.workspace.create({ data: { name: `allowance-test-${randomUUID()}` } })).id; workspaces.push(workspaceId);
+    await createFixtureClassSchedulingPolicy(db, workspaceId);
     const location = await db.location.create({ data: { workspaceId, name: "Gym", timezone: "UTC" } });
     const program = await db.program.create({ data: { workspaceId, name: "Muay Thai" } });
     const room = await db.room.create({ data: { locationId: location.id, name: "Mat", capacity: 10 } });

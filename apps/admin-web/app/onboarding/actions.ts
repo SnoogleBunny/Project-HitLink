@@ -1,5 +1,9 @@
 "use server";
 
+import {
+  WorkspaceSetupError,
+  validateNewBusinessRegionalSettings,
+} from "@flowstate/db";
 import { redirect } from "next/navigation";
 import {
   emptyFormState,
@@ -22,16 +26,51 @@ export async function onboardingAction(
     formData.get("accessInstructions") ?? "",
   ).trim();
 
-  if (!workspaceName || !timezone || !currentSoftware || !accessInstructions) {
+  const newBusiness = formData.get("onboardingKind") === "NEW_BUSINESS";
+  if (
+    !workspaceName ||
+    !timezone ||
+    (!newBusiness && (!currentSoftware || !accessInstructions))
+  ) {
     return {
-      error:
-        "Gym name, launch timezone, current software, and access instructions are required.",
+      error: newBusiness
+        ? "Business name and timezone are required."
+        : "Gym name, launch timezone, current software, and access instructions are required.",
     };
   }
 
+  if (newBusiness) {
+    try {
+      validateNewBusinessRegionalSettings({
+        timezone,
+        serviceMode: String(formData.get("serviceMode") ?? ""),
+        currency: String(formData.get("currency") ?? ""),
+        locale: String(formData.get("locale") ?? ""),
+        contactEmail: String(formData.get("contactEmail") ?? ""),
+      });
+    } catch (error) {
+      return {
+        error:
+          error instanceof WorkspaceSetupError
+            ? error.message
+            : "Review the business settings.",
+      };
+    }
+    if (workspaceName.length > 120)
+      return { error: "Enter a business name using 120 characters or fewer." };
+  }
   const result = await createOwnerWorkspaceOnboarding({
     input: {
       userId: session.userId,
+      ...(newBusiness
+        ? {
+            kind: "NEW_BUSINESS" as const,
+            serviceMode: String(formData.get("serviceMode") ?? ""),
+            currency: String(formData.get("currency") ?? ""),
+            locale: String(formData.get("locale") ?? ""),
+            contactEmail: String(formData.get("contactEmail") ?? ""),
+          }
+        : {}),
       workspaceName,
       businessType,
       timezone,
@@ -59,13 +98,14 @@ export async function onboardingAction(
   });
 
   if (result.status === "blocked") {
-    console.warn({
-      event: "owner_onboarding_blocked_inactive_membership",
-      userId: session.userId,
-      email: session.email,
-      workspaceUserId: result.workspaceUserId,
-      isActive: result.isActive,
-    });
+    try {
+      console.warn({
+        event: "owner_onboarding_blocked_inactive_membership",
+        reason: "inactive-membership",
+      });
+    } catch {
+      // Logging availability must not change this known blocked outcome.
+    }
 
     return {
       error: result.message,
@@ -73,7 +113,11 @@ export async function onboardingAction(
   }
 
   redirect(
-    result.status === "created" ? "/dashboard/migration" : result.location,
+    result.status === "created"
+      ? newBusiness
+        ? "/dashboard/setup"
+        : "/dashboard/migration"
+      : result.location,
   );
 
   return emptyFormState;

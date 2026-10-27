@@ -1,3 +1,4 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import {
@@ -7,7 +8,10 @@ import {
 import { Notice } from "@flowstate/ui";
 import { AdminShell } from "../../../../_components/admin-shell";
 import { requireOperationsWorkspaceContext } from "../../../../../lib/operations-workspace";
-import { coachingDay, coachingTime } from "../../../../../lib/coaching-fields";
+import {
+  coachingDayLabel as knownCoachingDayLabel,
+  coachingTime as knownCoachingTime,
+} from "../../../../../lib/coaching-fields";
 import { CoachingForm } from "../../form";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +23,11 @@ export default async function RecordReviewPage({
   searchParams: Promise<{ read?: string; error?: string; saved?: string }>;
 }) {
   const context = await requireOperationsWorkspaceContext();
+  const locale = resolveDisplayLocale(context.workspace.settings?.locale);
+  const coachingDayLabel = (value: Date) =>
+    knownCoachingDayLabel(value, locale);
+  const coachingTime = (value: Date, timezone: string) =>
+    knownCoachingTime(value, timezone, locale);
   const { grantId } = await params;
   const query = await searchParams;
   const actor = {
@@ -73,7 +82,7 @@ export default async function RecordReviewPage({
         <p>
           Exact records:{" "}
           {review.notes
-            .map((note) => `${coachingDay(note.localDate)} (${note.id})`)
+            .map((note) => `${coachingDayLabel(note.localDate)} (${note.id})`)
             .join(", ")}
         </p>
         {active && review.canConsent ? (
@@ -123,7 +132,7 @@ export default async function RecordReviewPage({
           <h2>Authorized private records</h2>
           {read.notes.map((note) => (
             <article key={note.id}>
-              <h3>{coachingDay(note.localDate)}</h3>
+              <h3>{coachingDayLabel(note.localDate)}</h3>
               <p style={{ whiteSpace: "pre-wrap" }}>{note.body}</p>
             </article>
           ))}

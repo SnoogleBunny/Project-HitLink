@@ -1,3 +1,5 @@
+import { captureAction, expectActionRedirect } from "./support/action-redirect";
+import { loginToWorkspace } from "./support/workspace-login";
 import {
   expect,
   test,
@@ -358,6 +360,7 @@ test.describe.serial("migration-first onboarding integration flow", () => {
 
   test("captures signup, intake, migration operations, gating, and readiness", async ({
     page,
+    browserDiagnostics,
   }) => {
     const ownerEmail = `${emailPrefix}@flowstate.local`;
 
@@ -425,18 +428,58 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     await page
       .locator('input[name="confirmPassword"]')
       .fill("MigrationPass123!");
-    await page.getByRole("button", { name: "Create account" }).click();
+    const origin = new URL(page.url()).origin;
+    const signedUp = await captureAction(page, () =>
+      page.getByRole("button", { name: "Create account" }).click(),
+    );
     await expect(page).toHaveURL(/\/onboarding$/);
     await expect(
-      page.getByRole("heading", { name: "Set up your gym migration" }),
+      page.getByRole("heading", { name: "Set up your business", exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("radio", {
+        name: "Move an existing business from another system",
+        exact: true,
+      }),
+    ).toBeChecked();
+    await expect(
+      page.getByRole("radio", {
+        name: "Start a new business with no legacy import",
+        exact: true,
+      }),
+    ).not.toBeChecked();
+    await expect(
+      page.getByRole("button", {
+        name: "Start migration handoff",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Prepare new business", exact: true }),
+    ).toHaveCount(0);
     await expectHealthyPage(page);
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: { email: ownerEmail },
+      select: { id: true },
+    });
+    await expectActionRedirect(page, signedUp, `${origin}/onboarding`);
+    if (signedUp.status() === 200)
+      browserDiagnostics.acknowledgeAction(
+        signedUp,
+        "The exact new owner's account persists and onboarding choices are visible without opening daily operations.",
+      );
 
     await page.goto("/dashboard");
     await expect(page).toHaveURL(/\/onboarding$/);
     await expect(
-      page.getByRole("heading", { name: "Set up your gym migration" }),
+      page.getByRole("heading", { name: "Set up your business", exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("radio", {
+        name: "Move an existing business from another system",
+        exact: true,
+      }),
+    ).toBeChecked();
     await expectHealthyPage(page);
     await capture(page, "onboarding-intake-empty");
 
@@ -514,19 +557,56 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     await page.locator('input[name="countryCode"]').fill("CA");
     await capture(page, "onboarding-intake-filled");
 
-    await page.getByRole("button", { name: "Start migration handoff" }).click();
+    const intakeSaved = await captureAction(page, () =>
+      page.getByRole("button", { name: "Start migration handoff" }).click(),
+    );
     await expect(page).toHaveURL(/\/dashboard\/migration$/);
-    const owner = await prisma.user.findUniqueOrThrow({
-      where: { email: ownerEmail },
-      select: { id: true },
+    await expect(
+      page.getByRole("heading", { name: "Migration handoff", exact: true }),
+    ).toBeVisible();
+    // Finish the redirected page before changing its fixture and reloading it.
+    // The URL can commit while its JavaScript chunks are still being fetched.
+    await page.waitForLoadState("networkidle");
+    await page.evaluate(async () => {
+      await document.fonts.ready;
     });
     const workspace = await prisma.workspace.findFirstOrThrow({
       where: { name: workspaceName },
       select: {
         id: true,
+        status: true,
         location: { select: { id: true } },
+        setup: { select: { id: true } },
+        setupActivation: { select: { id: true } },
+        migration: {
+          select: {
+            stage: true,
+            ownerReviewAcknowledgedAt: true,
+            operationallyReadyAt: true,
+          },
+        },
       },
     });
+    expect(workspace).toMatchObject({
+      status: "SETUP_INCOMPLETE",
+      setup: null,
+      setupActivation: null,
+      migration: {
+        stage: "INTAKE_RECEIVED",
+        ownerReviewAcknowledgedAt: null,
+        operationallyReadyAt: null,
+      },
+    });
+    await expectActionRedirect(
+      page,
+      intakeSaved,
+      `${origin}/dashboard/migration`,
+    );
+    if (intakeSaved.status() === 200)
+      browserDiagnostics.acknowledgeAction(
+        intakeSaved,
+        "Migration handoff is visible and the exact workspace persists prelaunch with intake received and no new-business setup or fabricated activation.",
+      );
     if (!workspace.location) {
       throw new Error("Onboarding did not create a location.");
     }
@@ -796,7 +876,9 @@ test.describe.serial("migration-first onboarding integration flow", () => {
         goLiveScheduledFor: new Date(`${passedGoLiveDate}T00:00:00.000Z`),
       },
     });
-    await acknowledgeButton.click();
+    const staleAcknowledgment = await captureAction(page, () =>
+      acknowledgeButton.click(),
+    );
     await expect(page).toHaveURL(
       /\/dashboard\/migration\?review=blocked&reason=schedule-passed$/,
     );
@@ -821,6 +903,16 @@ test.describe.serial("migration-first onboarding integration flow", () => {
       ownerReviewAcknowledgedAt: null,
       ownerReviewAcknowledgedByUserId: null,
     });
+    await expectActionRedirect(
+      page,
+      staleAcknowledgment,
+      `${origin}/dashboard/migration?review=blocked&reason=schedule-passed`,
+    );
+    if (staleAcknowledgment.status() === 200)
+      browserDiagnostics.acknowledgeAction(
+        staleAcknowledgment,
+        "The stale-schedule recovery alert is visible and the exact workspace retains no owner acknowledgment or signer.",
+      );
     await expect(
       page.getByRole("button", { name: "Acknowledge and lock summary" }),
     ).toHaveCount(0);
@@ -853,7 +945,9 @@ test.describe.serial("migration-first onboarding integration flow", () => {
     await expect(restoredAcknowledgeButton).toHaveCSS("cursor", "not-allowed");
     await restoredSnapshotLockConfirmation.check();
     await expect(restoredAcknowledgeButton).toBeEnabled();
-    await restoredAcknowledgeButton.click();
+    const acknowledged = await captureAction(page, () =>
+      restoredAcknowledgeButton.click(),
+    );
     await expect(page).toHaveURL(
       /\/dashboard\/migration\?review=acknowledged$/,
     );
@@ -867,6 +961,16 @@ test.describe.serial("migration-first onboarding integration flow", () => {
       }),
     ).resolves.toMatchObject({ ownerReviewAcknowledgedByUserId: owner.id });
     await expect(page.getByText("Data snapshot locked")).toBeVisible();
+    await expectActionRedirect(
+      page,
+      acknowledged,
+      `${origin}/dashboard/migration?review=acknowledged`,
+    );
+    if (acknowledged.status() === 200)
+      browserDiagnostics.acknowledgeAction(
+        acknowledged,
+        "The locked migration summary is visible and the exact workspace records this owner's acknowledgment.",
+      );
     await expect(
       page.getByText(
         /You acknowledged this summary on .* The reviewed snapshot cannot be changed\. Daily operations remain pre-launch until Flowstate completes the remaining launch checks\./,
@@ -1051,16 +1155,21 @@ test.describe.serial("migration-first onboarding integration flow", () => {
 
   test("shows the persisted completed handoff to a fresh owner session", async ({
     page,
+    browserDiagnostics,
   }) => {
     const ownerEmail = `${emailPrefix}@flowstate.local`;
 
     await page.setViewportSize({ width: 390, height: 844 });
 
-    await page.goto("/login");
-    await page.locator('input[name="email"]').fill(ownerEmail);
-    await page.locator('input[name="password"]').fill("MigrationPass123!");
-    await page.getByRole("button", { name: "Log in" }).click();
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await loginToWorkspace({
+      page,
+      origin: new URL(test.info().project.use.baseURL!).origin,
+      email: ownerEmail,
+      password: "MigrationPass123!",
+      expectedRedirect: "/dashboard;push",
+      destination: { path: "/dashboard", heading: "Today" },
+      diagnostics: browserDiagnostics,
+    });
 
     await page.goto("/dashboard/migration");
     await expect(

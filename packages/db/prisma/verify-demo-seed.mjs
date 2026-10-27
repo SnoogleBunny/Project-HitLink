@@ -445,7 +445,12 @@ async function main() {
   ] = await prisma.$transaction([
     prisma.workspaceSetting.findUnique({
       where: { id: demo.ids.workspaceSetting },
-      select: { workspaceId: true, allowMultipleRooms: true },
+      select: {
+        workspaceId: true,
+        allowMultipleRooms: true,
+        classReminderLeadMinutes: true,
+        classReminderVersion: true,
+      },
     }),
     prisma.workspaceStripeSettings.findUnique({
       where: { id: demo.ids.stripeSettings },
@@ -559,6 +564,8 @@ async function main() {
   assert.deepEqual(workspaceSetting, {
     workspaceId: demo.ids.workspace,
     allowMultipleRooms: true,
+    classReminderLeadMinutes: 1440,
+    classReminderVersion: 0,
   });
   assert.deepEqual(stripeSettingsRecord, {
     workspaceId: demo.ids.workspace,
@@ -654,6 +661,11 @@ async function main() {
   });
 
   const workspaceId = workspace.id;
+  const classPolicy = await prisma.workspaceSchedulingPolicyRevision.findFirst({ where: { workspaceId }, orderBy: { version: "desc" } });
+  assert.equal(classPolicy?.version, 1);
+  assert.equal(classPolicy?.policy.classes.maxAdvanceMinutes, 86400);
+  assert.equal(classPolicy?.policy.classes.minimumLeadMinutes, 30);
+  assert.equal(classPolicy?.policy.classes.weeklyHours.length, 7);
   const [
     demoWorkspaces,
     demoUsers,

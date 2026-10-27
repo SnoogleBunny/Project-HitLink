@@ -250,7 +250,7 @@ describe("member helpers", () => {
     });
   });
 
-  it("syncs linked member users only when the email remains unique", async () => {
+  it("keeps member contact changes separate from global sign-in identity", async () => {
     const db = createMockDb();
     db.member.findFirst = vi.fn().mockResolvedValue({
       id: "member_1",
@@ -276,15 +276,7 @@ describe("member helpers", () => {
       status: "updated",
       memberId: "member_1",
     });
-    expect(db.user.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: "user_1",
-      },
-      data: {
-        email: "jordan@example.com",
-        fullName: "Jordan Lee",
-      },
-    });
+    expect(db.user.updateMany).not.toHaveBeenCalled();
 
     db.user.findUnique = vi.fn().mockResolvedValue({
       id: "user_other",
@@ -302,8 +294,8 @@ describe("member helpers", () => {
         db,
       }),
     ).resolves.toEqual({
-      status: "error",
-      message: "That email already belongs to another user.",
+      status: "updated",
+      memberId: "member_1",
     });
   });
 

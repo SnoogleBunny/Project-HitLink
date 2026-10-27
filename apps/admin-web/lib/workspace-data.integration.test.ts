@@ -2,6 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient, WorkspaceDataActor } from "@flowstate/db";
+import {
+  inspectRetentionInventory,
+  deleteReviewedWorkspaceRecords,
+} from "../../../packages/db/src/retention-inventory";
 import type {
   OffboardingSubscription,
   WorkspaceOffboardingGateway,
@@ -53,6 +57,16 @@ integration("workspace exports, offboarding and support access", () => {
         data: { name: "Data export test gym", status: "ACTIVE" },
       })
     ).id;
+    await db.workspaceSetting.create({
+      data: {
+        workspaceId,
+        contactEmail: "gym-contact@example.test",
+        contactPhone: "+1 555 0100",
+        currency: "cad",
+        locale: "en-CA",
+        identityVersion: 2,
+      },
+    });
     const users = await Promise.all(
       ["owner", "second-owner", "support"].map((name) =>
         db.user.create({
@@ -179,28 +193,120 @@ integration("workspace exports, offboarding and support access", () => {
   });
   afterAll(async () => {
     if (!db || !workspaceId) return;
-    await db.supportAccessEvent.deleteMany({
-      where: { grant: { workspaceId } },
-    });
-    await db.workspaceOffboarding.deleteMany({ where: { workspaceId } });
-    await db.coachingPrivateNote.deleteMany({
-      where: { enrollment: { workspaceId } },
-    });
-    await db.coachingIntake.deleteMany({
-      where: { enrollment: { workspaceId } },
-    });
-    await db.coachingEnrollment.deleteMany({ where: { workspaceId } });
-    await db.coachingProgramVersion.deleteMany({
-      where: { program: { workspaceId } },
-    });
-    await db.signedDocument.deleteMany({ where: { workspaceId } });
-    await db.formVersion.deleteMany({ where: { workspaceId } });
-    await db.workspace.delete({ where: { id: workspaceId } });
+    await db.$transaction(
+      async (tx) => {
+        const inventory = await inspectRetentionInventory(tx, workspaceId);
+        await deleteReviewedWorkspaceRecords(
+          tx,
+          workspaceId,
+          inventory.fingerprint,
+        );
+      },
+      { timeout: 120000 },
+    );
     await db.user.deleteMany({
       where: { id: { in: [ownerId, secondOwnerId, supportId] } },
     });
   });
   it("exports stable relational records, safe CSV and exact signed files without secrets or coaching content", async () => {
+    const setupTokenHash = createHash("sha256")
+      .update(`SETUP_PRIVATE_SENTINEL:${randomUUID()}`)
+      .digest("hex");
+    const setup = await db.workspaceSetup.create({
+      data: {
+        workspaceId,
+        ownerUserId: ownerId,
+        serviceMode: "COACHING",
+        version: 2,
+        verificationHash: setupTokenHash,
+      },
+    });
+    await db.workspaceSetupActivation.create({
+      data: {
+        workspaceId,
+        setupId: setup.id,
+        ownerUserId: ownerId,
+        setupVersion: 2,
+        serviceMode: "COACHING",
+        verifiedEmailHash: setupTokenHash,
+        ownerVerifiedAt: now,
+        acceptedAt: now,
+        activatedAt: now,
+        snapshotHash: "d".repeat(64),
+        snapshot: {
+          businessName: "Fictional coaching",
+          serviceMode: "COACHING",
+          timezone: "UTC",
+          ownerUserIds: [ownerId],
+          privateVerification: "SETUP_PRIVATE_SENTINEL",
+        },
+      },
+    });
+    const payment = await db.payment.create({
+      data: {
+        workspaceId,
+        memberId,
+        status: "SUCCEEDED",
+        amountCents: 1000,
+        currency: "cad",
+      },
+    });
+    const dispute = await db.paymentDispute.create({
+      data: {
+        workspaceId,
+        providerAccountId: `acct-${tag}`,
+        livemode: false,
+        providerDisputeId: `dp-${tag}`,
+        chargeId: `ch-${tag}`,
+        paymentId: payment.id,
+        providerStatus: "won",
+        reason: "fraudulent",
+        amountCents: 1000,
+        currency: "cad",
+        chargeAmountCents: 1000,
+        isChargeRefundable: true,
+        evidenceHash: "a".repeat(64),
+        accessState: "RELEASED",
+        moneyState: "WON",
+        resolvedAt: now,
+        evidence: {
+          id: `dp-${tag}`,
+          amountCents: 1000,
+          PRIVATE_PROVIDER_EVIDENCE: "DISPUTE_PRIVATE_SENTINEL",
+          balanceTransactions: [
+            {
+              id: "bt-fixture",
+              amount: 1000,
+              fee: 0,
+              net: 1000,
+              currency: "cad",
+              type: "dispute",
+              privateText: "DISPUTE_PRIVATE_SENTINEL",
+            },
+          ],
+        },
+      },
+    });
+    await db.paymentDisputeAllocation.create({
+      data: {
+        workspaceId,
+        disputeId: dispute.id,
+        paymentId: payment.id,
+        fundedAmountCents: 1000,
+      },
+    });
+    await db.paymentDisputeEvent.create({
+      data: {
+        workspaceId,
+        disputeId: dispute.id,
+        requestKey: "fixture",
+        payloadHash: "b".repeat(64),
+        kind: "PROVIDER_VERIFIED",
+        actorUserId: ownerId,
+        before: {},
+        after: { status: "won", privateEvidence: "DISPUTE_PRIVATE_SENTINEL" },
+      },
+    });
     await expect(
       api.createWorkspaceDataExport(
         { workspaceId, userId: supportId },
@@ -227,6 +333,59 @@ integration("workspace exports, offboarding and support access", () => {
     expect(text).not.toContain("PRIVATE_NOTE_SENTINEL");
     expect(text).not.toContain("INTAKE_SENTINEL");
     expect(text).not.toContain("AUTH_SECRET_SENTINEL");
+    expect(text).not.toContain("DISPUTE_PRIVATE_SENTINEL");
+    expect(text).not.toContain("SETUP_PRIVATE_SENTINEL");
+    expect(text).not.toContain(setupTokenHash);
+    expect(archive.tables.WorkspaceSetup[0]).not.toHaveProperty(
+      "verificationHash",
+    );
+    expect(archive.tables.WorkspaceSetupActivation[0].snapshot).toEqual({
+      businessName: "Fictional coaching",
+      serviceMode: "COACHING",
+      timezone: "UTC",
+      ownerUserIds: [ownerId],
+    });
+    expect(archive.tables.PaymentDispute).toEqual([
+      expect.objectContaining({
+        id: dispute.id,
+        providerStatus: "won",
+        moneyState: "WON",
+        evidence: expect.objectContaining({
+          balanceTransactions: [
+            {
+              id: "bt-fixture",
+              amount: 1000,
+              fee: 0,
+              net: 1000,
+              currency: "cad",
+              type: "dispute",
+            },
+          ],
+        }),
+      }),
+    ]);
+    expect(archive.tables.PaymentDisputeAllocation).toEqual([
+      expect.objectContaining({
+        paymentId: payment.id,
+        fundedAmountCents: 1000,
+      }),
+    ]);
+    expect(archive.tables.PaymentDisputeEvent[0].after).toEqual({
+      status: "won",
+    });
+    expect(archive.tables.WorkspaceSetting).toEqual([
+      expect.objectContaining({
+        workspaceId,
+        contactEmail: "gym-contact@example.test",
+        currency: "cad",
+        locale: "en-CA",
+        identityVersion: 2,
+      }),
+    ]);
+    expect(archive.tables).not.toHaveProperty("PasswordResetChallenge");
+    expect(archive.tables).not.toHaveProperty("AuthRecoveryDelivery");
+    expect(archive.tables).not.toHaveProperty("AccountSecurityEvent");
+    expect(archive.tables).not.toHaveProperty("PublicAuthThrottleBucket");
     expect(archive.tables.Member[0].fullName).toBe("=SUM(1,1)");
     expect(archive.csv["Member.csv"]).toContain("'=SUM(1,1)");
     expect(Buffer.from(archive.files[0].base64, "base64")).toEqual(formBytes);

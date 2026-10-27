@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { WorkspaceLocaleProvider } from "@flowstate/ui";
 import { getSessionOrNull } from "../../lib/admin-access";
 import { requireOwnerWorkspaceContext } from "../../lib/owner-workspace";
 import { requireOperationsWorkspaceContext } from "../../lib/operations-workspace";
@@ -16,11 +17,13 @@ export default async function DashboardLayout({
       ? await requireOperationsWorkspaceContext()
       : await requireOwnerWorkspaceContext();
   return (
-    <AdminWorkspace
-      session={context.session}
-      workspaceName={context.workspace.name}
-    >
-      {children}
-    </AdminWorkspace>
+    <WorkspaceLocaleProvider locale={context.workspace.settings?.locale}>
+      <AdminWorkspace
+        session={context.session}
+        workspaceName={context.workspace.name}
+      >
+        {children}
+      </AdminWorkspace>
+    </WorkspaceLocaleProvider>
   );
 }

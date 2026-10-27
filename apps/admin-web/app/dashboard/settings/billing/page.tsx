@@ -144,8 +144,8 @@ export default async function BillingSettingsPage({
           <p className="dashboard-card-label">Failed payments</p>
           <h3>Grace period</h3>
           <p className="management-copy">
-            This controls queue due dates only. Email/SMS dunning automation
-            stays deferred.
+            The first failed payment fixes its grace deadline. At that deadline, the affected membership cannot fund new bookings or check-in, and future reservations funded by that membership are released without late-cancellation or no-show penalties. Paying later does not restore seats; members can book again under current eligibility and capacity. Independently funded services are unchanged.
+            Retaining restricted reservations is unavailable until a disclosed, bounded review policy is supported.
           </p>
           <GracePeriodForm
             failedPaymentGracePeriodDays={settings.failedPaymentGracePeriodDays}

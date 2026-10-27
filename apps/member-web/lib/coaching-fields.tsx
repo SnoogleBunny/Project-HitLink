@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@flowstate/ui";
 import type { ReactNode } from "react";
 export function CoachingField({
   label,
@@ -45,8 +46,10 @@ export const coachingLabel = (value: string) =>
     .replaceAll("_", " ")
     .replace(/^./, (letter) => letter.toUpperCase());
 export const coachingDay = (value: Date) => value.toISOString().slice(0, 10);
-export const coachingTime = (value: Date, timezone: string) =>
-  new Intl.DateTimeFormat("en-CA", {
+export const coachingDayLabel = (value: Date, locale = "en-CA") =>
+  formatDisplayDate(value, { dateStyle: "medium" }, locale);
+export const coachingTime = (value: Date, timezone: string, locale = "en-CA") =>
+  new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: timezone,

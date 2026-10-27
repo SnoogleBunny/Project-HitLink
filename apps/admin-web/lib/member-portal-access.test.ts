@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { verifyPassword } from "@flowstate/auth";
 import {
   createMemberPortalAccess,
   resetMemberPortalPassword,
@@ -188,5 +189,30 @@ describe("member portal access helpers", () => {
         passwordHash: expect.any(String),
       },
     });
+  });
+});
+
+describe("member provisioning new-password policy", () => {
+  it.each([createMemberPortalAccess, resetMemberPortalPassword])("rejects short and over-byte-limit credentials before reading or writing members", async (command) => {
+    for (const [password, message] of [
+      ["eightchr", "Use at least 12 characters for your password."],
+      ["🔐".repeat(19), "Use a password of 72 bytes or fewer; accented characters and emoji can use more than one byte."],
+    ]) {
+      const db = createMockDb();
+      expect(await command({ workspaceId: "workspace_1", memberId: "member_1", password: password!, db })).toEqual({ status: "error", message });
+      expect(db.member.findFirst).not.toHaveBeenCalled();
+      expect(db.user.updateMany).not.toHaveBeenCalled();
+      expect(db.$transaction).not.toHaveBeenCalled();
+    }
+  });
+
+  it("does not trim a newly assigned password before hashing", async () => {
+    const db = createMockDb();
+    db.member.findFirst = vi.fn().mockResolvedValue({ id: "member_1", fullName: "Jordan Lee", email: "jordan@example.com", userId: "user_1", user: { id: "user_1", email: "jordan@example.com" } });
+    const password = "  fictional-reset-secret  ";
+    expect(await resetMemberPortalPassword({ workspaceId: "workspace_1", memberId: "member_1", password, db })).toEqual({ status: "reset", userId: "user_1" });
+    const saved = vi.mocked(db.user.updateMany).mock.calls[0]?.[0] as { data: { passwordHash: string } };
+    expect(await verifyPassword(password, saved.data.passwordHash)).toBe(true);
+    expect(await verifyPassword(password.trim(), saved.data.passwordHash)).toBe(false);
   });
 });

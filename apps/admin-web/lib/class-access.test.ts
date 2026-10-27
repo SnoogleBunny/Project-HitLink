@@ -1,3 +1,4 @@
+import { fixtureSchedulingRevision } from "../../../packages/db/tests/scheduling-policy-fixture.js";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   cancelAccessBackedBooking,
@@ -10,6 +11,12 @@ import {
   pickOldestEligiblePunchCard,
   promoteNextWaitlistEntry,
 } from "@flowstate/db";
+
+// These existing unit doubles isolate the seat/funding engine. The real outbox
+// transaction and recipient/currentness boundaries have their own PostgreSQL suites.
+vi.mock("../../../packages/db/src/class-booking-notifications.js", () => ({
+  enqueueClassBookingConfirmationTx: vi.fn().mockResolvedValue({ queued: 0 }),
+}));
 
 function buildTemplateRecord() {
   return {
@@ -36,12 +43,54 @@ function buildTemplateRecord() {
 
 function buildCutoffDb(activeBookingCount = 0) {
   const db = {
-    $transaction: vi.fn(async (callback: (tx: typeof db) => unknown) => callback(db)),
+    $executeRaw: vi.fn().mockResolvedValue(0),
+    $queryRaw: vi.fn().mockResolvedValue([]),
+    formDocument: { findMany: vi.fn().mockResolvedValue([]) },
+    signedDocument: { findMany: vi.fn().mockResolvedValue([]) },
+    workspaceSchedulingPolicyRevision: {
+      findFirst: vi.fn().mockResolvedValue(fixtureSchedulingRevision()),
+    },
+    workspaceDataEvent: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: "receipt" }),
+    },
+    user: {
+      findFirst: vi.fn().mockResolvedValue({ email: "jordan@example.com" }),
+    },
+    member: {
+      findFirst: vi
+        .fn()
+        .mockResolvedValue({
+          id: "member_1",
+          workspaceId: "workspace_1",
+          dateOfBirth: new Date("1990-01-01"),
+          familyLinks: [],
+        }),
+      findMany: vi.fn().mockResolvedValue([
+        {
+          id: "member_1",
+          user: {
+            email: "jordan@example.com",
+            fullName: "Jordan",
+            workspaceUsers: [{}],
+          },
+          portalGrants: [],
+        },
+      ]),
+    },
+    notificationJob: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    $transaction: vi.fn(async (callback: (tx: typeof db) => unknown) =>
+      callback(db),
+    ),
     classTemplate: {
       findFirst: vi.fn().mockResolvedValue(buildTemplateRecord()),
     },
     classBooking: {
-      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      updateMany: vi
+        .fn()
+        .mockImplementation(({ data }) =>
+          Promise.resolve({ count: data.formRequirementSnapshot ? 1 : 0 }),
+        ),
       count: vi.fn().mockResolvedValue(activeBookingCount),
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: "booking_cutoff" }),
@@ -78,7 +127,9 @@ function buildCutoffDb(activeBookingCount = 0) {
   return db;
 }
 
-function expectCutoffGuardToSkipAccessAndWrites(db: ReturnType<typeof buildCutoffDb>) {
+function expectCutoffGuardToSkipAccessAndWrites(
+  db: ReturnType<typeof buildCutoffDb>,
+) {
   expect(db.memberMembership.findFirst).not.toHaveBeenCalled();
   expect(db.memberPunchCard.findMany).not.toHaveBeenCalled();
   expect(db.dropInProduct.findMany).not.toHaveBeenCalled();
@@ -156,7 +207,7 @@ describe("shared class access helpers", () => {
       expect(result).toEqual({
         status: "error",
         code: "INVALID",
-        message: "Choose a valid upcoming date for this class.",
+        message: "The class booking deadline has passed. Choose another class.",
       });
       expectCutoffGuardToSkipAccessAndWrites(db);
     },
@@ -165,17 +216,17 @@ describe("shared class access helpers", () => {
   it.each([
     {
       boundary: "immediately before",
-      now: "2026-04-14T20:59:59.999Z",
+      now: "2026-04-14T19:59:59.999Z",
       allowed: true,
     },
     {
       boundary: "exactly at",
-      now: "2026-04-14T21:00:00.000Z",
+      now: "2026-04-14T20:00:00.000Z",
       allowed: false,
     },
     {
       boundary: "immediately after",
-      now: "2026-04-14T21:00:00.001Z",
+      now: "2026-04-14T20:00:00.001Z",
       allowed: false,
     },
   ])(
@@ -184,6 +235,9 @@ describe("shared class access helpers", () => {
       const db = buildCutoffDb(1);
 
       const result = await joinWaitlist({
+        autoPromotionOptIn: true,
+        consentUserId: "user_1",
+        allowPunchCardFunding: true,
         workspaceId: "workspace_1",
         memberId: "member_1",
         classTemplateId: "template_1",
@@ -205,7 +259,7 @@ describe("shared class access helpers", () => {
 
       expect(result).toEqual({
         status: "error",
-        message: "Choose a valid upcoming class date.",
+        message: "The class booking deadline has passed. Choose another class.",
       });
       expectCutoffGuardToSkipAccessAndWrites(db);
     },
@@ -353,6 +407,25 @@ describe("shared class access helpers", () => {
 
   it("creates punch-card-backed bookings and refunds only early cancellations", async () => {
     const createDb = {
+      $executeRaw: vi.fn().mockResolvedValue(0),
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      formDocument: { findMany: vi.fn().mockResolvedValue([]) },
+      signedDocument: { findMany: vi.fn().mockResolvedValue([]) },
+      member: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "member_1",
+          workspaceId: "workspace_1",
+          dateOfBirth: new Date("1990-01-01"),
+          familyLinks: [],
+        }),
+      },
+      workspaceSchedulingPolicyRevision: {
+        findFirst: vi.fn().mockResolvedValue(fixtureSchedulingRevision()),
+      },
+      workspaceDataEvent: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: "receipt" }),
+      },
       $transaction: vi.fn(async (callback: (tx: typeof createDb) => unknown) =>
         callback(createDb),
       ),
@@ -362,6 +435,7 @@ describe("shared class access helpers", () => {
       classBooking: {
         updateMany: vi
           .fn()
+          .mockResolvedValue({ count: 1 })
           .mockResolvedValueOnce({ count: 0 })
           .mockResolvedValueOnce({ count: 1 }),
         count: vi.fn().mockResolvedValue(0),
@@ -396,7 +470,12 @@ describe("shared class access helpers", () => {
           id: "card_1",
           remainingPunches: 3,
           status: "ACTIVE",
-          punchCardProduct: { id: "product_1", name: "10-class pack", restrictionMode: "GENERAL", programRestrictions: [] },
+          punchCardProduct: {
+            id: "product_1",
+            name: "10-class pack",
+            restrictionMode: "GENERAL",
+            programRestrictions: [],
+          },
         }),
         updateMany: vi
           .fn()
@@ -455,7 +534,10 @@ describe("shared class access helpers", () => {
         guardianId: null,
         classTemplateId: "template_1",
         scheduledForDate: new Date("2026-04-14T00:00:00.000Z"),
-        fundingRevision: 1, providerChangedAt: null, fundedByBookingId: null, fundingMembershipId: null,
+        fundingRevision: 1,
+        providerChangedAt: null,
+        fundedByBookingId: null,
+        fundingMembershipId: null,
         bookingType: "PUNCH_CARD",
         status: "BOOKED",
         source: "MEMBER_PORTAL",
@@ -569,6 +651,30 @@ describe("shared class access helpers", () => {
 
   it("restores waitlist entries and promotes the head entry with punch-card access", async () => {
     const joinDb = {
+      workspaceSchedulingPolicyRevision: {
+        findFirst: vi.fn().mockResolvedValue(fixtureSchedulingRevision()),
+      },
+      workspaceDataEvent: {
+        create: vi.fn().mockResolvedValue({ id: "receipt" }),
+      },
+      user: {
+        findFirst: vi.fn().mockResolvedValue({ email: "jordan@example.com" }),
+      },
+      member: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "member_1",
+            user: {
+              email: "jordan@example.com",
+              fullName: "Jordan",
+              workspaceUsers: [{}],
+            },
+            portalGrants: [],
+          },
+        ]),
+      },
+      notificationJob: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+
       $transaction: vi.fn(async (callback: (tx: typeof joinDb) => unknown) =>
         callback(joinDb),
       ),
@@ -623,6 +729,9 @@ describe("shared class access helpers", () => {
 
     await expect(
       joinWaitlist({
+        autoPromotionOptIn: true,
+        consentUserId: "user_1",
+        allowPunchCardFunding: true,
         workspaceId: "workspace_1",
         memberId: "member_1",
         classTemplateId: "template_1",
@@ -636,22 +745,57 @@ describe("shared class access helpers", () => {
       status: "restored",
       waitlistEntryId: "waitlist_1",
     });
-    expect(joinDb.waitlistEntry.update).toHaveBeenCalledWith({
-      where: {
-        id: "waitlist_1",
-      },
-      data: {
-        status: "ACTIVE",
-        joinedAt: new Date("2026-04-08T12:00:00.000Z"),
-        promotedAt: null,
-        promotedBookingId: null,
-      },
-      select: {
-        id: true,
-      },
-    });
+    expect(joinDb.waitlistEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "waitlist_1",
+        },
+        data: expect.objectContaining({
+          status: "ACTIVE",
+          joinedAt: new Date("2026-04-08T12:00:00.000Z"),
+          promotedAt: null,
+          promotedBookingId: null,
+        }),
+        select: { id: true },
+      }),
+    );
 
     const promoteDb = {
+      $executeRaw: vi.fn().mockResolvedValue(0),
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      formDocument: { findMany: vi.fn().mockResolvedValue([]) },
+      signedDocument: { findMany: vi.fn().mockResolvedValue([]) },
+      workspaceSchedulingPolicyRevision: {
+        findFirst: vi.fn().mockResolvedValue(fixtureSchedulingRevision()),
+      },
+      workspaceDataEvent: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: "receipt" }),
+      },
+      user: {
+        findFirst: vi.fn().mockResolvedValue({ email: "jordan@example.com" }),
+      },
+      member: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "member_1",
+          workspaceId: "workspace_1",
+          dateOfBirth: new Date("1990-01-01"),
+          familyLinks: [],
+        }),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "member_1",
+            user: {
+              email: "jordan@example.com",
+              fullName: "Jordan",
+              workspaceUsers: [{}],
+            },
+            portalGrants: [],
+          },
+        ]),
+      },
+      notificationJob: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
+
       $transaction: vi.fn(async (callback: (tx: typeof promoteDb) => unknown) =>
         callback(promoteDb),
       ),
@@ -661,7 +805,9 @@ describe("shared class access helpers", () => {
       classBooking: {
         updateMany: vi
           .fn()
-          .mockResolvedValue({ count: 0 })
+          .mockImplementation(({ data }) =>
+            Promise.resolve({ count: data.formRequirementSnapshot ? 1 : 0 }),
+          )
           .mockResolvedValueOnce({ count: 0 })
           .mockResolvedValueOnce({ count: 0 }),
         count: vi.fn().mockResolvedValue(0),
@@ -695,7 +841,17 @@ describe("shared class access helpers", () => {
         updateMany: vi.fn().mockResolvedValue({
           count: 1,
         }),
-        findFirst: vi.fn().mockResolvedValue({id:"card_1",remainingPunches:2,status:"ACTIVE",punchCardProduct:{id:"product_1",name:"10-class pack",restrictionMode:"GENERAL",programRestrictions:[]}}),
+        findFirst: vi.fn().mockResolvedValue({
+          id: "card_1",
+          remainingPunches: 2,
+          status: "ACTIVE",
+          punchCardProduct: {
+            id: "product_1",
+            name: "10-class pack",
+            restrictionMode: "GENERAL",
+            programRestrictions: [],
+          },
+        }),
       },
       dropInProduct: {
         findMany: vi.fn().mockResolvedValue([]),
@@ -707,6 +863,25 @@ describe("shared class access helpers", () => {
             id: "waitlist_1",
             memberId: "member_1",
             status: "ACTIVE",
+            autoPromotionOptedInAt: new Date("2026-04-01"),
+            autoPromotionConsentUserId: "user_1",
+            autoPromotionPolicyVersion: "FIFO_AUTO_V1",
+            allowPunchCardFunding: true,
+            schedulingPolicySnapshot: {
+              schemaVersion: 1,
+              mode: "LIVE",
+              policyRevisionId: fixtureSchedulingRevision().id,
+              policyVersion: 1,
+              policyHash: fixtureSchedulingRevision().policyHash,
+              opensAt: "2026-03-01T00:00:00Z",
+              closesAt: "2026-04-14T16:00:00Z",
+              scheduledForDate: "2026-04-14",
+              timezone: "UTC",
+              startsAt: "2026-04-14T18:00:00.000Z",
+              endsAt: "2026-04-14T19:00:00.000Z",
+              evaluatedAt: "2026-04-01T00:00:00Z",
+              autoPromotionClosesAt: "2026-04-14T16:00:00Z",
+            },
             joinedAt: new Date("2026-04-01T00:00:00.000Z"),
             promotedAt: null,
             promotedBookingId: null,
@@ -721,6 +896,25 @@ describe("shared class access helpers", () => {
             id: "waitlist_2",
             memberId: "member_2",
             status: "ACTIVE",
+            autoPromotionOptedInAt: new Date("2026-04-01"),
+            autoPromotionConsentUserId: "user_1",
+            autoPromotionPolicyVersion: "FIFO_AUTO_V1",
+            allowPunchCardFunding: true,
+            schedulingPolicySnapshot: {
+              schemaVersion: 1,
+              mode: "LIVE",
+              policyRevisionId: fixtureSchedulingRevision().id,
+              policyVersion: 1,
+              policyHash: fixtureSchedulingRevision().policyHash,
+              opensAt: "2026-03-01T00:00:00Z",
+              closesAt: "2026-04-14T16:00:00Z",
+              scheduledForDate: "2026-04-14",
+              timezone: "UTC",
+              startsAt: "2026-04-14T18:00:00.000Z",
+              endsAt: "2026-04-14T19:00:00.000Z",
+              evaluatedAt: "2026-04-01T00:00:00Z",
+              autoPromotionClosesAt: "2026-04-14T16:00:00Z",
+            },
             joinedAt: new Date("2026-04-02T00:00:00.000Z"),
             promotedAt: null,
             promotedBookingId: null,
@@ -767,33 +961,53 @@ describe("shared class access helpers", () => {
         }),
       }),
     );
-    expect(promoteDb.waitlistEntry.update).toHaveBeenCalledWith({
-      where: {
-        id: "waitlist_1",
-      },
-      data: {
-        status: "PROMOTED",
-        promotedAt: new Date("2026-04-08T12:00:00.000Z"),
-        promotedBookingId: "booking_2",
-      },
-      select: {
-        id: true,
-      },
-    });
+    expect(promoteDb.waitlistEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "waitlist_1",
+        },
+        data: expect.objectContaining({
+          status: "PROMOTED",
+          promotedAt: new Date("2026-04-08T12:00:00.000Z"),
+          promotedBookingId: "booking_2",
+        }),
+        select: { id: true },
+      }),
+    );
   });
 
   it("finalizes punch-card purchases and drop-in webhooks idempotently", async () => {
     const purchaseDb = {
-      $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(purchaseDb)),
+      $transaction: vi.fn(async (fn: (tx: unknown) => unknown) =>
+        fn(purchaseDb),
+      ),
       member: { findFirst: vi.fn().mockResolvedValue({ id: "member_1" }) },
-      punchCardProduct: { findFirst: vi.fn().mockResolvedValue({ id: "product_1" }) },
+      punchCardProduct: {
+        findFirst: vi.fn().mockResolvedValue({ id: "product_1" }),
+      },
       memberPunchCard: {
         findFirst: vi
           .fn()
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce({
-            id: "card_1", workspaceId: "workspace_1", memberId: "member_1", punchCardProductId: "product_1", originalPunches: 10, purchasePriceCents: 25000, purchaseCurrency: "usd",
-            acceptedTerms: { version: 1, priceCents: 25000, currency: "usd", originalPunches: 10, restrictionMode: "GENERAL", programIds: [], lateCancellationConsumesPunch: true, noShowConsumesPunch: true, capturedAt: "2026-04-08T12:00:00Z" },
+            id: "card_1",
+            workspaceId: "workspace_1",
+            memberId: "member_1",
+            punchCardProductId: "product_1",
+            originalPunches: 10,
+            purchasePriceCents: 25000,
+            purchaseCurrency: "usd",
+            acceptedTerms: {
+              version: 1,
+              priceCents: 25000,
+              currency: "usd",
+              originalPunches: 10,
+              restrictionMode: "GENERAL",
+              programIds: [],
+              lateCancellationConsumesPunch: true,
+              noShowConsumesPunch: true,
+              capturedAt: "2026-04-08T12:00:00Z",
+            },
             remainingPunches: 10,
             status: "ACTIVE",
             purchasedAt: new Date("2026-04-08T12:00:00.000Z"),
@@ -820,7 +1034,17 @@ describe("shared class access helpers", () => {
         priceCents: 25000,
         currency: "usd",
         checkoutSessionId: "cs_1",
-        acceptedTerms: { version: 1, priceCents: 25000, currency: "usd", originalPunches: 10, restrictionMode: "GENERAL", programIds: [], lateCancellationConsumesPunch: true, noShowConsumesPunch: true, capturedAt: "2026-04-08T12:00:00Z" },
+        acceptedTerms: {
+          version: 1,
+          priceCents: 25000,
+          currency: "usd",
+          originalPunches: 10,
+          restrictionMode: "GENERAL",
+          programIds: [],
+          lateCancellationConsumesPunch: true,
+          noShowConsumesPunch: true,
+          capturedAt: "2026-04-08T12:00:00Z",
+        },
         db: purchaseDb as never,
         now: new Date("2026-04-08T12:00:00.000Z"),
       }),
@@ -838,7 +1062,17 @@ describe("shared class access helpers", () => {
         priceCents: 25000,
         currency: "usd",
         checkoutSessionId: "cs_1",
-        acceptedTerms: { version: 1, priceCents: 25000, currency: "usd", originalPunches: 10, restrictionMode: "GENERAL", programIds: [], lateCancellationConsumesPunch: true, noShowConsumesPunch: true, capturedAt: "2026-04-08T12:00:00Z" },
+        acceptedTerms: {
+          version: 1,
+          priceCents: 25000,
+          currency: "usd",
+          originalPunches: 10,
+          restrictionMode: "GENERAL",
+          programIds: [],
+          lateCancellationConsumesPunch: true,
+          noShowConsumesPunch: true,
+          capturedAt: "2026-04-08T12:00:00Z",
+        },
         db: purchaseDb as never,
         now: new Date("2026-04-08T12:00:00.000Z"),
       }),
@@ -856,11 +1090,25 @@ describe("shared class access helpers", () => {
           .fn()
           .mockResolvedValueOnce({
             id: "booking_1",
-            status: "PENDING_PAYMENT", bookingType: "DROP_IN", dropInCheckoutSessionId: "cs_1", dropInPriceCents: 2500, dropInCurrency: "usd", pendingPaymentExpiresAt: new Date("2026-04-08T12:15:00Z"), classTemplateId: "template_1", scheduledForDate: new Date("2026-04-14"), classTemplate: buildTemplateRecord(), workspace: { location: { timezone: "UTC" } },
+            status: "PENDING_PAYMENT",
+            bookingType: "DROP_IN",
+            dropInCheckoutSessionId: "cs_1",
+            dropInPriceCents: 2500,
+            dropInCurrency: "usd",
+            pendingPaymentExpiresAt: new Date("2026-04-08T12:15:00Z"),
+            classTemplateId: "template_1",
+            scheduledForDate: new Date("2026-04-14"),
+            classTemplate: buildTemplateRecord(),
+            workspace: { location: { timezone: "UTC" } },
           })
           .mockResolvedValueOnce({
             id: "booking_1",
-            status: "BOOKED", bookingType: "DROP_IN", dropInCheckoutSessionId: "cs_1", dropInPriceCents: 2500, dropInCurrency: "usd", dropInPaidAt: new Date("2026-04-08T12:05:00Z"),
+            status: "BOOKED",
+            bookingType: "DROP_IN",
+            dropInCheckoutSessionId: "cs_1",
+            dropInPriceCents: 2500,
+            dropInCurrency: "usd",
+            dropInPaidAt: new Date("2026-04-08T12:05:00Z"),
           }),
         count: vi.fn().mockResolvedValue(1),
         update: vi.fn().mockResolvedValue({
@@ -877,7 +1125,9 @@ describe("shared class access helpers", () => {
         workspaceId: "workspace_1",
         bookingId: "booking_1",
         checkoutSessionId: "cs_1",
-        paymentIntentId: "pi_1", amountCents: 2500, currency: "usd",
+        paymentIntentId: "pi_1",
+        amountCents: 2500,
+        currency: "usd",
         expiresAt: new Date("2026-04-08T12:15:00.000Z"),
         db: dropInDb as never,
         now: new Date("2026-04-08T12:05:00.000Z"),
@@ -888,7 +1138,9 @@ describe("shared class access helpers", () => {
         workspaceId: "workspace_1",
         bookingId: "booking_1",
         checkoutSessionId: "cs_1",
-        paymentIntentId: "pi_1", amountCents: 2500, currency: "usd",
+        paymentIntentId: "pi_1",
+        amountCents: 2500,
+        currency: "usd",
         expiresAt: new Date("2026-04-08T12:15:00.000Z"),
         db: dropInDb as never,
         now: new Date("2026-04-08T12:05:00.000Z"),

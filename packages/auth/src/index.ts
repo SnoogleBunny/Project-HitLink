@@ -1,6 +1,18 @@
 export { AuthError, isAuthError, type AuthErrorCode } from "./errors.js";
 export { hashPassword, verifyPassword } from "./password.js";
 export {
+  AccountSecurityError,
+  PASSWORD_RESET_REQUESTED_MESSAGE,
+  INVALID_PASSWORD_RESET_MESSAGE,
+  validateNewPassword,
+  passwordResetLink,
+  requestPasswordReset,
+  resetPassword,
+  revokeAllAccountSessions,
+  processPasswordRecoveryOutbox,
+  type AccountPortal,
+} from "./account-security.js";
+export {
   ADMIN_SESSION_COOKIE_NAME,
   buildAppSession,
   clearSessionCookie,
@@ -8,6 +20,7 @@ export {
   deleteSession,
   getSession,
   getSessionFromToken,
+  getSessionWithReference,
   hashSessionToken,
   MEMBER_SESSION_COOKIE_NAME,
   normalizeDisplayName,
@@ -18,7 +31,22 @@ export {
   SESSION_DURATION_MS,
   setSessionCookie,
   type AppSession,
+  type CurrentSessionReference,
+  type ResolvedSession,
   type SessionCookieStore,
   type SessionRepository,
   type StoredSessionRecord,
 } from "./session.js";
+
+export {
+  PublicAuthThrottleError,
+  PUBLIC_AUTH_COOLDOWN_MESSAGE,
+  PUBLIC_AUTH_UNAVAILABLE_MESSAGE,
+  consumePublicAuthAttempt,
+  clearSuccessfulPublicAuthLogin,
+  cleanupPublicAuthThrottleBuckets,
+  getPublicAuthNetworkIdentity,
+  buildPublicAuthThrottlePlan,
+  type PublicAuthAction,
+  type PublicAuthPortal,
+} from "./public-auth-throttle.js";

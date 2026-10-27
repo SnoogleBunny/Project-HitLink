@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import type { AppSession } from "@flowstate/auth";
 import { WorkspaceShell } from "@flowstate/ui";
 import { logoutAction } from "../actions/logout";
@@ -58,6 +59,7 @@ export function AdminWorkspace({
         <>
           <strong>{session.displayName}</strong>
           <span>{session.email}</span>
+          <Link className="hl-text-link" href="/dashboard/settings/security">Account security</Link>
           <form action={logoutAction}>
             <button className="hl-text-link" type="submit">
               Log out

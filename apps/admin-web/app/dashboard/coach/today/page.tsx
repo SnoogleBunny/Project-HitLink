@@ -1,7 +1,11 @@
 import Link from "next/link";
+import { resolveDisplayLocale } from "@flowstate/ui";
 import { AdminShell } from "../../../_components/admin-shell";
 import { requireOperationsWorkspaceContext } from "../../../../lib/operations-workspace";
-import { listTodayClasses, type TodayClassSummary } from "../../../../lib/rosters";
+import {
+  listTodayClasses,
+  type TodayClassSummary,
+} from "../../../../lib/rosters";
 
 function formatCapacity(template: TodayClassSummary): string {
   if (template.effectiveCapacity === null) {
@@ -20,6 +24,7 @@ export default async function CoachTodayPage() {
       workspaceUserId,
       role: workspaceUserRole,
       timezone: location.timezone,
+      locale: resolveDisplayLocale(workspace.settings?.locale),
     },
   });
 

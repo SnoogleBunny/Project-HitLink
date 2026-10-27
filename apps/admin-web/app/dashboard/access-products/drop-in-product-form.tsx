@@ -13,7 +13,9 @@ import {
 } from "./actions";
 
 function getSelectedProgramIds(product?: DropInProductSummary): Set<string> {
-  return new Set(product?.programRestrictions.map((program) => program.id) ?? []);
+  return new Set(
+    product?.programRestrictions.map((program) => program.id) ?? [],
+  );
 }
 
 export function DropInProductForm({
@@ -73,11 +75,13 @@ export function DropInProductForm({
         <label className="field">
           <span>Currency</span>
           <input
-            defaultValue={product?.currency ?? "usd"}
+            defaultValue={(product?.currency ?? "usd").toUpperCase()}
             disabled={isStripeSynced}
             maxLength={3}
             name="currency"
-            placeholder="usd"
+            placeholder="USD"
+            autoCapitalize="characters"
+            style={{ textTransform: "uppercase" }}
             type="text"
           />
         </label>
@@ -85,8 +89,16 @@ export function DropInProductForm({
 
       {isStripeSynced ? (
         <>
-          <input name="priceCents" type="hidden" value={product?.priceCents ?? ""} />
-          <input name="currency" type="hidden" value={product?.currency ?? "usd"} />
+          <input
+            name="priceCents"
+            type="hidden"
+            value={product?.priceCents ?? ""}
+          />
+          <input
+            name="currency"
+            type="hidden"
+            value={product?.currency ?? "usd"}
+          />
           <p className="management-copy">
             This product is synced to Stripe. Archive it and create a new one to
             change price or currency.

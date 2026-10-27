@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState, useEffect } from "react";
-import { formatMoney } from "./money";
+import { formatMoney as knownFormatMoney } from "./money";
+import { useWorkspaceLocale } from "./workspace-locale";
 
 export interface LifecycleReviewView {
   requestId: string;
@@ -85,6 +86,9 @@ function Review({
   review: LifecycleReviewView;
   currency: string;
 }) {
+  const locale = useWorkspaceLocale();
+  const formatMoney = (amount: number, currency: string) =>
+    knownFormatMoney(amount, currency, locale);
   return (
     <div
       className="form-stack"

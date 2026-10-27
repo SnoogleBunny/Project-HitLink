@@ -3,6 +3,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "./client.js";
 import { lockClassSchedule } from "./class-occurrences.js";
 import { lockFinancialAccount } from "./financial-operations.js";
+import { normalizeAuthoritySerializationError } from "./staff-access.js";
 import { WorkspaceDataError } from "./workspace-data.js";
 import {
   REVIEWED_RETENTION_SCHEMA,
@@ -67,6 +68,13 @@ async function locked<T>(
   );
 }
 async function ownersForPlan(tx: Tx, workspaceId: string) {
+  try {
+    // The plan selects live membership authority versus frozen exit authority.
+    // A fixed snapshot waiting on the schedule lock must not reuse the old mode.
+    await tx.$queryRaw`SELECT id FROM workspace_offboarding WHERE "workspaceId" = ${workspaceId} FOR SHARE`;
+  } catch (error) {
+    throw normalizeAuthoritySerializationError(error);
+  }
   const plan = await tx.workspaceOffboarding.findUnique({
     where: { workspaceId },
     include: { exportJob: true },
@@ -96,6 +104,13 @@ async function ownersForPlan(tx: Tx, workspaceId: string) {
       );
     owners = metadata.approvedOwnerUserIds as string[];
   } else {
+    try {
+      // Lock identities without filtering revoked state. A waited revocation
+      // forces the complete Serializable operation to retry before authorization.
+      await tx.$queryRaw`SELECT id FROM workspace_users WHERE "workspaceId" = ${workspaceId} ORDER BY id FOR SHARE`;
+    } catch (error) {
+      throw normalizeAuthoritySerializationError(error);
+    }
     owners = (
       await tx.workspaceUser.findMany({
         where: { workspaceId, role: "OWNER", isActive: true },

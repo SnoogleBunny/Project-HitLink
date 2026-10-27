@@ -59,11 +59,11 @@
 @media(pointer:coarse){#hitlink-prototype .hl-theme-button{min-width:44px;min-height:44px}}
 /* The preview chrome follows its host, even when the product has the opposite theme. */
 #hitlink-prototype .hl-reviewbar,#hitlink-prototype .hl-design-map,#hitlink-prototype>.hl-feedback{color:light-dark(#2e2e34,#f3f3f4)}
-@media(max-width:850px) and (min-width:641px){
+@media(max-width:1023px) and (min-width:768px){
  #hitlink-prototype .hl-topbar .hl-theme-button>span{display:none}
  #hitlink-prototype .hl-topbar .hl-theme-button{width:40px;padding:8px}
 }
-@media(max-width:640px){
+@media(max-width:767px){
  #hitlink-prototype .hl-mobile-header{border-bottom:1px solid var(--hl-line);gap:8px}
  #hitlink-prototype .hl-mobile-header .hl-brand{gap:5px;font-size:22px}
  #hitlink-prototype .hl-mobile-header .hl-theme-button{width:44px;height:44px;padding:10px}

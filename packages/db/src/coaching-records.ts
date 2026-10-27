@@ -1,3 +1,4 @@
+import { listCoachingCheckoutHelpReceiptsTx } from "./coaching-checkout-disclosure.js";
 import { createHash } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 import {
@@ -565,6 +566,7 @@ export async function prepareCoachingRecordExport(
           agreements,
           decisions,
           payment,
+          appointmentBookingHelpReceipts,
         ] = await Promise.all([
           tx.coachingAcceptedPlan.findMany({
             where: { workspaceId: actor.workspaceId, enrollmentId },
@@ -694,6 +696,11 @@ export async function prepareCoachingRecordExport(
                 },
               })
             : null,
+          listCoachingCheckoutHelpReceiptsTx(tx, {
+            workspaceId: actor.workspaceId,
+            enrollmentId: e.id,
+            beneficiaryMemberId: e.memberId,
+          }),
         ]);
         const records = {
           formatVersion: 1,
@@ -706,6 +713,7 @@ export async function prepareCoachingRecordExport(
           timezone: e.timezone,
           plan: e.programVersion,
           acceptedPlans: plans,
+          appointmentBookingHelpReceipts,
           acceptanceHistory: agreements,
           legacyAcceptance: plans.length
             ? null

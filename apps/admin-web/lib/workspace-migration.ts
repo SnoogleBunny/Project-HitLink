@@ -4,9 +4,10 @@ import { importEntitlement } from "./migration-entitlements";
 import { inspectMigrationCutoverSnapshot } from "./migration-cutover";
 import { createHash } from "node:crypto";
 import { parse } from "csv-parse/sync";
-import {
+import { readDatabaseFailure, readOwnedErrorMessage,
   Prisma,
   lockClassSchedule,
+  parseDateOnlyString,
   isWorkspaceMigrationReady as isSharedWorkspaceMigrationReady,
   prisma,
   type ImportJobStatus,
@@ -535,12 +536,7 @@ function getFlowstateOperatorId(actor: MigrationReadinessActor): string | null {
 }
 
 function isPrismaSerializationConflict(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "P2034"
-  );
+  return readDatabaseFailure(error)?.code === "P2034";
 }
 
 async function runSerializableWithRetry<T>(
@@ -592,13 +588,9 @@ function cleanNullable(value: string | undefined | null): string | null {
 function parseDateOnly(value: string | undefined | null): Date | null {
   const dateString = cleanNullable(value);
 
-  if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-    return null;
-  }
-
-  const parsed = new Date(`${dateString}T00:00:00.000Z`);
-
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  if (!dateString) return null;
+  const parsed = parseDateOnlyString(dateString);
+  return parsed.status === "ok" ? parsed.date : null;
 }
 
 function parseOptionalDateTime(value: string | undefined | null): Date | null {
@@ -1163,6 +1155,26 @@ function mapped<T extends Prisma.JsonObject>(value: Prisma.JsonValue): T {
   return value as T;
 }
 
+const reviewedCohortImportIssueCode = "REVIEWED_COHORT_IMPORT_CONFLICT";
+const reviewedCohortImportMessage = "Source labels differ from reviewed eligibility tags. Resolve this member's source record before importing.";
+
+async function reviewedCohortImportConflict(args: {
+  db: Prisma.TransactionClient;
+  workspaceId: string;
+  stagingRecord: { externalId: string | null; mappedData: Prisma.JsonValue | null };
+}): Promise<boolean> {
+  if (!args.stagingRecord.externalId || !args.stagingRecord.mappedData) return false;
+  const identity = await findIdentity({ db: args.db, workspaceId: args.workspaceId, recordKind: "MEMBER", externalId: args.stagingRecord.externalId });
+  if (!identity) return false;
+  const current = await args.db.member.findFirst({ where: { id: identity.importedRecordId, workspaceId: args.workspaceId }, select: { tags: true } });
+  if (!current) throw new Error("The imported member identity needs source review.");
+  const data = mapped<{ tags?: string[] }>(args.stagingRecord.mappedData), incoming = data.tags ?? [];
+  if (!Array.isArray(incoming) || incoming.some(label => typeof label !== "string")) throw new Error("Imported cohort labels need source review.");
+  const before = [...current.tags].sort(), after = [...incoming].sort();
+  if (before.length === after.length && before.every((label, index) => label === after[index])) return false;
+  return !!await args.db.memberOperationalRevision.findFirst({ where: { workspaceId: args.workspaceId, memberId: identity.importedRecordId, recordKind: "TAG", tagPurpose: "COHORT_ELIGIBILITY" }, select: { id: true } });
+}
+
 async function importMember(args: {
   db: Prisma.TransactionClient;
   workspaceId: string;
@@ -1212,12 +1224,18 @@ async function importMember(args: {
   let result: "created" | "updated" = "updated";
 
   if (memberId) {
+    if (await reviewedCohortImportConflict({ db: args.db, workspaceId: args.workspaceId, stagingRecord: args.stagingRecord }))
+      throw new Error(reviewedCohortImportMessage);
+    const currentLabels = await args.db.member.findFirst({ where: { id: memberId, workspaceId: args.workspaceId }, select: { tags: true, notes: true } });
+    if (currentLabels && currentLabels.tags.length === memberData.tags.length && [...currentLabels.tags].sort().every((label, index) => label === [...memberData.tags].sort()[index])) memberData.tags = currentLabels.tags;
     await args.db.member.updateMany({
       where: {
         id: memberId,
         workspaceId: args.workspaceId,
       },
-      data: memberData,
+      // Source notes have no reviewed author/visibility. Keep the existing
+      // legacy owner-review record rather than silently erasing it on import.
+      data: { ...memberData, notes: currentLabels?.notes ?? null },
     });
   } else {
     const member = await args.db.member.create({
@@ -2331,12 +2349,13 @@ export async function runMigrationImport(args: {
         };
       }
 
-      if (job.validationIssues.some((issue) => issue.severity === "ERROR")) {
+      if (job.validationIssues.some((issue) => issue.severity === "ERROR" && issue.code !== reviewedCohortImportIssueCode)) {
         return {
           status: "error" as const,
           message: "Resolve blocking validation issues before importing.",
         };
       }
+
 
       if (job.stagingRecords.length === 0) {
         return {
@@ -2365,6 +2384,25 @@ export async function runMigrationImport(args: {
             "The selected migration location does not belong to this workspace.",
         };
       }
+
+      // Retain a sanitized blocking review before claiming/importing any rows.
+      // Recompute our own dynamic issues so a corrected source/owner review can
+      // retry this validated job without deleting unrelated validation evidence.
+      const cohortConflicts: string[] = [];
+      for (const row of job.stagingRecords) {
+        if (row.recordKind === "MEMBER" && await reviewedCohortImportConflict({ db: tx, workspaceId: args.workspaceId, stagingRecord: row })) {
+          cohortConflicts.push(row.id);
+          await tx.validationIssue.upsert({
+            where: { id: `member-cohort-import:${row.id}` },
+            create: { id: `member-cohort-import:${row.id}`, workspaceId: args.workspaceId, importJobId: job.id, stagingRecordId: row.id, severity: "ERROR", code: reviewedCohortImportIssueCode, fieldName: "tags", message: reviewedCohortImportMessage },
+            update: { severity: "ERROR", message: reviewedCohortImportMessage },
+          });
+        }
+      }
+      if (job.validationIssues.some(issue => issue.code === reviewedCohortImportIssueCode))
+        await tx.validationIssue.deleteMany({ where: { workspaceId: args.workspaceId, importJobId: job.id, code: reviewedCohortImportIssueCode, ...(cohortConflicts.length ? { stagingRecordId: { notIn: cohortConflicts } } : {}) } });
+      if (cohortConflicts.length) return { status: "error" as const, message: reviewedCohortImportMessage };
+
 
       const importClaim = await tx.importJob.updateMany({
         where: {
@@ -2480,7 +2518,7 @@ export async function runMigrationImport(args: {
   } catch (error) {
     return {
       status: "error",
-      message: error instanceof MigrationEntitlementError ? error.message : "The import failed. Check the source data and retry.",
+      message: readOwnedErrorMessage(error, MigrationEntitlementError.prototype) ?? "The import failed. Check the source data and retry.",
     };
   }
 }

@@ -12,9 +12,9 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
-vi.mock("@flowstate/db", () => ({ moveAccessBackedBooking: mocks.move }));
+vi.mock("@flowstate/db", () => ({ moveMemberClassBooking: mocks.move }));
 vi.mock("../../../lib/member-auth", () => ({
-  requireMemberPortalContext: mocks.context,
+  requireMemberCommandContext: mocks.context,
 }));
 vi.mock("../../_components/member-selector-actions", () => ({
   selectFamilyMember: mocks.select,
@@ -36,11 +36,11 @@ function form(values: Record<string, string>) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.context.mockResolvedValue({
+  mocks.context.mockResolvedValue({ context: {
     workspace: { id: "workspace" },
     member: { id: "submitted-child" },
     location: { timezone: "America/Vancouver" },
-  });
+  }, actor: { userId: "guardian", sessionId: "server-session" } });
   mocks.cancel.mockResolvedValue({ status: "cancelled", bookingId: "booking" });
   mocks.leave.mockResolvedValue({
     status: "waitlist_left",
@@ -84,6 +84,7 @@ describe("participant-bound booking actions", () => {
     });
     expect(mocks.cancel).toHaveBeenCalledWith({
       workspaceId: "workspace",
+      actor: { userId: "guardian", sessionId: "server-session" },
       memberId: "submitted-child",
       bookingId: "booking",
       timezone: "America/Vancouver",

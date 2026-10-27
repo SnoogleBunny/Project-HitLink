@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import {
   PrismaClient,
   reconcileMembershipInvoice,
+  shouldDeliverNotification,
   type InvoiceEvidence,
 } from "@flowstate/db";
 const testUrl = process.env.TEST_DATABASE_URL;
@@ -10,7 +11,7 @@ const testUrl = process.env.TEST_DATABASE_URL;
   "invoice debt and payment reconciliation",
   () => {
     const db = new PrismaClient({ datasources: { db: { url: testUrl } } });
-    const gyms: string[] = [];
+    const gyms: string[] = [], users: string[] = [];
     let gym: string, memberId: string, membershipId: string;
     const now = new Date("2030-01-10T12:00:00Z");
     beforeEach(async () => {
@@ -37,6 +38,11 @@ const testUrl = process.env.TEST_DATABASE_URL;
           },
         })
       ).id;
+      const payerUser = await db.user.create({ data: { email: `invoice-payer-${randomUUID()}@example.test` } });
+      users.push(payerUser.id);
+      await db.member.update({ where: { id: memberId }, data: { userId: payerUser.id } });
+      await db.workspaceUser.create({ data: { workspaceId: gym, userId: payerUser.id, role: "CUSTOMER" } });
+      const payerAccount = await db.financialAccount.create({ data: { workspaceId: gym, userId: payerUser.id, memberId, stripeAccountId: "acct_invoices", stripeCustomerId: "cus_test" } });
       const plan = await db.membershipPlan.create({
         data: { workspaceId: gym, name: "Monthly", monthlyPriceCents: 12900 },
       });
@@ -45,6 +51,7 @@ const testUrl = process.env.TEST_DATABASE_URL;
           data: {
             workspaceId: gym,
             memberId,
+            payerAccountId: payerAccount.id,
             membershipPlanId: plan.id,
             stripeSubscriptionId: "sub_test",
             stripeCustomerId: "cus_test",
@@ -55,12 +62,18 @@ const testUrl = process.env.TEST_DATABASE_URL;
     });
     afterAll(async () => {
       for (const workspaceId of gyms) {
-        await db.financialReviewCase.deleteMany({ where: { workspaceId } });
-        await db.payment.deleteMany({ where: { workspaceId } });
-        await db.invoice.deleteMany({ where: { workspaceId } });
-        await db.memberMembership.deleteMany({ where: { workspaceId } });
-        await db.workspace.delete({ where: { id: workspaceId } });
+        await db.$transaction(async tx => {
+          await tx.$queryRawUnsafe("SELECT set_config('hitlink.reviewed_retention_workspace', $1, true)", workspaceId);
+          await tx.paymentConfirmation.deleteMany({ where: { workspaceId } });
+          await tx.financialReviewCase.deleteMany({ where: { workspaceId } });
+          await tx.payment.deleteMany({ where: { workspaceId } });
+          await tx.invoice.deleteMany({ where: { workspaceId } });
+          await tx.memberMembership.deleteMany({ where: { workspaceId } });
+          await tx.financialAccount.deleteMany({ where: { workspaceId } });
+          await tx.workspace.delete({ where: { id: workspaceId } });
+        });
       }
+      await db.user.deleteMany({ where: { id: { in: users } } });
       await db.$disconnect();
     });
     function invoice(
@@ -143,6 +156,10 @@ const testUrl = process.env.TEST_DATABASE_URL;
       expect(
         await db.failedPaymentCase.count({ where: { workspaceId: gym } }),
       ).toBe(1);
+      const notice = await db.notificationJob.findFirstOrThrow({ where: { workspaceId: gym, templateKind: "FAILED_PAYMENT" } });
+      expect(await shouldDeliverNotification(notice, db, now)).toBe(true);
+      await reconcile(paid());
+      expect(await shouldDeliverNotification(notice, db, now)).toBe(false);
     });
     it("does not clear another unpaid invoice when one debt is paid", async () => {
       await reconcile(invoice());
@@ -320,6 +337,8 @@ const testUrl = process.env.TEST_DATABASE_URL;
       ]);
       expect(await db.invoice.count({ where: { workspaceId: gym } })).toBe(1);
       expect(await db.payment.count({ where: { workspaceId: gym } })).toBe(1);
+      expect(await db.paymentConfirmation.count({ where: { workspaceId: gym } })).toBe(1);
+      expect(await db.notificationJob.count({ where: { workspaceId: gym, context: { path: ["kind"], equals: "PAYMENT_CONFIRMATION" } } })).toBe(1);
       expect(
         await db.billingRecord.count({ where: { workspaceId: gym } }),
       ).toBe(1);
@@ -358,6 +377,16 @@ const testUrl = process.env.TEST_DATABASE_URL;
         (await db.payment.findFirstOrThrow({ where: { workspaceId: gym } }))
           .amountCents,
       ).toBe(12900);
+    });
+    it("confirms only verified cash allocations when the rest of an invoice was covered by credit", async () => {
+      const evidence = paid();
+      evidence.payments[0]!.amountCents = 5000;
+      await reconcile(evidence);
+      expect(await db.paymentConfirmation.findFirstOrThrow({ where: { workspaceId: gym } })).toMatchObject({ amountMinor: 5000, currency: "cad" });
+      expect(await db.financialReviewCase.count({ where: { workspaceId: gym } })).toBe(1);
+      const creditOnly = paid("in_credit_only"); creditOnly.payments = [];
+      await reconcile(creditOnly);
+      expect(await db.paymentConfirmation.count({ where: { workspaceId: gym } })).toBe(1);
     });
   },
 );

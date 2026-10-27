@@ -1,3 +1,4 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import Link from "next/link";
 import { MemberShell } from "../../_components/member-shell";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
@@ -7,15 +8,16 @@ import {
   getMemberFormsPageData,
 } from "../../../lib/forms";
 
-function formatDateTime(value: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
-}
-
 export default async function MemberFormsPage() {
   const context = await requireMemberPortalContext();
+  const locale = resolveDisplayLocale(context.workspace.settings?.locale);
+  function formatDateTime(value: Date): string {
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(value);
+  }
+
   const forms = await getMemberFormsPageData({
     workspaceId: context.workspace.id,
     memberId: context.member.id,
@@ -27,11 +29,12 @@ export default async function MemberFormsPage() {
     <MemberShell
       context={context}
       title="Forms"
-      description="Review current required forms, open the active signing path, and see your signed version history."
+      description="Review current and scheduled requirements, acceptance expiry, and your signed history."
     >
+      <section className="member-card"><h3>Affected bookings</h3><p className="member-copy">If a newly published requirement prevents you from attending an accepted booking, review its penalty-free cancellation, rebooking or refund-review choices.</p><Link className="button button-secondary" href="/app/forms/recovery">Review booking recovery</Link></section>
       <div className="member-grid">
         <section className="member-card">
-          <p className="member-eyebrow">Current requirements</p>
+          <p className="member-eyebrow">Current and scheduled requirements</p>
           <h3>
             {forms.items.length} required form
             {forms.items.length === 1 ? "" : "s"}
@@ -55,8 +58,16 @@ export default async function MemberFormsPage() {
                       {formatTargetLabel(item.requirementTarget)} · Current
                       version {item.currentVersionNumber}
                     </p>
+                    {item.effectiveAt ? <p>{item.upcoming ? "Scheduled requirement starts" : "Requirement effective"} {formatDateTime(item.effectiveAt)}.</p> : null}
+                    <p>{item.consentValidUntil ? `Acceptance valid until ${formatDateTime(item.consentValidUntil)}.` : item.requirementRevisionId ? "No consent expiry recorded for this cycle." : "No expiry was recorded for this legacy acceptance."}</p>
                     {item.actionableHrefs.length > 0 ? (
-                      <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "0.75rem",
+                          flexWrap: "wrap",
+                        }}
+                      >
                         {item.actionableHrefs.map((actionable) => (
                           <Link
                             key={actionable.requestId}
@@ -86,7 +97,10 @@ export default async function MemberFormsPage() {
           ) : (
             <div className="member-stack-list">
               {forms.history.map((item) => (
-                <article key={item.signedDocumentId} className="member-stack-item">
+                <article
+                  key={item.signedDocumentId}
+                  className="member-stack-item"
+                >
                   <div className="member-stack-copy">
                     <div className="member-stack-heading">
                       <h4>{item.formName}</h4>
@@ -98,6 +112,7 @@ export default async function MemberFormsPage() {
                       {formatTargetLabel(item.signerKind)} signed on{" "}
                       {formatDateTime(item.signedAt)}
                     </p>
+                    <p>{item.consentValidUntil ? `This acceptance was valid until ${formatDateTime(item.consentValidUntil)}.` : item.requirementRevisionId ? "No expiry recorded for this acceptance cycle." : "Legacy acceptance; no expiry was recorded."}</p>
                   </div>
                 </article>
               ))}

@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireMemberPortalContext } from "../../../../../lib/member-auth";
-import { getPortalFormRequestPageData } from "../../../../../lib/forms";
+import { getAuthorizedPortalFormRequest } from "../../../../../lib/portal-form-context";
 
 export async function GET(
   _request: Request,
@@ -13,17 +12,11 @@ export async function GET(
   },
 ) {
   const { requestId } = await params;
-  const context = await requireMemberPortalContext({ permission: "sign" });
-  const requestData = await getPortalFormRequestPageData({
-    workspaceId: context.workspace.id,
-    memberId: context.member.id,
-    requestId,
-    guardianId: context.permissions?.guardianId,
-  });
-
-  if (!requestData) {
+  const data = await getAuthorizedPortalFormRequest(requestId);
+  if (!data) {
     notFound();
   }
+  const requestData = data.request;
 
   return new Response(Buffer.from(requestData.fileData), {
     headers: {
@@ -33,4 +26,3 @@ export async function GET(
     },
   });
 }
-

@@ -177,7 +177,7 @@ describe("class booking action migration readiness", () => {
     await expect(
       createClassBookingAction({ error: null }, buildFormData()),
     ).resolves.toEqual({
-      error: "Class bookings are unavailable until migration readiness is complete.",
+      error: "Class bookings are unavailable until business setup or migration readiness is complete.",
     });
 
     expect(createClassBookingMock).not.toHaveBeenCalled();

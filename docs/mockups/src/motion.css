@@ -7,7 +7,7 @@
 #hitlink-prototype .hl-sidebar,
 #hitlink-prototype .hl-menu-backdrop{transition:none}
 #hitlink-prototype[data-motion-paused=true] .hl-skeleton-shape{animation-play-state:paused}
-@media(min-width:851px){
+@media(min-width:1024px){
  #hitlink-prototype .hl-topbar .hl-theme-button{width:120px;min-width:120px}
 }
 @media(prefers-reduced-motion:no-preference){

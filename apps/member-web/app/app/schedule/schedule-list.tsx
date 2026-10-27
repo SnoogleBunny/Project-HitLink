@@ -1,6 +1,12 @@
 "use client";
 
-import { Badge, Notice, useWorkspaceLoading } from "@flowstate/ui";
+import {
+  Badge,
+  Money,
+  Notice,
+  useWorkspaceLoading,
+  useWorkspaceLocale,
+} from "@flowstate/ui";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -31,8 +37,8 @@ import type {
 } from "../../../lib/self-service-bookings";
 
 type Allowance = Awaited<ReturnType<typeof getMembershipAllowanceSummary>>;
-function dateLabel(date: string, short = false) {
-  return new Intl.DateTimeFormat("en-CA", {
+function formatScheduleDate(date: string, short = false, locale = "en-CA") {
+  return new Intl.DateTimeFormat(locale, {
     timeZone: "UTC",
     weekday: "short",
     month: "short",
@@ -174,6 +180,9 @@ function ClassFacts({
   item: ScheduleOccurrence | MemberBookingSummary | MemberWaitlistSummary;
   name: string;
 }) {
+  const locale = useWorkspaceLocale();
+  const dateLabel = (date: string, short = false) =>
+    formatScheduleDate(date, short, locale);
   return (
     <>
       <div className="hl-class-review-title">
@@ -192,6 +201,7 @@ function ClassFacts({
             {"endTimeLabel" in item && item.endTimeLabel
               ? `–${item.endTimeLabel}`
               : ""}
+            {item.timezone ? ` · ${item.timezone}` : ""}
           </dd>
         </div>
         <div>
@@ -211,11 +221,13 @@ function BookingReview({
   memberId,
   memberName,
   onClose,
+  onRefresh,
 }: {
   occurrence: ScheduleOccurrence;
   memberId: string;
   memberName: string;
   onClose: () => void;
+  onRefresh: () => void;
 }) {
   const [state, formAction, pending] = useActionState(
     createSelfBookingAction,
@@ -231,16 +243,63 @@ function BookingReview({
       onClose={onClose}
     >
       <ClassFacts item={occurrence} name={memberName} />
+      {occurrence.reviewedFunding?.funding.kind === "DROP_IN" ? (
+        <p>
+          {occurrence.fundingSourceName ?? "Drop-in"}:{" "}
+          <Money
+            amountMinor={occurrence.reviewedFunding.funding.amountCents}
+            currency={occurrence.reviewedFunding.funding.currency}
+          />
+          .
+        </p>
+      ) : null}
+      {occurrence.fundingNote ? (
+        <Notice>{occurrence.fundingNote}</Notice>
+      ) : null}
       <p>
         {occurrence.action === "join_waitlist"
-          ? "Joining the waitlist does not reserve a place. We will let you know if a place is confirmed."
+          ? "Joining holds no place, allowance or class-pack unit. The earliest eligible person is automatically booked before both the booking and free-cancellation deadlines. Membership allowance is used first; a class-pack unit is used only with your permission below. No purchase or card charge is made."
           : occurrence.action === "pay_and_book"
             ? "Continue to secure payment for this drop-in. Your place is confirmed only when payment is verified."
-            : `This booking uses ${occurrence.accessLabel?.toLowerCase() ?? "your class access"}. Your gym's cancellation and allowance rules apply.`}
+            : occurrence.reviewedFunding?.funding.kind === "PUNCH_CARD"
+              ? `This booking uses one unit from ${occurrence.fundingSourceName ?? "the reviewed class pack"}. Your gym’s cancellation rules apply.`
+              : `This booking uses ${occurrence.fundingSourceName ?? occurrence.accessLabel?.toLowerCase() ?? "your class access"}. Your gym’s cancellation and allowance rules apply.`}
       </p>
       <form action={formAction} data-person-context>
         <Participant memberId={memberId} date={occurrence.scheduledForDate} />
         <input name="actionKind" type="hidden" value={occurrence.action} />
+        {occurrence.action !== "join_waitlist" ? (
+          <input
+            name="reviewedFunding"
+            type="hidden"
+            value={
+              occurrence.reviewedFunding
+                ? JSON.stringify(occurrence.reviewedFunding)
+                : ""
+            }
+          />
+        ) : null}
+        {occurrence.action === "join_waitlist" ? (
+          <>
+            <label className="member-checkbox-field">
+              <input type="checkbox" name="autoPromotionOptIn" required />{" "}
+              <span>
+                I agree to automatic booking before{" "}
+                {occurrence.autoPromotionDeadline ??
+                  "the booking and free-cancellation deadlines"}{" "}
+                ({occurrence.timezone}). Later rule changes cannot extend this
+                deadline.
+              </span>
+            </label>
+            <label className="member-checkbox-field">
+              <input type="checkbox" name="allowPunchCardFunding" />{" "}
+              <span>
+                If my membership cannot fund the class, I authorize one eligible
+                class-pack unit.
+              </span>
+            </label>
+          </>
+        ) : null}
         <input
           name="classTemplateId"
           type="hidden"
@@ -267,7 +326,15 @@ function BookingReview({
           >
             Go back
           </button>
-          <SubmitButton pendingLabel={getOccurrencePendingLabel(occurrence)}>
+          {state.reviewRequired ? (
+            <button type="button" className="member-button" onClick={onRefresh}>
+              Refresh booking choices
+            </button>
+          ) : null}
+          <SubmitButton
+            disabled={state.reviewRequired}
+            pendingLabel={getOccurrencePendingLabel(occurrence)}
+          >
             {occurrence.actionLabel}
           </SubmitButton>
         </div>
@@ -292,6 +359,9 @@ function BookingManager({
   canPay: boolean;
   onClose: () => void;
 }) {
+  const locale = useWorkspaceLocale();
+  const dateLabel = (date: string, short = false) =>
+    formatScheduleDate(date, short, locale);
   const router = useRouter();
   const [mode, setMode] = useState<"receipt" | "move" | "cancel">("receipt");
   const [paymentState, paymentAction] = useActionState(
@@ -338,6 +408,9 @@ function BookingManager({
         </Badge>
         <span>{titleStatus(booking.bookingType)}</span>
       </div>
+      {booking.paymentRestrictionMessage ? (
+        <Notice tone="warning">{booking.paymentRestrictionMessage}</Notice>
+      ) : null}
       {booking.classCancelled ? (
         <Notice tone="warning">
           This class was cancelled. Contact your gym about your booking.
@@ -532,6 +605,16 @@ function WaitlistManager({
     <Modal title="Waitlist details" onClose={onClose}>
       <ClassFacts item={entry} name={memberName} />
       <Notice>You are on the waitlist. This is not a confirmed place.</Notice>
+      <p>
+        {entry.autoPromotionOptedInAt
+          ? "Automatic booking is enabled before both deadlines, subject to current eligibility and your funding permission."
+          : "This older entry has no automatic-booking consent. Leave and rejoin to accept the current policy; no automatic booking will be made from this entry."}
+      </p>
+      {entry.lastSkipReason ? (
+        <Notice tone="warning">
+          Last promotion review: {entry.lastSkipReason}
+        </Notice>
+      ) : null}
       {canBook ? (
         <form action={action} data-person-context>
           <Participant memberId={memberId} date={entry.scheduledForDate} />
@@ -589,6 +672,9 @@ export function ScheduleList({
   canBook: boolean;
   canPay: boolean;
 }) {
+  const locale = useWorkspaceLocale();
+  const dateLabel = (date: string, short = false) =>
+    formatScheduleDate(date, short, locale);
   const router = useRouter(),
     setWorkspaceLoading = useWorkspaceLoading();
   const [pending, startTransition] = useTransition();
@@ -771,7 +857,7 @@ export function ScheduleList({
               onClick={() => go(day)}
             >
               <span>
-                {new Intl.DateTimeFormat("en-CA", {
+                {new Intl.DateTimeFormat(locale, {
                   timeZone: "UTC",
                   weekday: "short",
                 }).format(new Date(`${day}T12:00:00Z`))}
@@ -825,11 +911,12 @@ export function ScheduleList({
                     }
                     aria-label={buildOccurrenceActionLabel(item)}
                     disabled={
-                      !item.bookingId &&
-                      !item.waitlistEntryId &&
-                      (item.action === "none" ||
-                        !canBook ||
-                        (item.action === "pay_and_book" && !canPay))
+                      pending ||
+                      (!item.bookingId &&
+                        !item.waitlistEntryId &&
+                        (item.action === "none" ||
+                          !canBook ||
+                          (item.action === "pay_and_book" && !canPay)))
                     }
                     onClick={() =>
                       item.bookingId
@@ -932,6 +1019,7 @@ export function ScheduleList({
                     type="button"
                     className="member-button member-button-secondary"
                     aria-label={`Manage ${item.displayTitle} on ${dateLabel(item.scheduledForDate)}`}
+                    disabled={pending}
                     onClick={() => setManageId(item.bookingId)}
                   >
                     Manage
@@ -954,6 +1042,7 @@ export function ScheduleList({
                     type="button"
                     className="member-button member-button-secondary"
                     aria-label={`Manage waitlist for ${item.displayTitle} on ${dateLabel(item.scheduledForDate)}`}
+                    disabled={pending}
                     onClick={() => setWaitlistId(item.waitlistEntryId)}
                   >
                     Manage
@@ -980,9 +1069,13 @@ export function ScheduleList({
                 </div>
                 <div>
                   <Badge>{titleStatus(item.status)}</Badge>
+                  {item.paymentRestrictionMessage ? (
+                    <p>{item.paymentRestrictionMessage}</p>
+                  ) : null}
                   <button
                     type="button"
                     className="hl-text-link"
+                    disabled={pending}
                     onClick={() => setManageId(item.bookingId)}
                   >
                     Details
@@ -1001,6 +1094,10 @@ export function ScheduleList({
           memberId={memberId}
           memberName={memberName}
           onClose={() => setReview(null)}
+          onRefresh={() => {
+            setReview(null);
+            startTransition(() => router.refresh());
+          }}
         />
       ) : null}
       {managed ? (

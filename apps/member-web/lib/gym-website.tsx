@@ -1,7 +1,106 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { type GymWebsiteContent, type WebsiteOffer } from "@flowstate/db";
-import { Badge, Money } from "@flowstate/ui";
-export function publicMemberOrigin() { return new URL(process.env.NEXT_PUBLIC_MEMBER_WEB_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3001").origin; }
-export function PublicGymShell({ slug, content, children }: { slug: string; content: GymWebsiteContent; children: ReactNode }) { return <div className="gym-public"><header className="gym-public-header"><Link className="gym-public-brand" href={`/gym/${slug}`}>{content.title}</Link><nav aria-label="Gym website"><Link href={`/gym/${slug}/memberships`}>Memberships</Link><Link className="button" href={`/gym/${slug}/trial`}>Try a class</Link></nav></header><main id="main-content">{children}</main><footer className="gym-public-footer"><p>{content.title} · <a href={`mailto:${content.contactEmail}`}>{content.contactEmail}</a></p><nav aria-label="Footer"><Link href="/login">Member portal</Link><Link href="/terms" target="_blank" rel="noreferrer">HitLink terms (draft)</Link><Link href="/privacy" target="_blank" rel="noreferrer">Privacy (draft)</Link></nav><p>Powered by HitLink</p></footer></div>; }
-export function PublicOfferCard({ slug, offer }: { slug: string; offer: WebsiteOffer }) { return <article className={`gym-offer${offer.highlighted ? " gym-offer-highlighted" : ""}`}><div><h2>{offer.name}</h2>{offer.highlighted ? <Badge tone="success">Featured plan</Badge> : null}<p>{offer.description}</p></div><div><Money amountMinor={offer.monthlyPriceCents} currency={offer.currency} /><span> / billing month</span><p>{offer.weeklyClassLimit ? `${offer.weeklyClassLimit} classes per week. ` : ""}{offer.monthlyClassLimit ? `${offer.monthlyClassLimit} classes per billing month.` : !offer.weeklyClassLimit ? "Unlimited classes." : ""}</p><p>Usage counted by {offer.allowanceCountingMode === "RESERVATION" ? "reservations" : "attendance"}.</p></div><Link className="button" href={`/gym/${slug}/join/${encodeURIComponent(offer.id)}`}>Join with this plan</Link></article>; }
+import { Badge, Money, ThemeToggle } from "@flowstate/ui";
+export function publicMemberOrigin() {
+  return new URL(
+    process.env.NEXT_PUBLIC_MEMBER_WEB_URL ??
+      process.env.NEXT_PUBLIC_APP_URL ??
+      "http://localhost:3001",
+  ).origin;
+}
+export function PublicGymShell({
+  slug,
+  content,
+  children,
+}: {
+  slug: string;
+  content: GymWebsiteContent;
+  children: ReactNode;
+}) {
+  return (
+    <div className="gym-public">
+      <a className="hl-skip-link" href="#main-content">
+        Skip to content
+      </a>
+      <header className="gym-public-header">
+        <Link className="gym-public-brand" href={`/gym/${slug}`}>
+          {content.title}
+        </Link>
+        <nav aria-label="Gym website">
+          <Link href={`/gym/${slug}/memberships`}>Pricing</Link>
+          <Link className="button" href={`/gym/${slug}/trial`}>
+            Try a class
+          </Link>
+          <ThemeToggle />
+        </nav>
+      </header>
+      <main id="main-content">{children}</main>
+      <footer className="gym-public-footer">
+        <p>
+          {content.title} ·{" "}
+          <a href={`mailto:${content.contactEmail}`}>{content.contactEmail}</a>
+        </p>
+        <nav aria-label="Footer">
+          <Link href="/login">Member portal</Link>
+          <Link href="/terms" target="_blank" rel="noreferrer">
+            HitLink terms (draft)
+          </Link>
+          <Link href="/privacy" target="_blank" rel="noreferrer">
+            Privacy (draft)
+          </Link>
+        </nav>
+        <p>Powered by HitLink</p>
+      </footer>
+    </div>
+  );
+}
+export function PublicOfferCard({
+  slug,
+  offer,
+}: {
+  slug: string;
+  offer: WebsiteOffer;
+}) {
+  return (
+    <article
+      className={`gym-offer${offer.highlighted ? " gym-offer-highlighted" : ""}`}
+    >
+      <div>
+        <h2>{offer.name}</h2>
+        {offer.highlighted ? <Badge tone="success">Featured plan</Badge> : null}
+        <p>{offer.description}</p>
+      </div>
+      <div>
+        <Money
+          amountMinor={offer.monthlyPriceCents}
+          currency={offer.currency}
+        />
+        <span> / billing month</span>
+        <p>
+          {offer.weeklyClassLimit
+            ? `${offer.weeklyClassLimit} classes per week. `
+            : ""}
+          {offer.monthlyClassLimit
+            ? `${offer.monthlyClassLimit} classes per billing month.`
+            : !offer.weeklyClassLimit
+              ? "Unlimited classes."
+              : ""}
+        </p>
+        <p>
+          Usage counted by{" "}
+          {offer.allowanceCountingMode === "RESERVATION"
+            ? "reservations"
+            : "attendance"}
+          .
+        </p>
+      </div>
+      <Link
+        className="button"
+        href={`/gym/${slug}/join/${encodeURIComponent(offer.id)}`}
+      >
+        Join with this plan
+      </Link>
+    </article>
+  );
+}

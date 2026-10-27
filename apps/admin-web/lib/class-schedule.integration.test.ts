@@ -1,3 +1,4 @@
+import { createFixtureClassSchedulingPolicy } from "../../../packages/db/tests/scheduling-policy-fixture.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { PrismaClient, addDays, createAccessBackedBooking, getClassOccurrence, getWeekdayForDateString, shouldDeliverNotification } from "@flowstate/db";
@@ -13,6 +14,7 @@ suite("persisted class schedule changes", () => {
   const now = new Date("2030-01-01T12:00:00Z");
   beforeEach(async () => {
     const workspace = await db.workspace.create({ data: { name: `schedule-test-${randomUUID()}` } }); workspaces.push(workspace.id);
+    await createFixtureClassSchedulingPolicy(db, workspace.id);
     const location = await db.location.create({ data: { workspaceId: workspace.id, name: "Test gym", timezone: "UTC" } });
     const owner = await db.user.create({ data: { email: `${randomUUID()}@schedule.test`, fullName: "Owner" } }); users.push(owner.id);
     const other = await db.user.create({ data: { email: `${randomUUID()}@schedule.test`, fullName: "Substitute" } }); users.push(other.id);

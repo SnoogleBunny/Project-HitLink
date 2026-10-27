@@ -66,6 +66,7 @@ type RequestLifecycleEvidence = {
   };
   failureOrder?: number;
   acknowledgedOutcome?: string;
+  acknowledgedNavigation?: { visitedUrl: string; outcome: string };
   redirectedFrom?: {
     method: string;
     url: string;
@@ -87,6 +88,7 @@ export type RequestFailureObservation = RequestObservation & {
 type VerifiedCancellation = {
   reason:
     | "rendered-rsc-route"
+    | "acknowledged-rendered-navigation"
     | "completed-action-redirect"
     | "acknowledged-action-outcome"
     | "acknowledged-action-http-redirect"
@@ -186,6 +188,19 @@ function verifiedCancellation(
   ) {
     const routeUrl = new URL(requestUrl);
     routeUrl.searchParams.delete("_rsc");
+    const acknowledged = evidence.acknowledgedNavigation;
+    if (
+      response.status === 200 &&
+      acknowledged &&
+      documentUrl(acknowledged.visitedUrl) === documentUrl(routeUrl.href)
+    ) {
+      return {
+        ...receipt,
+        visitedUrl: acknowledged.visitedUrl,
+        outcome: acknowledged.outcome,
+        reason: "acknowledged-rendered-navigation",
+      };
+    }
     const visit = visited(routeUrl.href);
     return visit
       ? { ...receipt, visitedUrl: visit.url, reason: "rendered-rsc-route" }
@@ -318,6 +333,21 @@ function formatDiagnostics(diagnostics: BrowserDiagnostic[]): string {
     .join("\n");
 }
 
+type RenderedNavigationIntent = {
+  page: Page;
+  document: DocumentEvidence;
+  sourceUrl: string;
+  destinationUrl: string;
+  startedOrder: number;
+  requests: Set<Request>;
+  boundRequest?: Request;
+  closed: boolean;
+};
+const navigationAcknowledgementError = () =>
+  new Error(
+    "Only an observed successful same-document RSC navigation bound to a unique new navigation intent can be acknowledged after its rendered outcome is verified.",
+  );
+
 export class BrowserDiagnosticsCollector {
   readonly #allowances: BrowserDiagnostic[] = [];
   readonly #diagnostics: BrowserDiagnostic[] = [];
@@ -326,6 +356,25 @@ export class BrowserDiagnosticsCollector {
     RequestFailureObservation
   >();
   readonly #trackedActions = new WeakMap<Request, RequestLifecycleEvidence>();
+  readonly #trackedNavigations = new WeakMap<
+    Request,
+    {
+      lifecycle: RequestLifecycleEvidence;
+      page: Page;
+      isCurrentDocument: () => boolean;
+      response?: Response;
+      intent?: RenderedNavigationIntent;
+    }
+  >();
+  readonly #navigationPages = new WeakMap<
+    Page,
+    () => { document: DocumentEvidence; order: number } | undefined
+  >();
+  readonly #navigationIntents = new WeakMap<object, RenderedNavigationIntent>();
+  readonly #activeNavigationIntents = new WeakMap<
+    Page,
+    RenderedNavigationIntent
+  >();
   readonly cancelledPrefetches: string[] = [];
   readonly failureEvidence: unknown[] = [];
 
@@ -333,6 +382,184 @@ export class BrowserDiagnosticsCollector {
     if (request.method() === "POST" && request.headers()["next-action"]) {
       this.#trackedActions.set(request, lifecycle);
     }
+  }
+
+  /** Attachment-owned state; product tests never supply document/ordering fields. */
+  trackNavigationPage(
+    page: Page,
+    read: () => { document: DocumentEvidence; order: number } | undefined,
+  ): void {
+    this.#navigationPages.set(page, read);
+  }
+
+  /** Opaque, single-use observable interval. This does not claim router causality. */
+  beginRenderedNavigation(page: Page, destination: string): object {
+    const state = this.#navigationPages.get(page)?.();
+    const source = localHttpUrl(page.url());
+    const target = source
+      ? localHttpUrl(new URL(destination, source).href)
+      : null;
+    if (
+      !state ||
+      !state.document.visits.length ||
+      page.isClosed() ||
+      !source ||
+      !target ||
+      source.origin !== target.origin ||
+      target.searchParams.has("_rsc") ||
+      documentUrl(source.href) === documentUrl(target.href) ||
+      documentUrl(state.document.visits.at(-1)?.url ?? source.href) !==
+        documentUrl(source.href)
+    )
+      throw navigationAcknowledgementError();
+    const prior = this.#activeNavigationIntents.get(page);
+    if (prior && !prior.closed && prior.document === state.document)
+      throw navigationAcknowledgementError();
+    if (prior) prior.closed = true;
+    const intent: RenderedNavigationIntent = {
+      page,
+      document: state.document,
+      sourceUrl: documentUrl(source.href),
+      destinationUrl: documentUrl(target.href),
+      startedOrder: state.order,
+      requests: new Set(),
+      closed: false,
+    };
+    const token: object = Object.freeze({});
+    this.#navigationIntents.set(token, intent);
+    this.#activeNavigationIntents.set(page, intent);
+    return token;
+  }
+
+  /** Only attachment-observed main-frame Requests can enter an active intent. */
+  trackRenderedNavigation(
+    request: Request,
+    lifecycle: RequestLifecycleEvidence,
+    page: Page,
+    isCurrentDocument: () => boolean,
+  ): void {
+    const url = localHttpUrl(request.url());
+    const headers = request.headers();
+    if (
+      url &&
+      request.method() === "GET" &&
+      !request.isNavigationRequest() &&
+      request.resourceType() === "fetch" &&
+      headers.rsc === "1" &&
+      !!headers["next-router-state-tree"] &&
+      headers["next-router-prefetch"] !== "1" &&
+      url.searchParams.has("_rsc")
+    ) {
+      url.searchParams.delete("_rsc");
+      const intent = this.#activeNavigationIntents.get(page);
+      const matchesIntent =
+        !!intent &&
+        !intent.closed &&
+        intent.document === lifecycle.document &&
+        lifecycle.requestOrder > intent.startedOrder &&
+        documentUrl(url.href) === intent.destinationUrl;
+      if (matchesIntent) intent.requests.add(request);
+      this.#trackedNavigations.set(request, {
+        lifecycle,
+        page,
+        isCurrentDocument,
+        ...(matchesIntent ? { intent } : {}),
+      });
+    }
+  }
+
+  trackNavigationResponse(response: Response): void {
+    const tracked = this.#trackedNavigations.get(response.request());
+    if (tracked) tracked.response = response;
+  }
+
+  bindRenderedNavigationRequest(token: object, request: Request): void {
+    const intent = this.#navigationIntents.get(token);
+    const tracked = this.#trackedNavigations.get(request);
+    if (
+      !intent ||
+      intent.closed ||
+      intent.boundRequest ||
+      intent.requests.size !== 1 ||
+      !intent.requests.has(request) ||
+      !tracked ||
+      tracked.intent !== intent ||
+      tracked.page !== intent.page ||
+      !tracked.isCurrentDocument() ||
+      this.#activeNavigationIntents.get(intent.page) !== intent
+    )
+      throw navigationAcknowledgementError();
+    intent.boundRequest = request;
+  }
+
+  /** The caller verifies visible/DB outcome, then acknowledges this exact Response. */
+  acknowledgeRenderedNavigation(
+    token: object,
+    response: Response,
+    outcome: string,
+  ): void {
+    const intent = this.#navigationIntents.get(token);
+    const request = response.request();
+    const tracked = this.#trackedNavigations.get(request);
+    const url = localHttpUrl(request.url());
+    if (
+      !intent ||
+      intent.closed ||
+      intent.boundRequest !== request ||
+      intent.requests.size !== 1 ||
+      !intent.requests.has(request) ||
+      !tracked ||
+      tracked.intent !== intent ||
+      tracked.response !== response ||
+      tracked.page !== intent.page ||
+      !url ||
+      !outcome.trim() ||
+      tracked.page.isClosed() ||
+      !tracked.isCurrentDocument() ||
+      this.#activeNavigationIntents.get(intent.page) !== intent
+    )
+      throw navigationAcknowledgementError();
+    url.searchParams.delete("_rsc");
+    const { lifecycle, page } = tracked;
+    const visits = lifecycle.document.visits.filter(
+      (item) => item.order > intent.startedOrder,
+    );
+    const transitionIndex = visits.findIndex(
+      (item) => documentUrl(item.url) !== intent.sourceUrl,
+    );
+    const visit = transitionIndex < 0 ? undefined : visits[transitionIndex];
+    const previous = lifecycle.document.visits
+      .filter((item) => item.order < lifecycle.requestOrder)
+      .at(-1);
+    if (
+      response.status() !== 200 ||
+      lifecycle.response?.status !== 200 ||
+      lifecycle.response.order <= lifecycle.requestOrder ||
+      !response
+        .headers()
+        ["content-type"]?.toLowerCase()
+        .startsWith("text/x-component") ||
+      !lifecycle.response.contentType
+        ?.toLowerCase()
+        .startsWith("text/x-component") ||
+      !visit ||
+      visit.order <= lifecycle.requestOrder ||
+      documentUrl(visit.url) !== intent.destinationUrl ||
+      visits
+        .slice(transitionIndex)
+        .some((item) => documentUrl(item.url) !== intent.destinationUrl) ||
+      !previous ||
+      documentUrl(previous.url) !== intent.sourceUrl ||
+      documentUrl(url.href) !== intent.destinationUrl ||
+      documentUrl(page.url()) !== intent.destinationUrl
+    )
+      throw navigationAcknowledgementError();
+    lifecycle.acknowledgedNavigation = {
+      visitedUrl: visit.url,
+      outcome: outcome.trim(),
+    };
+    intent.closed = true;
+    this.#activeNavigationIntents.delete(page);
   }
 
   acknowledgeAction(response: Response, outcome: string): void {
@@ -559,6 +786,12 @@ export function attachBrowserDiagnostics(
     };
     lifecycles.set(request, lifecycle);
     collector.trackAction(request, lifecycle);
+    collector.trackRenderedNavigation(
+      request,
+      lifecycle,
+      page,
+      () => pageDocuments.get(page)?.current === lifecycle.document,
+    );
     if (
       request.isNavigationRequest() &&
       request.resourceType() === "document"
@@ -626,6 +859,7 @@ export function attachBrowserDiagnostics(
         redirect: response.headers()["x-action-redirect"],
         location: response.headers().location,
       };
+    collector.trackNavigationResponse(response);
     const replacement = navigationRequests.get(response.request());
     if (replacement) {
       replacement.status = response.status();
@@ -644,6 +878,10 @@ export function attachBrowserDiagnostics(
         visits: [{ order: ++order, url: page.url() }],
         replacements: [],
       },
+    });
+    collector.trackNavigationPage(page, () => {
+      const state = pageDocuments.get(page);
+      return state ? { document: state.current, order } : undefined;
     });
     const onNavigation = (frame: Frame) => {
       if (frame !== page.mainFrame()) return;

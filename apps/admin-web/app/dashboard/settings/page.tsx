@@ -5,9 +5,70 @@ import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
 export default async function SettingsPage() {
   const context = await requireOwnerWorkspaceContext();
   const sections = [
-    { title: "Training", links: [["Programs", "/dashboard/programs"], ["Rooms", "/dashboard/rooms"], ["Coaches and staff", "/dashboard/staff"]] },
-    { title: "Payments", links: [["Payment connection and billing policies", "/dashboard/settings/billing"], ["Membership plans", "/dashboard/membership-plans"], ["Class packs and drop-ins", "/dashboard/access-products"]] },
-    { title: "Gym setup", links: [["Migration and go-live", "/dashboard/migration"], ["Forms and waivers", "/dashboard/forms"], ["Website", "/dashboard/website"], ["Records and access", "/dashboard/settings/data"], ["Email delivery", "/dashboard/settings/email"]] },
+    {
+      title: "Your account",
+      links: [["Account security", "/dashboard/settings/security"]],
+    },
+    {
+      title: "Training",
+      links: [
+        ["Programs", "/dashboard/programs"],
+        ["Class booking rules", "/dashboard/settings/booking"],
+        ["Program appointment booking rules", "/dashboard/settings/coaching-booking"],
+        ["Rooms", "/dashboard/rooms"],
+        ["Coaches and staff", "/dashboard/staff"],
+      ],
+    },
+    {
+      title: "Payments",
+      links: [
+        [
+          "Payment connection and billing policies",
+          "/dashboard/settings/billing",
+        ],
+        ["Membership plans", "/dashboard/membership-plans"],
+        ["Class packs and drop-ins", "/dashboard/access-products"],
+      ],
+    },
+    {
+      title: "Gym setup",
+      links: [
+        ["Business details", "/dashboard/settings/business"],
+        ["Migration and go-live", "/dashboard/migration"],
+        ["Forms and waivers", "/dashboard/forms"],
+        ["Website", "/dashboard/website"],
+        ["Records and access", "/dashboard/settings/data"],
+        ["Audit log", "/dashboard/settings/audit"],
+        ["Email delivery", "/dashboard/settings/email"],
+      ],
+    },
   ];
-  return <AdminShell session={context.session} workspaceName={context.workspace.name} title="Settings" description="Manage your gym's programs, team, and payment setup."><div className="management-grid">{sections.map((section) => <section className="management-card form-stack" key={section.title}><h2>{section.title}</h2>{section.links.map(([label, href]) => <Link key={href} className="text-link" href={href!}>{label}</Link>)}</section>)}</div><section className="management-card"><h2>Gym timezone</h2><p>{context.location.timezone}</p><p>Classes, booking deadlines, and membership periods use this timezone.</p></section></AdminShell>;
+  return (
+    <AdminShell
+      session={context.session}
+      workspaceName={context.workspace.name}
+      title="Settings"
+      description="Manage your gym's programs, team, and payment setup."
+    >
+      <div className="management-grid">
+        {sections.map((section) => (
+          <section className="management-card form-stack" key={section.title}>
+            <h2>{section.title}</h2>
+            {section.links.map(([label, href]) => (
+              <Link key={href} className="text-link" href={href!}>
+                {label}
+              </Link>
+            ))}
+          </section>
+        ))}
+      </div>
+      <section className="management-card">
+        <h2>Gym timezone</h2>
+        <p>{context.location.timezone}</p>
+        <p>
+          Classes, booking deadlines, and membership periods use this timezone.
+        </p>
+      </section>
+    </AdminShell>
+  );
 }

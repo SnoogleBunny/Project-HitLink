@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { stripeWebhookPublicFailure } from "../../../../lib/stripe-webhook-failures";
 import {
   processStripeWebhookEvent,
   stripeBillingGateway,
@@ -57,9 +58,7 @@ export async function POST(request: Request) {
 
   if (result.status === "error") {
     return Response.json(
-      {
-        error: result.message,
-      },
+      stripeWebhookPublicFailure(result),
       {
         status: 500,
       },

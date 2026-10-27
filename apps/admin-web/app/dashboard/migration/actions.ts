@@ -71,11 +71,6 @@ export async function acknowledgeMigrationReviewAction(
   });
 
   if (result.status === "error") {
-    console.warn({
-      event: "migration_owner_review_acknowledgment_blocked",
-      workspaceId: workspace.id,
-      message: result.message,
-    });
     const reason =
       result.reason === "schedule-missing" ||
       result.reason === "schedule-passed" ||
@@ -83,6 +78,14 @@ export async function acknowledgeMigrationReviewAction(
       result.reason === "correction-channel-unavailable"
         ? result.reason
         : "remaining-checks";
+    try {
+      console.warn({
+        event: "migration_owner_review_acknowledgment_blocked",
+        reason,
+      });
+    } catch {
+      // Keep the same blocked redirect if the log sink is unavailable.
+    }
     redirect(`/dashboard/migration?review=blocked&reason=${reason}`);
   }
 

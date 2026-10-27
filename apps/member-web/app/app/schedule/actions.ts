@@ -3,11 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { DirectBookingFundingReviewError, parseDirectBookingFundingReview } from "@flowstate/db";
 import {
   emptyScheduleActionState,
   type ScheduleActionState,
 } from "../../form-states";
-import { requireMemberPortalContext } from "../../../lib/member-auth";
+import { requireMemberCommandContext } from "../../../lib/member-auth";
 import { selectFamilyMember } from "../../_components/member-selector-actions";
 import { startDropInCheckout } from "../../../lib/member-commerce";
 import {
@@ -37,7 +38,7 @@ export async function createSelfBookingAction(
   const memberId = String(formData.get("memberId") ?? "");
   if (!memberId)
     return { error: "Choose the participant before booking a class." };
-  const context = await requireMemberPortalContext({
+  const { context, actor } = await requireMemberCommandContext({
     permission: "book",
     memberId,
   });
@@ -54,7 +55,10 @@ export async function createSelfBookingAction(
   if (action === "join_waitlist") {
     const waitlistResult = await joinSelfWaitlist({
       workspaceId: context.workspace.id,
+      actor,
       memberId: context.member.id,
+      autoPromotionOptIn: formData.get("autoPromotionOptIn") === "on",
+      allowPunchCardFunding: formData.get("allowPunchCardFunding") === "on",
       timezone: context.location.timezone,
       classTemplateId: String(formData.get("classTemplateId") ?? ""),
       scheduledForDate: String(formData.get("scheduledForDate") ?? ""),
@@ -76,18 +80,28 @@ export async function createSelfBookingAction(
     return emptyScheduleActionState;
   }
 
+  let reviewedFunding;
+  try {
+    reviewedFunding = parseDirectBookingFundingReview(formData.get("reviewedFunding"));
+  } catch (error) {
+    if (error instanceof DirectBookingFundingReviewError) return { error: error.message, reviewRequired: true };
+    throw error;
+  }
   const result = await createSelfBooking({
     workspaceId: context.workspace.id,
+    actor,
     memberId: context.member.id,
     timezone: context.location.timezone,
     allowDropIn: context.permissions?.canPay !== false,
     classTemplateId: String(formData.get("classTemplateId") ?? ""),
     scheduledForDate: String(formData.get("scheduledForDate") ?? ""),
+    reviewedFunding,
   });
 
   if (result.status === "error") {
     return {
       error: result.message,
+      ...(result.code === "REVIEW_REQUIRED" ? { reviewRequired: true } : {}),
     };
   }
 
@@ -141,7 +155,7 @@ export async function resumeBookingPaymentAction(
   const memberId = String(formData.get("memberId") ?? "");
   if (!memberId)
     return { error: "Choose the participant before continuing payment." };
-  const context = await requireMemberPortalContext({
+  const { context } = await requireMemberCommandContext({
     memberId,
     permission: "pay",
   });

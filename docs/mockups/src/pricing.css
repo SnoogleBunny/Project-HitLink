@@ -79,13 +79,13 @@
  #hitlink-prototype .web-pricing-card{padding:16px}
  #hitlink-prototype .web-card-price strong{font-size:30px}
 }
-@media(max-width:850px){
+@media(max-width:1023px){
  #hitlink-prototype .web-settings{grid-template-columns:minmax(0,1fr);gap:20px}
  #hitlink-prototype .web-pricing-grid,#hitlink-prototype .web-pricing-grid[data-plan-count]{grid-template-columns:minmax(0,1fr)}
  #hitlink-prototype .web-card-intro,#hitlink-prototype .web-card-price{min-height:0}
  #hitlink-prototype .web-card-label:has(>span:empty){display:none}
 }
-@media(max-width:640px){
+@media(max-width:767px){
  #hitlink-prototype .web-owner,#hitlink-prototype .web-public-pricing{gap:20px}
  #hitlink-prototype .web-publish-bar,#hitlink-prototype .web-preview-bar,#hitlink-prototype .web-settings-section,#hitlink-prototype .web-owner-plan,#hitlink-prototype .web-validation{padding:16px}
  #hitlink-prototype .web-publish-bar .hl-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);width:100%}

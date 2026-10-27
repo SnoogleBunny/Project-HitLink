@@ -26,16 +26,26 @@ export function SignupForm() {
         <input
           autoComplete="new-password"
           name="password"
+          minLength={12}
+          maxLength={72}
+          aria-describedby="signup-password-help"
           required
           type="password"
         />
       </label>
+
+      <p id="signup-password-help" className="management-copy">
+        Use at least 12 characters and no more than 72 bytes. Accented characters
+        and emoji can use more than one byte.
+      </p>
 
       <label className="field">
         <span>Confirm password</span>
         <input
           autoComplete="new-password"
           name="confirmPassword"
+          minLength={12}
+          maxLength={72}
           required
           type="password"
         />

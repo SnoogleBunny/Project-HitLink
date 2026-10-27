@@ -1,6 +1,6 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { RequirementTarget } from "@flowstate/db";
 import { AdminShell } from "../../../_components/admin-shell";
 import {
   formatBytesAsMegabytes,
@@ -10,22 +10,8 @@ import {
   getPdfSizeCapLabel,
 } from "../../../../lib/forms";
 import { requireOwnerWorkspaceContext } from "../../../../lib/owner-workspace";
-import { toggleRequiredFormAssignmentAction } from "../actions";
 import { FormVersionUploadForm } from "../form-version-upload-form";
 
-const requirementTargets: RequirementTarget[] = [
-  "TRIAL",
-  "MEMBER",
-  "GUARDIAN",
-  "MEMBERSHIP_ACTIVATION",
-];
-
-function formatDateTime(value: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
-}
 
 export default async function FormDocumentDetailPage({
   params,
@@ -36,6 +22,14 @@ export default async function FormDocumentDetailPage({
 }) {
   const { formId } = await params;
   const { session, workspace } = await requireOwnerWorkspaceContext();
+  const locale = resolveDisplayLocale(workspace.settings?.locale);
+  function formatDateTime(value: Date): string {
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(value);
+  }
+
   const document = await getFormDocumentDetail({
     workspaceId: workspace.id,
     formDocumentId: formId,
@@ -48,10 +42,9 @@ export default async function FormDocumentDetailPage({
   const currentVersion = document.versions.find(
     (version) => version.id === document.currentVersionId,
   );
-  const currentPreviewPath =
-    currentVersion
-      ? `/dashboard/forms/${document.id}/versions/${currentVersion.id}/file`
-      : null;
+  const currentPreviewPath = currentVersion
+    ? `/dashboard/forms/${document.id}/versions/${currentVersion.id}/file`
+    : null;
 
   return (
     <AdminShell
@@ -77,7 +70,11 @@ export default async function FormDocumentDetailPage({
             </div>
             <div>
               <dt>Current version</dt>
-              <dd>{document.currentVersionNumber ? `v${document.currentVersionNumber}` : "Not set"}</dd>
+              <dd>
+                {document.currentVersionNumber
+                  ? `v${document.currentVersionNumber}`
+                  : "Not set"}
+              </dd>
             </div>
             <div>
               <dt>Total versions</dt>
@@ -102,7 +99,10 @@ export default async function FormDocumentDetailPage({
 
           {currentPreviewPath ? (
             <div className="form-stack">
-              <Link className="button button-secondary" href={currentPreviewPath}>
+              <Link
+                className="button button-secondary"
+                href={currentPreviewPath}
+              >
                 Open current PDF
               </Link>
               <iframe
@@ -121,10 +121,9 @@ export default async function FormDocumentDetailPage({
 
         <section className="management-card">
           <p className="dashboard-card-label">Upload version</p>
-          <h3>Replace current required PDF</h3>
+          <h3>Upload a draft PDF version</h3>
           <p className="management-copy">
-            Uploading a new version preserves history and immediately makes the
-            new version current for requirement resolution.
+            Uploading preserves the exact prior PDF and signatures. It does not change requirements. Review and publish a scheduled requirement before asking participants to accept it.
           </p>
           <FormVersionUploadForm
             formDocumentId={document.id}
@@ -137,57 +136,9 @@ export default async function FormDocumentDetailPage({
         <section className="management-card">
           <p className="dashboard-card-label">Assignments</p>
           <h3>Required contexts</h3>
-          <div className="stack-list">
-            {requirementTargets.map((target) => {
-              const isActive = document.activeRequirementTargets.includes(target);
-
-              return (
-                <article key={target} className="stack-item">
-                  <div className="stack-item-copy">
-                    <div className="stack-item-heading">
-                      <h4>{formatRequirementTarget(target)}</h4>
-                      <span
-                        className={`status-pill ${
-                          isActive ? "status-pill-success" : ""
-                        }`}
-                      >
-                        {isActive ? "Required" : "Inactive"}
-                      </span>
-                    </div>
-                    <p>
-                      {target === "TRIAL"
-                        ? "Applies this form to public trial booking handoff."
-                        : target === "MEMBER"
-                          ? "Applies this form to general member context."
-                          : target === "GUARDIAN"
-                            ? "Requires a linked guardian to sign for the child context."
-                            : "Blocks membership activation until the current version is signed."}
-                    </p>
-                  </div>
-                  <form action={toggleRequiredFormAssignmentAction}>
-                    <input
-                      name="formDocumentId"
-                      type="hidden"
-                      value={document.id}
-                    />
-                    <input
-                      name="requirementTarget"
-                      type="hidden"
-                      value={target}
-                    />
-                    <input
-                      name="isActive"
-                      type="hidden"
-                      value={isActive ? "false" : "true"}
-                    />
-                    <button className="button button-secondary" type="submit">
-                      {isActive ? "Disable" : "Enable"}
-                    </button>
-                  </form>
-                </article>
-              );
-            })}
-          </div>
+          <p className="management-copy">New versions, requirement contexts, withdrawals and same-PDF renewals all use one reviewed publication with explicit timing and affected-booking recovery.</p>
+          <Link href={`/dashboard/forms/${document.id}/publication`} className="button button-primary">Review and publish requirements</Link>
+          <p><Link href="/dashboard/forms/recoveries">Review affected booking recovery</Link></p>
         </section>
 
         <section className="management-card">
@@ -204,10 +155,10 @@ export default async function FormDocumentDetailPage({
                     <h4>Version {version.versionNumber}</h4>
                     {version.id === document.currentVersionId ? (
                       <span className="status-pill status-pill-success">
-                        Current
+                        Displayed
                       </span>
                     ) : (
-                      <span className="status-pill">Historical</span>
+                      <span className="status-pill">Uploaded</span>
                     )}
                   </div>
                   <p>{version.fileName}</p>
@@ -244,4 +195,3 @@ export default async function FormDocumentDetailPage({
     </AdminShell>
   );
 }
-

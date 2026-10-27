@@ -5,17 +5,12 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 import {
+  buildDiscoveryContract,
   buildExecutionManifest,
   verifyExecutionManifest,
 } from "./every-visible-feature-ledger.execution.mjs";
 
 const REQUIRED_ACKNOWLEDGEMENT = "I_ACKNOWLEDGE_THIS_DATABASE_IS_DISPOSABLE";
-const OWNED_PORTS = {
-  admin: 3300,
-  api: 3302,
-  landing: 3303,
-  member: 3301,
-};
 
 function requireExactPort(env, name, expected) {
   const actual = Number(env[name] ?? expected);
@@ -32,22 +27,25 @@ export function canonicalEnvironment(inputEnv, repoRoot = process.cwd()) {
     );
   }
 
+  const portBase = Number(inputEnv.FLOWSTATE_CANONICAL_PORT_BASE ?? "3300");
+  if (![3300, 3400].includes(portBase)) {
+    throw new Error(
+      "FLOWSTATE_CANONICAL_PORT_BASE must be 3300 or 3400; protected preview ports and arbitrary quartets are not allowed.",
+    );
+  }
+
   const ports = {
-    admin: requireExactPort(
-      inputEnv,
-      "FLOWSTATE_ADMIN_E2E_PORT",
-      OWNED_PORTS.admin,
-    ),
-    api: requireExactPort(inputEnv, "FLOWSTATE_API_E2E_PORT", OWNED_PORTS.api),
+    admin: requireExactPort(inputEnv, "FLOWSTATE_ADMIN_E2E_PORT", portBase),
+    api: requireExactPort(inputEnv, "FLOWSTATE_API_E2E_PORT", portBase + 2),
     landing: requireExactPort(
       inputEnv,
       "FLOWSTATE_LANDING_E2E_PORT",
-      OWNED_PORTS.landing,
+      portBase + 3,
     ),
     member: requireExactPort(
       inputEnv,
       "FLOWSTATE_MEMBER_E2E_PORT",
-      OWNED_PORTS.member,
+      portBase + 1,
     ),
   };
 
@@ -64,6 +62,14 @@ export function canonicalEnvironment(inputEnv, repoRoot = process.cwd()) {
     database.port !== "55435"
   ) {
     throw new Error("DATABASE_URL must use local QA PostgreSQL port 55435.");
+  }
+  if (
+    inputEnv.TEST_DATABASE_URL &&
+    inputEnv.TEST_DATABASE_URL !== inputEnv.DATABASE_URL
+  ) {
+    throw new Error(
+      "TEST_DATABASE_URL must match the canonical DATABASE_URL when set.",
+    );
   }
   const databaseName = decodeURIComponent(
     database.pathname.replace(/^\/+/, ""),
@@ -104,56 +110,46 @@ export function canonicalEnvironment(inputEnv, repoRoot = process.cwd()) {
     ),
     outputRoot,
     playwrightReportPath: path.join(outputRoot, "playwright-report.json"),
+    discoveryReportPath: path.join(outputRoot, "discovery.json"),
+    discoveryContractPath: path.join(outputRoot, "discovery-contract.json"),
     ports,
     repoRoot: path.resolve(repoRoot),
   };
 }
 
-export function canonicalSteps(resolved) {
-  const packageManager =
-    process.platform === "win32" ? "corepack.cmd" : "corepack";
+export function canonicalSteps() {
+  const command = process.platform === "win32" ? "corepack.cmd" : "corepack";
   const pnpm = ["pnpm@10.33.0"];
+  const browserArgs = [
+    ...pnpm,
+    "exec",
+    "playwright",
+    "test",
+    "--project=chromium",
+    "--project=chromium-landing",
+    "--workers=1",
+  ];
   return [
     {
-      args: [...pnpm, "exec", "turbo", "run", "build", "--force"],
-      command: packageManager,
-      name: "build",
+      command,
+      args: [...browserArgs, "--list", "--reporter=json"],
+      name: "discovery",
     },
     {
-      args: [...pnpm, "db:reset:demo"],
-      command: packageManager,
-      name: "reset-demo-database",
-    },
-    {
+      command,
       args: [
         ...pnpm,
         "exec",
-        "playwright",
-        "test",
-        "--project=chromium",
-        "--project=chromium-landing",
-        "--workers=1",
+        "turbo",
+        "run",
+        "build",
+        "--force",
+        "--concurrency=1",
       ],
-      command: packageManager,
-      name: "playwright",
+      name: "build",
     },
-    {
-      args: [
-        path.join(
-          resolved.repoRoot,
-          "tests/e2e/every-visible-feature-ledger.execution.mjs",
-        ),
-        resolved.playwrightReportPath,
-        path.join(
-          resolved.repoRoot,
-          "tests/e2e/every-visible-feature-ledger.json",
-        ),
-        resolved.executionManifestPath,
-        "23",
-      ],
-      command: process.execPath,
-      name: "ledger-execution",
-    },
+    { command, args: [...pnpm, "db:reset:demo"], name: "reset-demo-database" },
+    { command, args: browserArgs, name: "playwright" },
   ];
 }
 
@@ -170,11 +166,16 @@ function runStep(step, options) {
       cwd: options.cwd,
       env: options.env,
       ...canonicalSpawnOptions(),
-      stdio: "inherit",
+      stdio: options.captureOutput ? ["ignore", "pipe", "inherit"] : "inherit",
+    });
+    let stdout = "";
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk;
     });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
-      resolve({ code: code ?? 1, signal });
+      resolve({ code: code ?? 1, signal, stdout });
     });
   });
 }
@@ -191,10 +192,12 @@ function assertProductionBuilds(repoRoot) {
   }
 }
 
-export async function runCanonical(inputEnv = process.env) {
+export async function runCanonical(
+  inputEnv = process.env,
+  { preflightOnly = false } = {},
+) {
   const resolved = canonicalEnvironment(inputEnv);
   const steps = canonicalSteps(resolved);
-  fs.rmSync(resolved.outputRoot, { force: true, recursive: true });
   fs.mkdirSync(resolved.outputRoot, { recursive: true });
 
   const adminBaseURL = `http://127.0.0.1:${resolved.ports.admin}`;
@@ -238,32 +241,8 @@ export async function runCanonical(inputEnv = process.env) {
   };
   delete env.NODE_ENV;
 
-  const build = await runStep(steps[0], { cwd: resolved.repoRoot, env });
-  if (build.code !== 0) {
-    throw new Error(`Canonical build failed with exit code ${build.code}.`);
-  }
-  assertProductionBuilds(resolved.repoRoot);
-
-  const reset = await runStep(steps[1], { cwd: resolved.repoRoot, env });
-  if (reset.code !== 0) {
-    throw new Error(
-      `Canonical database reset failed with exit code ${reset.code}.`,
-    );
-  }
-
-  const playwright = await runStep(steps[2], {
-    cwd: resolved.repoRoot,
-    env,
-  });
-  if (!fs.existsSync(resolved.playwrightReportPath)) {
-    throw new Error(
-      `Playwright did not write ${resolved.playwrightReportPath}; exit code ${playwright.code}.`,
-    );
-  }
-
-  const report = JSON.parse(
-    fs.readFileSync(resolved.playwrightReportPath, "utf8"),
-  );
+  // The same project selection feeds discovery and execution. Validate the real
+  // ledger before compiling apps or touching the disposable demo database.
   const ledger = JSON.parse(
     fs.readFileSync(
       path.join(
@@ -273,6 +252,55 @@ export async function runCanonical(inputEnv = process.env) {
       "utf8",
     ),
   );
+  const discovery = await runStep(steps[0], {
+    cwd: resolved.repoRoot,
+    env,
+    captureOutput: true,
+  });
+  if (discovery.code !== 0)
+    throw new Error(
+      `Canonical discovery failed with exit code ${discovery.code}.`,
+    );
+  const discoveryReport = JSON.parse(discovery.stdout);
+  const discoveryContract = buildDiscoveryContract({
+    ledger,
+    report: discoveryReport,
+  });
+  fs.writeFileSync(
+    resolved.discoveryReportPath,
+    `${JSON.stringify(discoveryReport, null, 2)}\n`,
+  );
+  fs.writeFileSync(
+    resolved.discoveryContractPath,
+    `${JSON.stringify(discoveryContract, null, 2)}\n`,
+  );
+  console.log(
+    `[canonical] Real-ledger preflight: ${discoveryContract.tests.length} discovered tests; every required selector exists.`,
+  );
+  if (preflightOnly) return { discoveryContract, resolved };
+
+  const build = await runStep(steps[1], { cwd: resolved.repoRoot, env });
+  if (build.code !== 0)
+    throw new Error(`Canonical build failed with exit code ${build.code}.`);
+  assertProductionBuilds(resolved.repoRoot);
+
+  const reset = await runStep(steps[2], { cwd: resolved.repoRoot, env });
+  if (reset.code !== 0)
+    throw new Error(
+      `Canonical database reset failed with exit code ${reset.code}.`,
+    );
+
+  fs.rmSync(resolved.playwrightReportPath, { force: true });
+  const playwright = await runStep(steps[3], { cwd: resolved.repoRoot, env });
+  if (!fs.existsSync(resolved.playwrightReportPath)) {
+    throw new Error(
+      `Playwright did not write ${resolved.playwrightReportPath}; exit code ${playwright.code}.`,
+    );
+  }
+
+  const report = JSON.parse(
+    fs.readFileSync(resolved.playwrightReportPath, "utf8"),
+  );
   const manifest = buildExecutionManifest({ ledger, report });
   fs.writeFileSync(
     resolved.executionManifestPath,
@@ -281,7 +309,7 @@ export async function runCanonical(inputEnv = process.env) {
 
   let verificationError;
   try {
-    verifyExecutionManifest(manifest, { expectedConfiguredTests: 23 });
+    verifyExecutionManifest(manifest, { discoveryContract });
   } catch (error) {
     verificationError = error;
   }
@@ -303,7 +331,12 @@ export async function runCanonical(inputEnv = process.env) {
 const isDirectExecution =
   process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
 if (isDirectExecution) {
-  runCanonical().catch((error) => {
+  const options = process.argv.slice(2);
+  if (options.some((option) => option !== "--preflight"))
+    throw new Error("Only --preflight is supported.");
+  runCanonical(process.env, {
+    preflightOnly: options.includes("--preflight"),
+  }).catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
   });

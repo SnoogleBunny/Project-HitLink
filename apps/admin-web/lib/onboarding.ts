@@ -1,4 +1,8 @@
-import { prisma, type UserRole } from "@flowstate/db";
+import { readDatabaseFailure,
+  prisma,
+  validateNewBusinessRegionalSettings,
+  type UserRole,
+} from "@flowstate/db";
 import {
   buildInitialMigrationData,
   type MigrationIntakeInput,
@@ -16,6 +20,11 @@ export interface OwnerOnboardingInput {
   postalCode?: string;
   countryCode?: string;
   migration?: MigrationIntakeInput;
+  kind?: "MIGRATION" | "NEW_BUSINESS";
+  serviceMode?: string;
+  currency?: string;
+  locale?: string;
+  contactEmail?: string;
 }
 
 interface ExistingMembership {
@@ -76,7 +85,16 @@ interface OwnerOnboardingTransaction {
       data: {
         workspaceId: string;
         allowMultipleRooms: boolean;
+        classReminderLeadMinutes: number;
+        currency?: string;
+        locale?: string;
+        contactEmail?: string;
       };
+    }): Promise<unknown>;
+  };
+  workspaceSetup?: {
+    create(args: {
+      data: { workspaceId: string; ownerUserId: string; serviceMode: string };
     }): Promise<unknown>;
   };
   workspaceMigration: {
@@ -124,11 +142,27 @@ function cleanNullable(value: string | undefined): string | null {
 }
 
 function sanitizeInput(input: OwnerOnboardingInput) {
+  const newBusiness =
+    input.kind === "NEW_BUSINESS"
+      ? validateNewBusinessRegionalSettings({
+          timezone: input.timezone,
+          serviceMode: input.serviceMode ?? "",
+          currency: input.currency ?? "",
+          locale: input.locale ?? "",
+          contactEmail: input.contactEmail ?? "",
+        })
+      : null;
+  if (
+    newBusiness &&
+    (!input.workspaceName.trim() || input.workspaceName.trim().length > 120)
+  )
+    throw new Error("Enter a business name using 120 characters or fewer.");
   return {
+    newBusiness,
     userId: input.userId,
     workspaceName: input.workspaceName.trim(),
     businessType: cleanNullable(input.businessType),
-    timezone: input.timezone.trim(),
+    timezone: newBusiness?.timezone ?? input.timezone.trim(),
     addressLine1: cleanNullable(input.addressLine1),
     addressLine2: cleanNullable(input.addressLine2),
     city: cleanNullable(input.city),
@@ -140,21 +174,9 @@ function sanitizeInput(input: OwnerOnboardingInput) {
 }
 
 function isWorkspaceMembershipUniqueConstraint(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const maybeError = error as {
-    code?: string;
-    meta?: {
-      target?: string[];
-    };
-  };
-
-  return (
-    maybeError.code === "P2002" &&
-    Array.isArray(maybeError.meta?.target) &&
-    maybeError.meta.target.includes("userId")
+  const failure = readDatabaseFailure(error);
+  return Boolean(
+    failure?.code === "P2002" && failure.target?.includes("userId"),
   );
 }
 
@@ -237,15 +259,32 @@ export async function createOwnerWorkspaceOnboarding(args: {
         data: {
           workspaceId: workspace.id,
           allowMultipleRooms: false,
+          classReminderLeadMinutes: 1440,
+          ...(input.newBusiness
+            ? {
+                currency: input.newBusiness.currency,
+                locale: input.newBusiness.locale,
+                contactEmail: input.newBusiness.contactEmail,
+              }
+            : {}),
         },
       });
 
-      await tx.workspaceMigration.create({
-        data: {
-          workspaceId: workspace.id,
-          ...input.migration,
-        },
-      });
+      if (input.newBusiness) {
+        if (!tx.workspaceSetup)
+          throw new Error("New business setup is not available.");
+        await tx.workspaceSetup.create({
+          data: {
+            workspaceId: workspace.id,
+            ownerUserId: input.userId,
+            serviceMode: input.newBusiness.serviceMode,
+          },
+        });
+      } else {
+        await tx.workspaceMigration.create({
+          data: { workspaceId: workspace.id, ...input.migration },
+        });
+      }
 
       return {
         status: "created",

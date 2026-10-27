@@ -1847,7 +1847,7 @@ textarea:focus-visible {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   .auth-page,
   .shell-main {
     padding: 1rem;

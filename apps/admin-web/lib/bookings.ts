@@ -1,5 +1,8 @@
 import {
   addDays,
+  evaluateClassSchedulingPolicy,
+  readClassSchedulingPolicy,
+  type SchedulingPolicyReader,
   classOccurrenceInclude,
   formatOccurrenceLabel,
   getOccurrenceStartsAt,
@@ -41,10 +44,8 @@ interface ExistingBookingRecord {
   status: ClassBookingStatus;
 }
 
-interface BookingDatabase {
-  $transaction<T>(
-    callback: (tx: BookingDatabase) => Promise<T>,
-  ): Promise<T>;
+interface BookingDatabase extends SchedulingPolicyReader {
+  $transaction<T>(callback: (tx: BookingDatabase) => Promise<T>): Promise<T>;
   member: {
     findMany(args: Record<string, unknown>): Promise<BookingMemberRecord[]>;
     findFirst(args: Record<string, unknown>): Promise<{ id: string } | null>;
@@ -60,14 +61,20 @@ interface BookingDatabase {
     findMany(args: Record<string, unknown>): Promise<unknown[]>;
   };
   familyLink: {
-    findFirst(args: Record<string, unknown>): Promise<BookingGuardianLinkRecord | null>;
+    findFirst(
+      args: Record<string, unknown>,
+    ): Promise<BookingGuardianLinkRecord | null>;
   };
   classTemplate: {
     findMany(args: Record<string, unknown>): Promise<BookingTemplateRecord[]>;
-    findFirst(args: Record<string, unknown>): Promise<BookingTemplateRecord | null>;
+    findFirst(
+      args: Record<string, unknown>,
+    ): Promise<BookingTemplateRecord | null>;
   };
   classBooking: {
-    findFirst(args: Record<string, unknown>): Promise<ExistingBookingRecord | null>;
+    findFirst(
+      args: Record<string, unknown>,
+    ): Promise<ExistingBookingRecord | null>;
     create(args: Record<string, unknown>): Promise<{ id: string }>;
     update(args: Record<string, unknown>): Promise<{ id: string }>;
     updateMany(args: Record<string, unknown>): Promise<{ count: number }>;
@@ -196,6 +203,11 @@ export async function listBookingFormOptions(args: {
   ]);
 
   const now = args.now ?? new Date();
+  const policyRevision = await readClassSchedulingPolicy(
+    db,
+    args.workspaceId,
+    now,
+  );
   const today = getWorkspaceDateString(now, args.timezone);
   // This is an explicit six-week booking picker, not the recurrence's end date.
   const lastDate = addDays(today, 42);
@@ -203,11 +215,62 @@ export async function listBookingFormOptions(args: {
   for (const template of templateRecords) {
     let option: BookingTemplateOption | null = null;
     for (let date = today; date <= lastDate; date = addDays(date, 1)) {
-      const occurrence = resolveClassOccurrence({ template, scheduledForDate: date });
-      if (!occurrence || occurrence.status !== "ACTIVE" || occurrence.program.archivedAt || occurrence.room.archivedAt || occurrence.room.isActive === false) continue;
-      if (getOccurrenceStartsAt({ scheduledForDate: date, startTimeMinutes: occurrence.startTimeMinutes, timezone: args.timezone }) <= now || !isUnambiguousClassTime(date, occurrence.startTimeMinutes, args.timezone) || !isUnambiguousClassTime(date, occurrence.endTimeMinutes, args.timezone)) continue;
-      option ??= { id: template.id, displayTitle: occurrence.displayTitle, weekday: occurrence.weekday, programName: occurrence.program.name, roomName: occurrence.room.name, coachDisplayName: occurrence.coachDisplayName, dateOptions: [] };
-      option.dateOptions.push({ classTemplateId: template.id, scheduledForDate: date, label: `${formatOccurrenceLabel({ weekday: occurrence.weekday, dateString: date, startTimeMinutes: occurrence.startTimeMinutes })} · ${occurrence.displayTitle} · ${occurrence.room.name} · ${occurrence.coachDisplayName}` });
+      const occurrence = resolveClassOccurrence({
+        template,
+        scheduledForDate: date,
+      });
+      if (
+        !occurrence ||
+        occurrence.status !== "ACTIVE" ||
+        occurrence.program.archivedAt ||
+        occurrence.room.archivedAt ||
+        occurrence.room.isActive === false
+      )
+        continue;
+      if (
+        getOccurrenceStartsAt({
+          scheduledForDate: date,
+          startTimeMinutes: occurrence.startTimeMinutes,
+          timezone: occurrence.timezone ?? args.timezone,
+        }) <= now ||
+        !isUnambiguousClassTime(
+          date,
+          occurrence.startTimeMinutes,
+          occurrence.timezone ?? args.timezone,
+        ) ||
+        !isUnambiguousClassTime(
+          date,
+          occurrence.endTimeMinutes,
+          occurrence.timezone ?? args.timezone,
+        )
+      )
+        continue;
+      if (
+        !evaluateClassSchedulingPolicy({
+          revision: policyRevision,
+          date,
+          timezone: occurrence.timezone ?? args.timezone,
+          startTimeMinutes: occurrence.startTimeMinutes,
+          endTimeMinutes: occurrence.endTimeMinutes,
+          bookingCutoffMinutes: occurrence.bookingCutoffMinutes,
+          now,
+        }).allowed
+      )
+        continue;
+      option ??= {
+        id: template.id,
+        displayTitle: occurrence.displayTitle,
+        weekday: occurrence.weekday,
+        programName: occurrence.program.name,
+        roomName: occurrence.room.name,
+        coachDisplayName: occurrence.coachDisplayName,
+        dateOptions: [],
+      };
+      option.dateOptions.push({
+        classTemplateId: template.id,
+        scheduledForDate: date,
+        label: `${formatOccurrenceLabel({ weekday: occurrence.weekday, dateString: date, startTimeMinutes: occurrence.startTimeMinutes })} · ${occurrence.displayTitle} · ${occurrence.room.name} · ${occurrence.coachDisplayName}`,
+      });
     }
     if (option) templates.push(option);
   }
@@ -384,5 +447,4 @@ export async function createClassBooking(args: {
       bookingId: result.bookingId,
     };
   }
-
 }

@@ -1,5 +1,6 @@
+import { type WorkspaceSetupActivationReadiness, resolveWorkspaceClockTimezone } from "@flowstate/db";
 import {
-  isWorkspaceMigrationReady,
+  isWorkspaceOperationallyReady,
   prisma,
   type UserRole,
   type WorkspaceStatus,
@@ -25,7 +26,10 @@ interface OperationsWorkspaceRecord {
   } | null;
   settings: {
     allowMultipleRooms: boolean;
+    locale?: string | null;
   } | null;
+  setup?: { id: string } | null;
+  setupActivation?: WorkspaceSetupActivationReadiness | null;
   migration: {
     stage: string;
     ownerReviewAcknowledgedAt: Date | null;
@@ -49,6 +53,8 @@ interface OperationsWorkspaceDatabase {
       include: {
         location: true;
         settings: true;
+        setup: { select: { id: true } };
+        setupActivation: true;
         migration: {
           select: {
             stage: true;
@@ -62,7 +68,9 @@ interface OperationsWorkspaceDatabase {
     }): Promise<OperationsWorkspaceRecord | null>;
   };
   workspaceUser: {
-    findFirst(args: Record<string, unknown>): Promise<OperationsWorkspaceUserRecord | null>;
+    findFirst(
+      args: Record<string, unknown>,
+    ): Promise<OperationsWorkspaceUserRecord | null>;
   };
 }
 
@@ -105,6 +113,8 @@ export async function requireOperationsWorkspaceContext(args?: {
       include: {
         location: true,
         settings: true,
+        setup: { select: { id: true } },
+        setupActivation: true,
         migration: {
           select: {
             stage: true,
@@ -141,11 +151,11 @@ export async function requireOperationsWorkspaceContext(args?: {
   }
 
   if (
-    !isWorkspaceMigrationReady({
+    !isWorkspaceOperationallyReady({
       workspaceStatus: workspace.status,
+      setupActivation: workspace.setupActivation,
       migrationStage: workspace.migration?.stage,
-      ownerReviewAcknowledgedAt:
-        workspace.migration?.ownerReviewAcknowledgedAt,
+      ownerReviewAcknowledgedAt: workspace.migration?.ownerReviewAcknowledgedAt,
       ownerReviewAcknowledgedByUserId:
         workspace.migration?.ownerReviewAcknowledgedByUserId,
       operationallyReadyAt: workspace.migration?.operationallyReadyAt,
@@ -154,20 +164,26 @@ export async function requireOperationsWorkspaceContext(args?: {
     })
   ) {
     redirect(
-      workspaceUser.role === "OWNER"
-        ? "/dashboard/migration"
-        : "/unauthorized",
+      workspaceUser.role === "OWNER" ? (workspace.setup ? "/dashboard/setup" : "/dashboard/migration") : "/unauthorized",
     );
   }
 
+  const location = {
+    ...workspace.location,
+    timezone: await resolveWorkspaceClockTimezone({
+      workspaceId: workspace.id,
+      baselineTimezone: workspace.location.timezone,
+      db: db as never,
+    }),
+  };
   return {
     session: operationsSession,
     workspaceUserId: workspaceUser.id,
     workspaceUserRole: workspaceUser.role,
     workspace: {
       ...workspace,
-      location: workspace.location,
+      location,
     },
-    location: workspace.location,
+    location,
   };
 }

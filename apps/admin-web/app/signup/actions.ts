@@ -1,8 +1,16 @@
 "use server";
 
-import { createSession, hashPassword } from "@flowstate/auth";
+import {
+  consumePublicAuthAttempt,
+  getPublicAuthNetworkIdentity,
+  PublicAuthThrottleError,
+  PUBLIC_AUTH_UNAVAILABLE_MESSAGE,
+  createSession,
+  hashPassword,
+  validateNewPassword,
+} from "@flowstate/auth";
 import { prisma } from "@flowstate/db";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { emptyFormState, type BasicFormState } from "../../lib/admin-access";
 
@@ -29,15 +37,32 @@ export async function signupAction(
     };
   }
 
-  if (password.length < 8) {
+  const passwordError = validateNewPassword(password);
+  if (passwordError) {
     return {
-      error: "Password must be at least 8 characters.",
+      error: passwordError,
     };
   }
 
   if (password !== confirmPassword) {
     return {
       error: "Passwords do not match.",
+    };
+  }
+
+  try {
+    await consumePublicAuthAttempt({
+      email,
+      action: "signup",
+      portal: "admin",
+      networkIdentity: getPublicAuthNetworkIdentity(await headers()),
+    });
+  } catch (error) {
+    return {
+      error:
+        error instanceof PublicAuthThrottleError
+          ? error.message
+          : PUBLIC_AUTH_UNAVAILABLE_MESSAGE,
     };
   }
 

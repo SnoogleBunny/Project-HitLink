@@ -24,7 +24,6 @@ html,
 body {
   min-height: 100%;
   max-width: 100vw;
-  overflow-x: hidden;
 }
 
 body {
@@ -470,8 +469,8 @@ textarea {
 }
 
 .trial-subsection p:not(.trial-eyebrow),
-.trial-card p {
-  color: #4b5563;
+.trial-card p:not(.trial-eyebrow) {
+  color: var(--member-muted);
 }
 
 .trial-button {
@@ -518,7 +517,7 @@ textarea {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   .member-auth-page,
   .member-main,
   .trial-page {
@@ -639,7 +638,7 @@ body {
 }
 
 .member-entry-task h1 {
-  color: var(--member-sidebar);
+  color: var(--hl-fg);
   font-size: clamp(2.25rem, 5vw, 4.25rem);
   letter-spacing: -0.055em;
   line-height: 0.96;

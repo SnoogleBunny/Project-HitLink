@@ -47,10 +47,21 @@ The sample gym has five daily classes: HIIT Bootcamp 7:15–8:30am; HIIT/Hyrox 4
 | `coaching.js` | Coach/client programs, notes, sessions and continuity |
 | `pricing.js`, `public-pages.js`, `visitor.js`, `workspaces.js` | Website content, public pages, trial/enrollment and workspace settings |
 | `cards.js`, `typography.js`, `loading.js`, `mobile.js`, `theme.js`, `motion.js` | Shared presentation and interaction helpers |
+| `responsive.css` | Responsive shell refinements, content-container grids and long-text wrapping |
 | `legal-content.json` | Draft legal copy with explicit business-detail placeholders |
 | `preview-template.html` | Generated viewing infrastructure: iframe, host shim and pinned external libraries; edit product UI in the files above |
 
 `assets/social/` contains the seven images embedded by the assembler. The separate historical website-preview package is not required to view or rebuild these workflow mockups.
+
+## Responsive layout and long text
+
+Use available CSS viewport width rather than device names: below 768px uses the phone header, drawer and task tabs; 768–1023px uses a tablet header and drawer without phone tabs; 1024px and above keeps the labelled sidebar visible. At 1280px spacing returns to the regular desktop scale; at 1536px the main route gains a maximum content width. Navigation remains readable instead of shrinking labels to fit.
+
+Content grids respond to their own available container width after the sidebar and padding: general two-column groups at 760px, three summary metrics at 840px, and dense dashboard splits at 900px. Smaller containers stack. Check both iPad orientations, narrow laptop windows and the widths immediately around each shell transition.
+
+Names, navigation labels, headings, warnings and other essential text wrap; their rows and headers can grow vertically. Long emails and identifiers can break inside an otherwise unbreakable string. Keep action labels meaningful and full values available. Use ellipses only for secondary previews with a tap/keyboard-accessible way to read the complete value; the current mockup does not add automatic truncation. Do not shrink text, silently clip important content, or rely on a hover-only tooltip for touch users.
+
+The phone-versus-tablet content query and the compact-navigation query are separate in `mobile.js`. Keep the drawer CSS, focus restoration, inert state and resize handlers aligned with those queries when changing thresholds.
 
 ## Rebuild after a mockup edit
 

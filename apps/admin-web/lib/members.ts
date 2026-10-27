@@ -1,4 +1,4 @@
-import {
+import { readDatabaseFailure,
   type AttendanceState,
   type ClassBookingStatus,
   prisma,
@@ -99,11 +99,13 @@ interface MemberListRecord {
   phone: string | null;
   dateOfBirth: Date | null;
   status: MemberStatus;
+  profileVersion?: number;
   notes: string | null;
   tags: string[];
   createdAt: Date;
   updatedAt: Date;
   familyLinks: FamilyLinkRecord[];
+  archivedAt?: Date | null;
   classBookings: ClassBookingRecord[];
 }
 
@@ -184,6 +186,8 @@ export interface MemberListItem {
   phone: string | null;
   dateOfBirth: Date | null;
   status: MemberStatus;
+  profileVersion: number;
+  archivedAt?: Date | null;
   notes: string | null;
   tags: string[];
   createdAt: Date;
@@ -390,72 +394,6 @@ function validateSanitizedMemberInput(
   };
 }
 
-async function syncLinkedMemberUser(args: {
-  db: MemberDatabase;
-  member: MemberIdentityRecord;
-  fullName: string;
-  email: string | null;
-}):
-  Promise<
-    | {
-        status: "ok";
-      }
-    | {
-        status: "error";
-        message: string;
-      }
-  > {
-  if (!args.member.userId) {
-    return {
-      status: "ok",
-    };
-  }
-
-  if (!args.email) {
-    return {
-      status: "error",
-      message: "Members with portal access must keep an email address.",
-    };
-  }
-
-  const existingUser = await args.db.user.findUnique({
-    where: {
-      email: args.email,
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  if (existingUser && existingUser.id !== args.member.userId) {
-    return {
-      status: "error",
-      message: "That email already belongs to another user.",
-    };
-  }
-
-  const result = await args.db.user.updateMany({
-    where: {
-      id: args.member.userId,
-    },
-    data: {
-      email: args.email,
-      fullName: args.fullName,
-    },
-  });
-
-  if (result.count === 0) {
-    return {
-      status: "error",
-      message: "Member portal access is linked to a missing user.",
-    };
-  }
-
-  return {
-    status: "ok",
-  };
-}
-
 function mapTrialBooking(
   booking: ClassBookingRecord,
 ): MemberTrialBookingSummary {
@@ -525,6 +463,8 @@ function mapMemberListItem(record: MemberListRecord): MemberListItem {
     phone: record.phone,
     dateOfBirth: record.dateOfBirth,
     status: record.status,
+    profileVersion: record.profileVersion ?? 0,
+    archivedAt: record.archivedAt ?? null,
     notes: record.notes,
     tags: record.tags,
     createdAt: record.createdAt,
@@ -607,6 +547,7 @@ export async function listMembers(args: {
   workspaceId: string;
   query?: string;
   status?: MemberStatus;
+  archived?: boolean;
   skip?: number;
   take?: number;
   db?: MemberDatabase;
@@ -615,6 +556,7 @@ export async function listMembers(args: {
   const query = args.query?.trim();
   const where: Record<string, unknown> = {
     workspaceId: args.workspaceId,
+    archivedAt: args.archived ? { not: null } : null,
     ...(args.status ? { status: args.status } : {}),
   };
 
@@ -764,17 +706,6 @@ export async function updateMember(args: {
     };
   }
 
-  const userSyncResult = await syncLinkedMemberUser({
-    db,
-    member,
-    fullName: input.value.fullName,
-    email: input.value.email,
-  });
-
-  if (userSyncResult.status === "error") {
-    return userSyncResult;
-  }
-
   const result = await db.member.updateMany({
     where: {
       id: args.memberId,
@@ -809,22 +740,11 @@ function sanitizeGuardianInput(input: GuardianLinkFormInput) {
 }
 
 function isFamilyLinkUniqueConstraint(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const maybeError = error as {
-    code?: string;
-    meta?: {
-      target?: string[];
-    };
-  };
-
-  return (
-    maybeError.code === "P2002" &&
-    Array.isArray(maybeError.meta?.target) &&
-    maybeError.meta.target.includes("guardianId") &&
-    maybeError.meta.target.includes("childMemberId")
+  const failure = readDatabaseFailure(error);
+  return Boolean(
+    failure?.code === "P2002" &&
+    failure.target?.includes("guardianId") &&
+    failure.target?.includes("childMemberId"),
   );
 }
 

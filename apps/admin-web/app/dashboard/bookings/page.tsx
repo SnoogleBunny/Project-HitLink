@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AdminShell } from "../../_components/admin-shell";
 import { listBookingFormOptions } from "../../../lib/bookings";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
-import { isWorkspaceMigrationReady } from "../../../lib/workspace-migration";
+import { isWorkspaceOperationallyReady } from "@flowstate/db";
 import { BookingCreateForm } from "./booking-create-form";
 
 export default async function BookingsPage() {
@@ -11,16 +11,15 @@ export default async function BookingsPage() {
     workspaceId: workspace.id,
     timezone: location.timezone,
   });
-  const migrationReady = isWorkspaceMigrationReady({
+  const migrationReady = isWorkspaceOperationallyReady({
     workspaceStatus: workspace.status,
+    setupActivation: workspace.setupActivation,
     migrationStage: workspace.migration?.stage,
-    ownerReviewAcknowledgedAt:
-      workspace.migration?.ownerReviewAcknowledgedAt,
+    ownerReviewAcknowledgedAt: workspace.migration?.ownerReviewAcknowledgedAt,
     ownerReviewAcknowledgedByUserId:
       workspace.migration?.ownerReviewAcknowledgedByUserId,
     operationallyReadyAt: workspace.migration?.operationallyReadyAt,
-    operationallyReadyByUserId:
-      workspace.migration?.operationallyReadyByUserId,
+    operationallyReadyByUserId: workspace.migration?.operationallyReadyByUserId,
   });
 
   return (
@@ -64,6 +63,20 @@ export default async function BookingsPage() {
             If a class is only available through a paid drop-in flow, ask the
             member to book it from the portal.
           </p>
+          <p className="management-copy">
+            <Link className="text-link" href="/dashboard/settings/booking">
+              Review class booking rules
+            </Link>
+            . New bookings follow the owner-confirmed hours, rolling horizon and
+            minimum notice.
+          </p>
+          {migrationReady && (
+            <p>
+              <Link className="text-link" href="/dashboard/bookings/late">
+                Review a late booking exception
+              </Link>
+            </p>
+          )}
           {migrationReady ? (
             <BookingCreateForm options={options} />
           ) : (

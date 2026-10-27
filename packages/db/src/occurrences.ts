@@ -181,7 +181,8 @@ export function getZonedDateTimeAsUtc(args: {
   return new Date(utcGuess.getTime() - secondOffset);
 }
 
-export function formatMinutesAsTime(minutes: number): string {
+export function formatMinutesAsTime(minutes: number, locale?: string): string {
+  if (locale) return new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(new Date(Date.UTC(2000, 0, 1, Math.floor(minutes / 60), minutes % 60)));
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   const suffix = hours >= 12 ? "PM" : "AM";
@@ -190,8 +191,8 @@ export function formatMinutesAsTime(minutes: number): string {
   return `${twelveHourValue}:${String(remainder).padStart(2, "0")} ${suffix}`;
 }
 
-export function formatOccurrenceDate(dateString: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
+export function formatOccurrenceDate(dateString: string, locale = "en-CA"): string {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeZone: "UTC",
   }).format(dateOnlyStringToUtcDate(dateString));
@@ -201,8 +202,10 @@ export function formatOccurrenceLabel(args: {
   weekday: Weekday;
   dateString: string;
   startTimeMinutes: number;
+  locale?: string;
 }): string {
-  return `${WEEKDAY_LABELS[args.weekday]}, ${formatOccurrenceDate(args.dateString)} at ${formatMinutesAsTime(args.startTimeMinutes)}`;
+  const weekday = args.locale ? new Intl.DateTimeFormat(args.locale, { weekday: "long", timeZone: "UTC" }).format(dateOnlyStringToUtcDate(args.dateString)) : WEEKDAY_LABELS[args.weekday];
+  return `${weekday}, ${formatOccurrenceDate(args.dateString, args.locale)} at ${formatMinutesAsTime(args.startTimeMinutes, args.locale)}`;
 }
 
 export function validateOccurrenceDate(args: {

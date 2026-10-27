@@ -31,7 +31,7 @@
 #hitlink-prototype[data-role=prospect] .hl-app-footer{display:flex;background:var(--hl-surface)}
 #hitlink-prototype[data-role=prospect] .hl-app-footer .hl-text-link{font-size:12px}
 #hitlink-prototype[data-role=prospect] #hl-main .hl-route{max-width:1100px;margin-inline:auto}
-@media(max-width:640px){
+@media(max-width:767px){
  #hitlink-prototype .visitor-trial-grid>.hl-panel:last-child{order:-1}
  #hitlink-prototype[data-role=prospect] .hl-app{height:740px;grid-template-rows:auto minmax(0,1fr)}
  #hitlink-prototype[data-role=prospect] .hl-public-header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;padding:12px 16px 8px}

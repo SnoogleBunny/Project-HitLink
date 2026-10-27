@@ -1,0 +1,70 @@
+name: Checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Distribution tests, database suites, lint and types
+        run: docker compose --profile test run --build --rm checks
+
+  browser-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: local-ci-only
+          POSTGRES_DB: hitlink_canonical_repair_test
+        ports:
+          - 55435:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d hitlink_canonical_repair_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:local-ci-only@127.0.0.1:55435/hitlink_canonical_repair_test?schema=public
+      TEST_DATABASE_URL: postgresql://postgres:local-ci-only@127.0.0.1:55435/hitlink_canonical_repair_test?schema=public
+      FLOWSTATE_DEMO_DATABASE_NAME: hitlink_canonical_repair_test
+      FLOWSTATE_DEMO_DATABASE_ACKNOWLEDGEMENT: I_ACKNOWLEDGE_THIS_DATABASE_IS_DISPOSABLE
+      FLOWSTATE_E2E_SERVER_MODE: development-clean
+      NEXT_TELEMETRY_DISABLED: "1"
+      TURBO_TELEMETRY_DISABLED: "1"
+      STRIPE_SECRET_KEY: ""
+      STRIPE_WEBHOOK_SECRET: ""
+      RESEND_API_KEY: ""
+      HITLINK_EMAIL_FROM: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Install the locked toolchain
+        run: |
+          corepack enable
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm db:generate
+      - name: Verify current discovery and feature coverage before building
+        run: corepack pnpm test:e2e:preflight
+      - name: Install Chromium
+        run: corepack pnpm exec playwright install --with-deps chromium
+      - name: Run the maintained canonical browser gate
+        run: node tests/e2e/canonical-playwright.mjs

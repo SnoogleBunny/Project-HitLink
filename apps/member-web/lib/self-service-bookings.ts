@@ -1,19 +1,27 @@
 import {
   checkMemberClassEligibility,
+  membershipGraceReleaseMessage,
   addDays,
+  evaluateClassSchedulingPolicy,
+  readClassSchedulingPolicy,
+  type SchedulingPolicyReader,
   classOccurrenceInclude,
   formatOccurrenceDate,
   listClassOccurrences,
   resolveClassOccurrence,
   canCancelClassBooking,
   cleanupExpiredPendingBookings,
-  createAccessBackedBooking,
-  cancelAccessBackedBooking,
+  createReviewedDirectClassBooking,
+  buildDirectBookingFundingReview,
+  type DirectBookingFundingReview,
+  type MemberCommandActor,
+  cancelMemberClassBooking,
   formatMinutesAsTime,
   getOccurrenceStartsAt,
+  getMembershipAllowanceSummary,
   getWorkspaceDateString,
-  joinWaitlist,
-  leaveWaitlist,
+  joinMemberClassWaitlist,
+  leaveMemberClassWaitlist,
   prisma,
   resolveBookingAccessForProgram,
   toDateOnlyString,
@@ -51,6 +59,7 @@ interface BookingTemplateRecord {
 
 interface ExistingBookingRecord {
   id: string;
+  fundingRevision?: number;
   classTemplateId: string;
   scheduledForDate: Date;
   bookingType: ClassBookingType;
@@ -64,6 +73,8 @@ interface WaitlistEntryRecord {
   classTemplateId: string;
   scheduledForDate: Date;
   joinedAt: Date;
+  autoPromotionOptedInAt?: Date | null;
+  lastSkipReason?: string | null;
   classTemplate: BookingTemplateRecord;
 }
 
@@ -72,7 +83,8 @@ interface SeatHoldingBookingRecord {
   scheduledForDate: Date;
 }
 
-interface SelfServiceBookingDatabase {
+interface SelfServiceBookingDatabase extends SchedulingPolicyReader {
+  workspaceDataEvent?: { findMany(args: Record<string, unknown>): Promise<Array<{ metadata: unknown }>> };
   programPromotion?: unknown;
   classTemplate: {
     findMany(args: Record<string, unknown>): Promise<BookingTemplateRecord[]>;
@@ -98,6 +110,11 @@ interface SelfServiceBookingDatabase {
 }
 
 export interface ScheduleOccurrence {
+  reviewedFunding?: DirectBookingFundingReview;
+  fundingSourceName?: string;
+  autoPromotionDeadline?: string;
+  fundingNote?: string;
+  timezone?: string;
   programId?: string;
   coachName?: string;
   endTimeLabel?: string;
@@ -125,6 +142,8 @@ export interface ScheduleOccurrence {
 }
 
 export interface MemberBookingSummary {
+  paymentRestrictionMessage?: string;
+  timezone?: string;
   startsAt?: string;
   coachName?: string;
   endTimeLabel?: string;
@@ -144,6 +163,7 @@ export interface MemberBookingSummary {
 }
 
 export interface MemberWaitlistSummary {
+  timezone?: string;
   coachName?: string;
   waitlistEntryId: string;
   classTemplateId: string;
@@ -153,6 +173,8 @@ export interface MemberWaitlistSummary {
   roomName: string;
   timeLabel: string;
   joinedAt: Date;
+  autoPromotionOptedInAt?: Date | null;
+  lastSkipReason?: string | null;
 }
 
 export interface EligibleSelfServiceOccurrences {
@@ -180,6 +202,7 @@ type SelfBookingMutationResult =
   | {
       status: "error";
       message: string;
+      code?: "REVIEW_REQUIRED";
     };
 
 const selfServiceBookingDatabase =
@@ -203,26 +226,12 @@ function getCapacityLabel(args: {
   return `${args.activeCount} / ${effectiveCapacity} booked`;
 }
 
-function isPastBookingCutoff(args: {
-  scheduledForDate: string;
-  startTimeMinutes: number;
-  bookingCutoffMinutes: number;
-  timezone: string;
-  now: Date;
-}): boolean {
-  const startsAt = getOccurrenceStartsAt(args);
-
-  return (
-    args.now.getTime() >=
-    startsAt.getTime() - args.bookingCutoffMinutes * 60_000
-  );
-}
-
 function mapBookingItem(
   booking: ExistingBookingRecord,
   args: {
     timezone: string;
     now: Date;
+    locale?: string;
   },
 ): MemberBookingSummary {
   const scheduledForDate = toDateOnlyString(booking.scheduledForDate);
@@ -237,16 +246,17 @@ function mapBookingItem(
     scheduledForDate,
     startTimeMinutes: schedule.startTimeMinutes,
     cancellationCutoffMinutes: schedule.cancellationCutoffMinutes,
-    timezone: args.timezone,
+    timezone: occurrence?.timezone ?? args.timezone,
     now: args.now,
   });
 
   return {
+    timezone: occurrence?.timezone ?? args.timezone,
     bookingId: booking.id,
     startsAt: getOccurrenceStartsAt({
       scheduledForDate,
       startTimeMinutes: schedule.startTimeMinutes,
-      timezone: args.timezone,
+      timezone: occurrence?.timezone ?? args.timezone,
     }).toISOString(),
     classTemplateId: booking.classTemplateId,
     scheduledForDate,
@@ -254,8 +264,8 @@ function mapBookingItem(
     programName: schedule.program.name,
     roomName: schedule.room.name,
     coachName: occurrence?.coachDisplayName ?? "Coach to be confirmed",
-    timeLabel: formatMinutesAsTime(schedule.startTimeMinutes),
-    endTimeLabel: formatMinutesAsTime(schedule.endTimeMinutes),
+    timeLabel: formatMinutesAsTime(schedule.startTimeMinutes, args.locale),
+    endTimeLabel: formatMinutesAsTime(schedule.endTimeMinutes, args.locale),
     pendingPaymentExpiresAt:
       booking.pendingPaymentExpiresAt?.toISOString() ?? null,
     classCancelled: occurrence?.status === "CANCELLED",
@@ -266,13 +276,14 @@ function mapBookingItem(
   };
 }
 
-function mapWaitlistItem(entry: WaitlistEntryRecord): MemberWaitlistSummary {
+function mapWaitlistItem(entry: WaitlistEntryRecord, locale?: string): MemberWaitlistSummary {
   const occurrence = resolveClassOccurrence({
     template: entry.classTemplate as ClassOccurrenceTemplate,
     scheduledForDate: toDateOnlyString(entry.scheduledForDate),
   });
   const schedule = occurrence ?? entry.classTemplate;
   return {
+    timezone: occurrence?.timezone,
     waitlistEntryId: entry.id,
     classTemplateId: entry.classTemplateId,
     scheduledForDate: toDateOnlyString(entry.scheduledForDate),
@@ -280,8 +291,10 @@ function mapWaitlistItem(entry: WaitlistEntryRecord): MemberWaitlistSummary {
     programName: schedule.program.name,
     roomName: schedule.room.name,
     coachName: occurrence?.coachDisplayName ?? "Coach to be confirmed",
-    timeLabel: formatMinutesAsTime(schedule.startTimeMinutes),
+    timeLabel: formatMinutesAsTime(schedule.startTimeMinutes, locale),
     joinedAt: entry.joinedAt,
+    autoPromotionOptedInAt: entry.autoPromotionOptedInAt,
+    lastSkipReason: entry.lastSkipReason,
   };
 }
 
@@ -289,6 +302,7 @@ export async function listEligibleSelfServiceOccurrences(args: {
   workspaceId: string;
   memberId: string;
   timezone: string;
+  locale?: string;
   fromDate?: string;
   toDate?: string;
   db?: SelfServiceBookingDatabase;
@@ -296,6 +310,7 @@ export async function listEligibleSelfServiceOccurrences(args: {
 }): Promise<EligibleSelfServiceOccurrences> {
   const db = args.db ?? selfServiceBookingDatabase;
   const now = args.now ?? new Date();
+  const policyRevision = await readClassSchedulingPolicy(db, args.workspaceId, now);
   const today = getWorkspaceDateString(now, args.timezone);
   const fromDate = args.fromDate ?? today;
   const toDate = args.toDate ?? addDays(fromDate, 55);
@@ -320,7 +335,7 @@ export async function listEligibleSelfServiceOccurrences(args: {
     gte: new Date(`${fromDate}T00:00:00.000Z`),
     lte: new Date(`${toDate}T00:00:00.000Z`),
   };
-  const [existingBookings, waitlistEntries, accessEntries] = await Promise.all([
+  const [existingBookings, waitlistEntries, accessEntries, currentMembership] = await Promise.all([
     db.classBooking.findMany({
       where: {
         workspaceId: args.workspaceId,
@@ -340,20 +355,25 @@ export async function listEligibleSelfServiceOccurrences(args: {
       include: { classTemplate: { include: classOccurrenceInclude } },
     }),
     Promise.all(
-      [...new Map(availableClasses.map((item) => [`${item.programId}:${item.scheduledForDate}`, item])).values()].map(
+      availableClasses.map(
         async (item) => ({
-          programId: `${item.programId}:${item.scheduledForDate}`,
+          programId: buildOccurrenceKey(item.classTemplateId, item.scheduledForDate),
           access: await resolveBookingAccessForProgram({
             workspaceId: args.workspaceId,
             memberId: args.memberId,
             programId: item.programId,
-            scheduledForDate: item.scheduledForDate, now,
+            scheduledForDate: item.scheduledForDate, occurrenceStartsAt: getOccurrenceStartsAt({ scheduledForDate: item.scheduledForDate, startTimeMinutes: item.startTimeMinutes, timezone: item.timezone ?? args.timezone }), now,
             allowDropIn: true,
+            includeDirectBookingFunding: true,
             db: db as never,
           }),
         }),
       ),
     ),
+    db.memberMembership.findFirst({
+      where: { workspaceId: args.workspaceId, memberId: args.memberId, currentMembershipSlot: "CURRENT", status: { in: ["ACTIVE", "PAST_DUE", "PENDING_PAYMENT_METHOD"] } },
+      select: { allowanceTimezone: true },
+    }) as Promise<{ allowanceTimezone: string | null } | null>,
   ]);
   const templateIds = [
     ...new Set(availableClasses.map((item) => item.classTemplateId)),
@@ -372,6 +392,23 @@ export async function listEligibleSelfServiceOccurrences(args: {
   const accessByProgram = new Map(
     accessEntries.map((item) => [item.programId, item.access]),
   );
+  // Accepted contract calendar days survive a later business timezone change.
+  // Show the actual allowance period when this class crosses that calendar boundary.
+  const fundingNotes = new Map<string, string>();
+  if (currentMembership?.allowanceTimezone) {
+    const contractTimezone = currentMembership.allowanceTimezone;
+    const label = (date: string) => new Intl.DateTimeFormat(args.locale ?? "en-CA", { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" }).format(new Date(`${date}T12:00:00Z`));
+    await Promise.all(availableClasses.map(async item => {
+      const key = buildOccurrenceKey(item.classTemplateId, item.scheduledForDate);
+      if (accessByProgram.get(key)?.type !== "membership") return;
+      const occurrenceStartsAt = getOccurrenceStartsAt({ scheduledForDate: item.scheduledForDate, startTimeMinutes: item.startTimeMinutes, timezone: item.timezone ?? args.timezone });
+      const contractDate = getWorkspaceDateString(occurrenceStartsAt, contractTimezone);
+      if (contractDate === item.scheduledForDate) return;
+      const summary = await getMembershipAllowanceSummary({ workspaceId: args.workspaceId, memberId: args.memberId, scheduledForDate: item.scheduledForDate, occurrenceStartsAt, timezone: item.timezone ?? args.timezone, db: db as never });
+      const windows = summary?.windows.map(window => `${window.kind === "WEEK" ? "Weekly" : "Billing-month"} allowance from ${label(window.startsOn)} up to ${label(window.endsOn)}: ${window.remaining} of ${window.limit} classes remaining.`).join(" ") ?? "";
+      fundingNotes.set(key, `This class counts on ${label(contractDate)} in your membership's accepted timezone (${contractTimezone}).${windows ? ` ${windows}` : ""} Allowance is checked again when you book.`);
+    }));
+  }
   const bookingsByKey = new Map(
     existingBookings.map((booking) => [
       buildOccurrenceKey(
@@ -404,20 +441,29 @@ export async function listEligibleSelfServiceOccurrences(args: {
     const key = buildOccurrenceKey(item.classTemplateId, item.scheduledForDate);
     const booked = bookingsByKey.get(key),
       waitlisted = waitlistByKey.get(key),
-      access = accessByProgram.get(`${item.programId}:${item.scheduledForDate}`);
+      access = accessByProgram.get(buildOccurrenceKey(item.classTemplateId, item.scheduledForDate));
     const activeCount = counts.get(key) ?? 0;
     const full =
       item.effectiveCapacity !== null && activeCount >= item.effectiveCapacity;
-    const cutoffClosed = isPastBookingCutoff({
-      scheduledForDate: item.scheduledForDate,
-      startTimeMinutes: item.startTimeMinutes,
-      bookingCutoffMinutes: item.bookingCutoffMinutes,
-      timezone: args.timezone,
-      now,
-    });
+    const policyEvaluation = evaluateClassSchedulingPolicy({ revision: policyRevision, date: item.scheduledForDate, timezone: item.timezone ?? args.timezone, startTimeMinutes: item.startTimeMinutes, endTimeMinutes: item.endTimeMinutes, bookingCutoffMinutes: full ? Math.max(item.bookingCutoffMinutes, item.cancellationCutoffMinutes) : item.bookingCutoffMinutes, now });
+    const cutoffClosed = !policyEvaluation.allowed;
     if (!booked && !waitlisted && (cutoffClosed || access?.type === "none"))
       return [];
     const occurrence: ScheduleOccurrence = {
+      ...(access?.directBookingFunding ? {
+        fundingSourceName: access.directBookingFunding.sourceName,
+        reviewedFunding: buildDirectBookingFundingReview({
+          workspaceId: args.workspaceId, memberId: args.memberId, classTemplateId: item.classTemplateId,
+          scheduledForDate: item.scheduledForDate,
+          occurrence: { programId: item.programId, timezone: item.timezone ?? args.timezone, cancellationCutoffMinutes: item.cancellationCutoffMinutes,
+            startsAt: getOccurrenceStartsAt({ scheduledForDate: item.scheduledForDate, startTimeMinutes: item.startTimeMinutes, timezone: item.timezone ?? args.timezone }).toISOString(),
+            endsAt: getOccurrenceStartsAt({ scheduledForDate: item.scheduledForDate, startTimeMinutes: item.endTimeMinutes, timezone: item.timezone ?? args.timezone }).toISOString() },
+          funding: access.directBookingFunding.funding,
+        }),
+      } : {}),
+      timezone: item.timezone ?? args.timezone,
+      ...(full && policyEvaluation.allowed ? { autoPromotionDeadline: new Intl.DateTimeFormat(args.locale ?? "en-CA", { timeZone: item.timezone ?? args.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(policyEvaluation.snapshot.closesAt!)) } : {}),
+      ...(fundingNotes.has(key) ? { fundingNote: fundingNotes.get(key) } : {}),
       classTemplateId: item.classTemplateId,
       scheduledForDate: item.scheduledForDate,
       displayTitle: item.displayTitle,
@@ -425,9 +471,9 @@ export async function listEligibleSelfServiceOccurrences(args: {
       programName: item.program.name,
       roomName: item.room.name,
       coachName: item.coachDisplayName,
-      dateLabel: formatOccurrenceDate(item.scheduledForDate),
-      timeLabel: formatMinutesAsTime(item.startTimeMinutes),
-      endTimeLabel: formatMinutesAsTime(item.endTimeMinutes),
+      dateLabel: formatOccurrenceDate(item.scheduledForDate, args.locale),
+      timeLabel: formatMinutesAsTime(item.startTimeMinutes, args.locale),
+      endTimeLabel: formatMinutesAsTime(item.endTimeMinutes, args.locale),
       capacityLabel: getCapacityLabel({
         capacityOverride: item.capacityOverride,
         roomCapacity: item.room.capacity,
@@ -486,6 +532,11 @@ export async function listEligibleSelfServiceOccurrences(args: {
       occurrence.action = "pay_and_book";
       occurrence.actionLabel = "Pay and book";
     }
+    if ((occurrence.action === "book" || occurrence.action === "pay_and_book") && !occurrence.reviewedFunding) {
+      occurrence.action = "none";
+      occurrence.actionLabel = "Funding review needed";
+      occurrence.note = "Ask the gym to review the accepted funding terms before booking.";
+    }
     const eligibility = eligibilityByKey.get(key);
     if (eligibility && !eligibility.eligible) { occurrence.action = "none"; occurrence.actionLabel = "Not eligible"; occurrence.note = eligibility.reason; }
     else if (eligibility && !occurrence.note && item.program.rankPolicy) occurrence.note = `Current rank: ${eligibility.currentRank}`;
@@ -498,6 +549,7 @@ export async function listMemberBookings(args: {
   workspaceId: string;
   memberId: string;
   timezone: string;
+  locale?: string;
   db?: SelfServiceBookingDatabase;
   now?: Date;
 }): Promise<{
@@ -555,6 +607,7 @@ export async function listMemberBookings(args: {
     const item = mapBookingItem(booking, {
       timezone: args.timezone,
       now,
+      locale: args.locale,
     });
     const startsAt = getOccurrenceStartsAt({
       scheduledForDate: item.scheduledForDate,
@@ -563,7 +616,7 @@ export async function listMemberBookings(args: {
           template: booking.classTemplate as ClassOccurrenceTemplate,
           scheduledForDate: item.scheduledForDate,
         })?.startTimeMinutes ?? booking.classTemplate.startTimeMinutes,
-      timezone: args.timezone,
+      timezone: item.timezone ?? args.timezone,
     });
 
     if (
@@ -577,34 +630,47 @@ export async function listMemberBookings(args: {
     history.push(item);
   }
 
+  const visibleHistory = history.slice(0, 30);
+  const cancelled = bookings.filter(booking => booking.status === "CANCELLED" && visibleHistory.some(item => item.bookingId === booking.id) && Number.isSafeInteger(booking.fundingRevision) && Number(booking.fundingRevision) > 0);
+  if (cancelled.length && db.workspaceDataEvent) {
+    const receipts = await db.workspaceDataEvent.findMany({ where: { workspaceId: args.workspaceId, kind: "MEMBERSHIP_GRACE_BOOKING_RELEASED", AND: [ { metadata: { path: ["memberId"], equals: args.memberId } }, { OR: cancelled.map(booking => ({ AND: [ { metadata: { path: ["bookingId"], equals: booking.id } }, { metadata: { path: ["fundingRevision"], equals: booking.fundingRevision } } ] })) } ] }, select: { metadata: true }, take: 31 });
+    for (const item of visibleHistory) {
+      const booking = cancelled.find(row => row.id === item.bookingId);
+      if (!booking) continue;
+      if (receipts.some(row => { const proof = row.metadata as { bookingId?: unknown; memberId?: unknown; fundingRevision?: unknown } | null; return proof?.bookingId === booking.id && proof.memberId === args.memberId && proof.fundingRevision === booking.fundingRevision; })) item.paymentRestrictionMessage = membershipGraceReleaseMessage;
+    }
+  }
   return {
     upcoming: upcoming.sort((a, b) =>
       (a.startsAt ?? a.scheduledForDate).localeCompare(
         b.startsAt ?? b.scheduledForDate,
       ),
     ),
-    history: history.slice(0, 30),
-    waitlist: waitlistEntries.map(mapWaitlistItem),
+    history: visibleHistory,
+    waitlist: waitlistEntries.map((entry) => mapWaitlistItem(entry, args.locale)),
   };
 }
 
 export async function createSelfBooking(args: {
   workspaceId: string;
+  actor: MemberCommandActor;
   memberId: string;
   classTemplateId: string;
   scheduledForDate: string;
   timezone: string;
+  reviewedFunding: DirectBookingFundingReview;
   allowDropIn?: boolean;
   db?: SelfServiceBookingDatabase;
   now?: Date;
 }): Promise<SelfBookingMutationResult> {
-  const result = await createAccessBackedBooking({
+  const result = await createReviewedDirectClassBooking({
     workspaceId: args.workspaceId,
+    actor: args.actor,
     memberId: args.memberId,
     classTemplateId: args.classTemplateId,
     scheduledForDate: args.scheduledForDate,
     timezone: args.timezone,
-    source: "MEMBER_PORTAL",
+    reviewedFunding: args.reviewedFunding,
     allowDropIn: args.allowDropIn ?? true,
     db: (args.db ?? selfServiceBookingDatabase) as never,
     now: args.now,
@@ -613,6 +679,7 @@ export async function createSelfBooking(args: {
   if (result.status === "error") {
     return {
       status: "error",
+      ...(result.code === "REVIEW_REQUIRED" ? { code: "REVIEW_REQUIRED" as const } : {}),
       message:
         result.code === "FULL"
           ? "This class is full. Join the waitlist if membership or punch-card access applies."
@@ -632,14 +699,16 @@ export async function createSelfBooking(args: {
 
 export async function cancelSelfBooking(args: {
   workspaceId: string;
+  actor: MemberCommandActor;
   memberId: string;
   bookingId: string;
   timezone: string;
   db?: SelfServiceBookingDatabase;
   now?: Date;
 }): Promise<SelfBookingMutationResult> {
-  const result = await cancelAccessBackedBooking({
+  const result = await cancelMemberClassBooking({
     workspaceId: args.workspaceId,
+    actor: args.actor,
     memberId: args.memberId,
     bookingId: args.bookingId,
     timezone: args.timezone,
@@ -659,20 +728,26 @@ export async function cancelSelfBooking(args: {
 
 export async function joinSelfWaitlist(args: {
   workspaceId: string;
+  actor: MemberCommandActor;
   memberId: string;
   classTemplateId: string;
   scheduledForDate: string;
   timezone: string;
+  autoPromotionOptIn?: boolean;
+  allowPunchCardFunding?: boolean;
   db?: SelfServiceBookingDatabase;
   now?: Date;
 }): Promise<SelfBookingMutationResult> {
-  const result = await joinWaitlist({
+  const result = await joinMemberClassWaitlist({
     workspaceId: args.workspaceId,
+    actor: args.actor,
     memberId: args.memberId,
     classTemplateId: args.classTemplateId,
     scheduledForDate: args.scheduledForDate,
     timezone: args.timezone,
     source: "MEMBER_PORTAL",
+    autoPromotionOptIn: args.autoPromotionOptIn,
+    allowPunchCardFunding: args.allowPunchCardFunding,
     db: (args.db ?? selfServiceBookingDatabase) as never,
     now: args.now,
   });
@@ -690,12 +765,14 @@ export async function joinSelfWaitlist(args: {
 
 export async function leaveSelfWaitlist(args: {
   workspaceId: string;
+  actor: MemberCommandActor;
   memberId: string;
   waitlistEntryId: string;
   db?: SelfServiceBookingDatabase;
 }): Promise<SelfBookingMutationResult> {
-  const result = await leaveWaitlist({
+  const result = await leaveMemberClassWaitlist({
     workspaceId: args.workspaceId,
+    actor: args.actor,
     memberId: args.memberId,
     waitlistEntryId: args.waitlistEntryId,
     db: (args.db ?? selfServiceBookingDatabase) as never,

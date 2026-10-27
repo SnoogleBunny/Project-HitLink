@@ -63,6 +63,7 @@ describe("LoginForm action contract", () => {
     expect(passwordInput).toContain('autoComplete="current-password"');
     expect(passwordInput).toContain('type="password"');
     expect(html).toContain('href="/signup"');
+    expect(html).toContain('href="/forgot-password"');
     expect(html).toContain("Need an owner account?");
     expect(html).toContain("Log in");
   });

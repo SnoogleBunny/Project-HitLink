@@ -22,20 +22,18 @@ export function RoomEditForm({ room }: RoomEditFormProps) {
         <input defaultValue={room.name} name="name" type="text" />
       </label>
 
-      <label className="field">
-        <span>Capacity</span>
-        <input
-          defaultValue={room.capacity ?? ""}
-          name="capacity"
-          type="number"
-        />
-      </label>
+      <p>
+        Default capacity: {room.capacity ?? "No room default limit"}. Use the
+        capacity review below to change it safely.
+      </p>
 
       <label className="field-checkbox">
         <input defaultChecked={room.isActive} name="isActive" type="checkbox" />
         <div>
           <strong>Room is active</strong>
-          <p>Only active, unarchived rooms should appear in future schedules.</p>
+          <p>
+            Only active, unarchived rooms should appear in future schedules.
+          </p>
         </div>
       </label>
 

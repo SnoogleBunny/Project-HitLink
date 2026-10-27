@@ -1,3 +1,7 @@
+import {
+  inspectRetentionInventory,
+  deleteReviewedWorkspaceRecords,
+} from "../../../packages/db/src/retention-inventory";
 import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import {
@@ -231,7 +235,7 @@ const url = process.env.TEST_DATABASE_URL;
           scheduledForDate: new Date("2026-11-02"),
         },
       });
-      await db.attendanceRecord.create({
+      const attendance = await db.attendanceRecord.create({
         data: {
           workspaceId,
           memberId: childA,
@@ -240,6 +244,40 @@ const url = process.env.TEST_DATABASE_URL;
           state: "PRESENT",
           note: "ATTENDANCE_PRIVATE_SECRET",
         },
+      });
+      const attendanceOperation = await db.attendanceOperation.create({
+        data: {
+          workspaceId,
+          requestKey: randomUUID(),
+          payloadHash: sha(Buffer.from("fictional-bulk-operation")),
+          action: "CLOSE",
+          actorWorkspaceUserId: staffId,
+          result: {
+            privateRoster: "Unrelated child B",
+            note: "BULK_PRIVATE_SECRET",
+          },
+        },
+      });
+      await db.attendanceEvent.createMany({
+        data: [childA, childB].map((memberId) => ({
+          workspaceId,
+          operationId: attendanceOperation.id,
+          attendanceRecordId: attendance.id,
+          bookingId,
+          memberId,
+          classTemplateId: template.id,
+          scheduledForDate: new Date("2026-10-26"),
+          actorWorkspaceUserId: staffId,
+          actorNameSnapshot: "Authorized coach",
+          actorRole: "COACH" as const,
+          previousState: "LATE" as const,
+          state: "PRESENT" as const,
+          previousNote: "PREVIOUS_ATTENDANCE_PRIVATE_SECRET",
+          note: "ATTENDANCE_PRIVATE_SECRET",
+          reason: "CORRECTION_INTERNAL_SECRET",
+          occurrenceTimezone: "America/Vancouver",
+          noShowCutoffAt: new Date("2026-10-27T02:00:00Z"),
+        })),
       });
       const form = await db.formDocument.create({
         data: { workspaceId, name: "Signed waiver", formType: "WAIVER" },
@@ -287,7 +325,7 @@ const url = process.env.TEST_DATABASE_URL;
           accessMethod: "PORTAL",
           status: "COMPLETED",
           completedAt: now,
-          tokenHash: "SIGNATURE_TOKEN_SECRET",
+          tokenHash: `SIGNATURE_TOKEN_SECRET:${tag}`,
         },
       });
       signedId = (
@@ -471,57 +509,20 @@ const url = process.env.TEST_DATABASE_URL;
         where: { workspaceId, userId: parent.userId },
         data: { isActive: true },
       });
-      await db.formVersion.update({
-        where: { id: formVersionId },
-        data: { fileData: originalPdf },
-      });
     });
     afterAll(async () => {
       for (const id of [workspaceId, foreignWorkspaceId].filter(Boolean)) {
-        await db.sourceMembershipLifecycleEvidence.deleteMany({
-          where: { workspaceId: id },
-        });
-        await db.membershipLifecycleEvent.deleteMany({
-          where: { request: { workspaceId: id } },
-        });
-        await db.membershipLifecycleRequest.deleteMany({
-          where: { workspaceId: id },
-        });
-        await db.importedFinancialEvidence.updateMany({
-          where: { workspaceId: id },
-          data: { parentEvidenceId: null },
-        });
-        await db.importedFinancialEvidence.deleteMany({
-          where: { workspaceId: id },
-        });
-        await db.importedSignatureEvidence.deleteMany({
-          where: { workspaceId: id },
-        });
-        await db.memberPortalGrant.deleteMany({ where: { workspaceId: id } });
-        await db.coachingEnrollment.deleteMany({ where: { workspaceId: id } });
-        await db.coachingProgramVersion.deleteMany({
-          where: { program: { workspaceId: id } },
-        });
-        await db.coachingProgram.deleteMany({ where: { workspaceId: id } });
-        await db.financialOperationEvent.deleteMany({
-          where: { workspaceId: id },
-        });
-        await db.financialOperation.deleteMany({ where: { workspaceId: id } });
-        await db.refund.deleteMany({ where: { workspaceId: id } });
-        await db.payment.deleteMany({ where: { workspaceId: id } });
-        await db.invoice.deleteMany({ where: { workspaceId: id } });
-        await db.accountCredit.deleteMany({ where: { workspaceId: id } });
-        await db.financialAccount.deleteMany({ where: { workspaceId: id } });
-        await db.attendanceRecord.deleteMany({ where: { workspaceId: id } });
-        await db.classBooking.deleteMany({ where: { workspaceId: id } });
-        await db.classTemplate.deleteMany({ where: { workspaceId: id } });
-        await db.memberMembership.deleteMany({ where: { workspaceId: id } });
-        await db.formVersion.deleteMany({ where: { workspaceId: id } });
-        await db.workspace.delete({ where: { id } });
+        await db.$transaction(
+          async (tx) => {
+            const inventory = await inspectRetentionInventory(tx, id);
+            await deleteReviewedWorkspaceRecords(tx, id, inventory.fingerprint);
+          },
+          { timeout: 120000 },
+        );
       }
       await db.user.deleteMany({ where: { id: { in: userIds } } });
       await db.$disconnect();
-    });
+    }, 120000);
     const create = (
       actor = parent,
       scope: "MEMBER" | "PAYER" = "MEMBER",
@@ -564,6 +565,16 @@ const url = process.env.TEST_DATABASE_URL;
         expect.objectContaining({ id: signedId, formVersionId }),
       ]);
       expect(payload.tables.FormVersion).toHaveLength(1);
+      expect(payload.tables.AttendanceEvent).toEqual([
+        expect.objectContaining({
+          memberId: childA,
+          previousState: "LATE",
+          state: "PRESENT",
+          actorNameSnapshot: "Authorized coach",
+          occurrenceTimezone: "America/Vancouver",
+        }),
+      ]);
+      expect(payload.tables.AttendanceOperation).toBeUndefined();
       expect(payload.files).toHaveLength(2);
       expect(
         Buffer.from(
@@ -1102,14 +1113,46 @@ const url = process.env.TEST_DATABASE_URL;
       expect((await unpack(job.id)).payload.tables.Member[0].id).toBe(childA);
     });
     it("records a named failure resolver, detects bad files, and never exposes a partial archive", async () => {
-      await db.formVersion.update({
-        where: { id: formVersionId },
-        data: { fileData: Buffer.from("corrupt bytes") },
+      await expect(
+        db.formVersion.update({
+          where: { id: formVersionId },
+          data: { fileData: Buffer.from("corrupt bytes") },
+        }),
+      ).rejects.toThrow("immutable");
+      // Simulate damaged storage at the read boundary while preserving the
+      // immutable retained bytes and all real database authorization/writes.
+      const corruptReadDb = db.$extends({
+        query: {
+          formVersion: {
+            async findMany({ args, query }) {
+              const rows = await query(args);
+              return rows.map((row) =>
+                row.id === formVersionId
+                  ? { ...row, fileData: Buffer.from("corrupt bytes") }
+                  : row,
+              );
+            },
+          },
+        },
       });
       const requestId = randomUUID();
-      await expect(create(parent, "MEMBER", childA, requestId)).rejects.toThrow(
-        "checksum",
-      );
+      await expect(
+        createMemberDataExport(
+          parent,
+          { scope: "MEMBER", targetId: childA },
+          requestId,
+          { db: corruptReadDb as unknown as PrismaClient, now },
+        ),
+      ).rejects.toThrow("checksum");
+      expect(
+        Buffer.from(
+          (
+            await db.formVersion.findUniqueOrThrow({
+              where: { id: formVersionId },
+            })
+          ).fileData,
+        ),
+      ).toEqual(originalPdf);
       expect(
         await db.memberDataExport.findUniqueOrThrow({
           where: { id: requestId },

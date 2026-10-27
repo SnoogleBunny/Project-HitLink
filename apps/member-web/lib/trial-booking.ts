@@ -1,15 +1,21 @@
 import {
   buildUpcomingOccurrenceDateOptions,
   addDays,
+  evaluateClassSchedulingPolicy,
+  readClassSchedulingPolicy,
+  type SchedulingPolicyReader,
+  type SchedulingPolicyRevision,
   classOccurrenceInclude,
   formatOccurrenceLabel,
   getOccurrenceStartsAt,
   getWorkspaceDateString,
   resolveClassOccurrence,
+  resolveWorkspaceClockTimezone,
   prisma,
   type Weekday,
   type ClassOccurrenceTemplate,
 } from "@flowstate/db";
+import { resolveDisplayLocale } from "@flowstate/ui";
 
 const trialDateOptionCount = 4;
 const trialDateOptionMaxDayWindow = 42;
@@ -44,6 +50,7 @@ interface TrialWorkspaceRecord {
   id: string;
   name: string;
   status: "ACTIVE" | "SETUP_INCOMPLETE" | "DISABLED";
+  settings?: { locale?: string | null } | null;
   location: {
     id: string;
     timezone: string;
@@ -73,7 +80,7 @@ interface TrialClassTemplateRecord {
   } | null;
 }
 
-interface TrialBookingDatabase {
+interface TrialBookingDatabase extends SchedulingPolicyReader {
   workspace: {
     findFirst(
       args: Record<string, unknown>,
@@ -200,6 +207,7 @@ async function getTrialWorkspaceData(args: {
     },
     include: {
       location: true,
+      settings: true,
     },
   });
 
@@ -239,7 +247,11 @@ async function getTrialWorkspaceData(args: {
 function resolvedTrialOptions(
   data: NonNullable<Awaited<ReturnType<typeof getTrialWorkspaceData>>>,
   now: Date,
+  revision: SchedulingPolicyRevision | null,
 ): TrialBookingTemplateOption[] {
+  const locale = data.workspace.settings?.locale
+    ? resolveDisplayLocale(data.workspace.settings.locale)
+    : undefined;
   const today = getWorkspaceDateString(now, data.workspace.location.timezone);
   return data.rawTemplates.flatMap((template) => {
     const dateOptions: TrialBookingDateOption[] = [];
@@ -265,20 +277,16 @@ function resolvedTrialOptions(
       const startsAt = getOccurrenceStartsAt({
         scheduledForDate: date,
         startTimeMinutes: occurrence.startTimeMinutes,
-        timezone: data.workspace.location.timezone,
+        timezone: occurrence.timezone ?? data.workspace.location.timezone,
       });
-      if (
-        now.getTime() >=
-        startsAt.getTime() - occurrence.bookingCutoffMinutes * 60000
-      )
-        continue;
+      if (!evaluateClassSchedulingPolicy({ revision, date, timezone: occurrence.timezone ?? data.workspace.location.timezone, startTimeMinutes: occurrence.startTimeMinutes, endTimeMinutes: occurrence.endTimeMinutes, bookingCutoffMinutes: occurrence.bookingCutoffMinutes, now }).allowed) continue;
       const details = mapClassTemplate(occurrence);
       dateOptions.push({
         classTemplateId: template.id,
         scheduledForDate: date,
         startsAt,
         details,
-        label: `${formatOccurrenceLabel({ weekday: occurrence.weekday, dateString: date, startTimeMinutes: occurrence.startTimeMinutes })} · ${details.coachDisplayName}`,
+        label: `${formatOccurrenceLabel({ weekday: occurrence.weekday, dateString: date, startTimeMinutes: occurrence.startTimeMinutes, locale })} · ${occurrence.timezone ?? data.workspace.location.timezone} · ${details.coachDisplayName}`,
       });
     }
     return dateOptions[0]?.details
@@ -302,7 +310,14 @@ export async function listTrialBookingOptions(args: {
     return null;
   }
 
-  const templates = resolvedTrialOptions(data, args.now ?? new Date());
+  const now = args.now ?? new Date();
+  data.workspace.location.timezone = await resolveWorkspaceClockTimezone({
+    workspaceId: args.workspaceId,
+    baselineTimezone: data.workspace.location.timezone,
+    now,
+    db: db as never,
+  });
+  const templates = resolvedTrialOptions(data, now, await readClassSchedulingPolicy(db, args.workspaceId, now));
 
   if (templates.length === 0) {
     return {

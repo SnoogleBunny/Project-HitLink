@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
@@ -80,12 +80,16 @@ test("Turbo exposes only the declared application runtime environment", async ()
   assert.deepEqual(turboConfig.globalEnv, [
     "DATABASE_URL",
     "NODE_ENV",
+    "NODE_OPTIONS",
+    "FLOWSTATE_E2E_SERVER_MODE",
     "NEXT_PUBLIC_APP_URL",
     "NEXT_PUBLIC_FLOWSTATE_APP_URL",
     "NEXT_PUBLIC_MEMBER_APP_URL",
     "NEXT_PUBLIC_MEMBER_WEB_URL",
     "TEST_DATABASE_URL",
     "HITLINK_WORKER_SECRET",
+    "HITLINK_AUTH_THROTTLE_SECRET",
+    "HITLINK_AUTH_TRUST_PROXY",
     "RESEND_API_KEY",
     "HITLINK_EMAIL_FROM",
     "STRIPE_SECRET_KEY",
@@ -102,7 +106,7 @@ test("the declared toolchain and Prisma bootstrap are reproducible", async () =>
 
   assert.equal(rootPackage.packageManager, "pnpm@10.33.0");
   assert.deepEqual(rootPackage.engines, {
-    node: "^20.0.0 || ^22.0.0",
+    node: "^22.23.4",
     pnpm: "10.33.0",
   });
   assert.equal(
@@ -131,14 +135,52 @@ test("the declared toolchain and Prisma bootstrap are reproducible", async () =>
   assert.equal(rootPackage.scripts.postinstall, undefined);
 });
 
-test("canonical type checks generate Prisma before Turbo starts", async () => {
+test("the supported runtime can execute the TypeScript policy-test imports", async () => {
+  const version = (
+    await readFile(path.join(repoRoot, ".node-version"), "utf8")
+  ).trim();
+  assert.equal(
+    (await readFile(path.join(repoRoot, ".nvmrc"), "utf8")).trim(),
+    version,
+  );
+  const dockerfile = await readFile(path.join(repoRoot, "Dockerfile"), "utf8");
+  assert.ok(
+    dockerfile.includes(`FROM node:${version}-bookworm-slim AS dependencies`),
+  );
+  assert.ok(
+    dockerfile.includes(`FROM node:${version}-bookworm-slim AS runtime`),
+  );
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "flowstate-ts-policy-"),
+  );
+  try {
+    const fixture = path.join(directory, "policy.ts");
+    await writeFile(fixture, "export const policy: number = 24;\n");
+    const { stdout } = await execFileAsync(process.execPath, [
+      "--experimental-strip-types",
+      "--input-type=module",
+      "-e",
+      `import { policy } from ${JSON.stringify(pathToFileURL(fixture).href)}; process.stdout.write(String(policy));`,
+    ]);
+    assert.equal(stdout, "24");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("canonical type checks generate Prisma before Turbo and include maintained browser workflows", async () => {
   const rootPackage = await readPackageJson("package.json");
 
   assert.equal(
     rootPackage.scripts["check-types"],
-    "corepack pnpm db:generate && turbo run check-types",
+    "corepack pnpm db:generate && turbo run check-types && corepack pnpm exec tsc --noEmit -p tests/e2e/tsconfig.json",
   );
   assert.doesNotMatch(rootPackage.scripts["check-types"], /\bsh\s+-c\b/);
+  const e2eTypeConfig = JSON.parse(
+    await readFile(path.join(repoRoot, "tests/e2e/tsconfig.json"), "utf8"),
+  );
+  assert.ok(e2eTypeConfig.include.includes("./**/*.ts"));
+  assert.equal(e2eTypeConfig.files, undefined);
 });
 
 test("migration integration evidence requires an explicit disposable database", async () => {
@@ -186,12 +228,12 @@ test("E2E orchestration stays on the Corepack-pinned pnpm toolchain", async () =
     dbPackage.scripts["db:reset:demo"],
     /&& pnpm run db:seed$/,
   );
+  assert.match(playwrightConfig, /"corepack\.cmd pnpm@10\.33\.0"/);
+  assert.match(playwrightConfig, /"corepack pnpm@10\.33\.0"/);
   assert.match(
     playwrightConfig,
-    /"corepack\.cmd pnpm@10\.33\.0"/,
+    /\$\{packageManager\} --filter \$\{workspace\} exec next \$\{nextCommand\} --hostname 127\.0\.0\.1 --port \$\{port\}/,
   );
-  assert.match(playwrightConfig, /"corepack pnpm@10\.33\.0"/);
-  assert.match(playwrightConfig, /\$\{packageManager\} --filter \$\{workspace\} exec next \$\{nextCommand\} --hostname 127\.0\.0\.1 --port \$\{port\}/);
   for (const app of ["admin-web", "member-web", "api", "landing-web"]) {
     assert.ok(playwrightConfig.includes(`command: serverCommand("${app}",`));
   }
@@ -268,7 +310,16 @@ test("Next apps pin Turbopack to the monorepo instead of an ancestor lockfile", 
   }
 });
 
-test("generated dependency directories are not tracked", async () => {
+test("generated dependency directories are not tracked", async (context) => {
+  try {
+    await access(path.join(repoRoot, ".git"));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    // A distribution image deliberately contains neither Git history nor Git.
+    // This repository hygiene check still runs in a checkout, including worktrees.
+    context.skip("Git index is unavailable in a source distribution image.");
+    return;
+  }
   const { stdout } = await execFileAsync("git", ["ls-files", "-z"], {
     cwd: repoRoot,
     encoding: "utf8",

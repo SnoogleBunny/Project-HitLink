@@ -162,6 +162,10 @@ const testUrl = process.env.TEST_DATABASE_URL;
     });
     afterAll(async () => {
       for (const workspaceId of gyms) {
+        await db.$transaction(async tx => {
+          await tx.$queryRawUnsafe("SELECT set_config('hitlink.reviewed_retention_workspace', $1, true)", workspaceId);
+          await tx.paymentConfirmation.deleteMany({ where: { workspaceId } });
+        });
         await db.financialReviewCase.deleteMany({ where: { workspaceId } });
         await db.financialOperationEvent.deleteMany({ where: { workspaceId } });
         await db.financialOperation.deleteMany({ where: { workspaceId } });

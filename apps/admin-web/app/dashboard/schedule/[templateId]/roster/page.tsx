@@ -1,6 +1,8 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import { prisma } from "@flowstate/db";
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
-import { getClassOccurrence } from "@flowstate/db";
+import { getClassOccurrence, getRosterEmergencyContacts, getRosterMemberOperations, MemberOperationsError } from "@flowstate/db";
 import { getClassTemplateFormOptions } from "../../../../../lib/class-templates";
 import { occurrenceEditorInput } from "../../../../../lib/class-schedule-form";
 import { CoachAssignment } from "../../coach-assignment";
@@ -11,6 +13,7 @@ import { requireOperationsWorkspaceContext } from "../../../../../lib/operations
 import { getClassRoster } from "../../../../../lib/rosters";
 import { AttendanceForm } from "./attendance-form";
 import { WaitlistPanel } from "./waitlist-panel";
+import { CloseRosterForm } from "./close-roster-form";
 
 function formatCapacity(value: number | null, rosterCount: number): string {
   if (value === null) {
@@ -42,6 +45,8 @@ export default async function RosterPage({
   const query = await searchParams;
   const { session, workspace, location, workspaceUserId, workspaceUserRole } =
     await requireOperationsWorkspaceContext();
+  const locale = resolveDisplayLocale(workspace.settings?.locale);
+
   const scheduledForDate = query?.date ?? "";
   const roster = await getClassRoster({
     access: {
@@ -49,6 +54,7 @@ export default async function RosterPage({
       workspaceUserId,
       role: workspaceUserRole,
       timezone: location.timezone,
+      locale,
     },
     templateId,
     scheduledForDate,
@@ -57,13 +63,36 @@ export default async function RosterPage({
   if (!roster) {
     notFound();
   }
-  const [occurrence, coachOptions] = workspaceUserRole === "OWNER" ? await Promise.all([
-    getClassOccurrence({ workspaceId: workspace.id, classTemplateId: templateId, scheduledForDate }),
-    getClassTemplateFormOptions({ workspaceId: workspace.id, locationId: location.id }),
-  ]) : [null, null];
+  const emergencyContacts = await getRosterEmergencyContacts({ workspaceId: workspace.id, userId: session.userId, occurrence: { classTemplateId: templateId, date: scheduledForDate } });
+  const operations = await getRosterMemberOperations({ workspaceId: workspace.id, userId: session.userId, occurrence: { classTemplateId: templateId, date: scheduledForDate } })
+    .catch(error => { if (error instanceof MemberOperationsError) notFound(); throw error; });
+  const [occurrence, coachOptions] =
+    workspaceUserRole === "OWNER"
+      ? await Promise.all([
+          getClassOccurrence({
+            workspaceId: workspace.id,
+            classTemplateId: templateId,
+            scheduledForDate,
+          }),
+          getClassTemplateFormOptions({
+            workspaceId: workspace.id,
+            locationId: location.id,
+          }),
+        ])
+      : [null, null];
 
-  const progressViewer = await prisma.workspaceUser.findUnique({where:{id:workspaceUserId},select:{role:true,canManageProgress:true,canOverridePrerequisites:true}});
-  const canViewProgress = progressViewer?.role === "OWNER" || progressViewer?.canManageProgress || progressViewer?.canOverridePrerequisites;
+  const progressViewer = await prisma.workspaceUser.findUnique({
+    where: { id: workspaceUserId },
+    select: {
+      role: true,
+      canManageProgress: true,
+      canOverridePrerequisites: true,
+    },
+  });
+  const canViewProgress =
+    progressViewer?.role === "OWNER" ||
+    progressViewer?.canManageProgress ||
+    progressViewer?.canOverridePrerequisites;
   return (
     <AdminShell
       session={session}
@@ -72,22 +101,63 @@ export default async function RosterPage({
       title={roster.displayTitle}
       description={`${roster.weekdayLabel}, ${roster.scheduledForDate} at ${roster.timeLabel}. ${formatCapacity(roster.effectiveCapacity, roster.rows.length)}.`}
       actions={
-        <div className="dashboard-actions"><Link className="button button-secondary" href={workspaceUserRole === "OWNER" ? `/dashboard/schedule?date=${scheduledForDate}` : "/dashboard/coach/today"}>
-          {workspaceUserRole === "OWNER" ? "Back to Classes" : "Back to today"}
-        </Link>{workspaceUserRole === "OWNER" ? <Link className="text-link" href={`/dashboard/schedule/${templateId}/edit?date=${scheduledForDate}`}>Edit class</Link> : null}</div>
+        <div className="dashboard-actions">
+          <Link
+            className="button button-secondary"
+            href={
+              workspaceUserRole === "OWNER"
+                ? `/dashboard/schedule?date=${scheduledForDate}`
+                : "/dashboard/coach/today"
+            }
+          >
+            {workspaceUserRole === "OWNER"
+              ? "Back to Classes"
+              : "Back to today"}
+          </Link>
+          {workspaceUserRole === "OWNER" ? (
+            <Link
+              className="text-link"
+              href={`/dashboard/schedule/${templateId}/edit?date=${scheduledForDate}`}
+            >
+              Edit class
+            </Link>
+          ) : null}
+        </div>
       }
     >
       <section className="management-card">
         <p className="dashboard-card-label">Class details</p>
-        <h3>{roster.programName}</h3><p className="class-room">{roster.roomName}</p>
+        <h3>{roster.programName}</h3>
+        <p className="class-room">{roster.roomName}</p>
         <dl className="inline-meta">
           <div>
             <dt>Coach</dt>
-            <dd className="class-coach">{roster.coachDisplayName}{occurrence && coachOptions ? <CoachAssignment initial={occurrenceEditorInput(occurrence)} options={coachOptions} title={occurrence.displayTitle} coachName={occurrence.coachWorkspaceUserId ? occurrence.coachDisplayName : null} defaultCoachName={occurrence.defaultCoach?.user.fullName ?? occurrence.defaultCoach?.user.email} timezone={location.timezone} /> : null}</dd>
+            <dd className="class-coach">
+              {roster.coachDisplayName}
+              {occurrence && coachOptions ? (
+                <CoachAssignment
+                  initial={occurrenceEditorInput(occurrence)}
+                  options={coachOptions}
+                  title={occurrence.displayTitle}
+                  coachName={
+                    occurrence.coachWorkspaceUserId
+                      ? occurrence.coachDisplayName
+                      : null
+                  }
+                  defaultCoachName={
+                    occurrence.defaultCoach?.user.fullName ??
+                    occurrence.defaultCoach?.user.email
+                  }
+                  timezone={location.timezone}
+                />
+              ) : null}
+            </dd>
           </div>
           <div>
             <dt>Roster</dt>
-            <dd>{formatCapacity(roster.effectiveCapacity, roster.rows.length)}</dd>
+            <dd>
+              {formatCapacity(roster.effectiveCapacity, roster.rows.length)}
+            </dd>
           </div>
         </dl>
       </section>
@@ -129,32 +199,101 @@ export default async function RosterPage({
                   </p>
                   <dl className="inline-meta">
                     <div>
-                      <dt>Tags</dt>
-                      <dd>{row.tags.length > 0 ? row.tags.join(", ") : "None"}</dd>
+                      <dt>Shared internal labels</dt>
+                      <dd>
+                        {operations[row.memberId]?.tags.length ? operations[row.memberId]!.tags.map(tag => <p key={tag.recordKey}>{tag.tagLabel} · {tag.tagPurpose === "COHORT_ELIGIBILITY" ? "Eligibility tag" : "Operational label"} · {tag.actorName} · <time dateTime={tag.createdAt}>{new Intl.DateTimeFormat(locale, { timeZone: roster.occurrenceTimezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(tag.createdAt))}</time></p>) : "No shared labels"}
+                      </dd>
                     </div>
                     <div>
                       <dt>Guardian contact</dt>
                       <dd>{row.guardianContact ?? "Not set"}</dd>
                     </div>
                     <div>
-                      <dt>Notes</dt>
-                      <dd>{row.notes ?? "No notes"}</dd>
+                      <dt>Emergency contacts</dt>
+                      <dd>{emergencyContacts.filter(contact => contact.memberId === row.memberId).map(contact => <p key={`${contact.fullName}:${contact.phone}`}>{contact.fullName}{contact.relationshipLabel ? ` · ${contact.relationshipLabel}` : ""} · <a href={`tel:${contact.phone}`}>{contact.phone}</a></p>)}</dd>
+                      {!emergencyContacts.some(contact => contact.memberId === row.memberId) ? <dd>Not recorded</dd> : null}
                     </div>
                   </dl>
+                  <section aria-label={`Operational notes for ${row.memberName}`}>
+                    <h4>Operational notes</h4>
+                    {operations[row.memberId]?.notes.length ? operations[row.memberId]!.notes.map(note => <div key={note.recordKey}>
+                      <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{note.noteBody}</p>
+                      <p>{note.actorName} · <time dateTime={note.createdAt}>{new Intl.DateTimeFormat(locale, { timeZone: roster.occurrenceTimezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(note.createdAt))}</time></p>
+                    </div>) : <p>No current shared operational notes.</p>}
+                    <Link className="button button-secondary" href={`/dashboard/members/${row.memberId}/operations?classTemplateId=${templateId}&date=${scheduledForDate}`}>{operations[row.memberId]?.hasMore ? "View more internal records" : "Manage operational notes and labels"}</Link>
+                  </section>
+                  {row.attendanceHistory?.length ? (
+                    <details>
+                      <summary>Recent attendance history</summary>
+                      <ol>
+                        {row.attendanceHistory.map((event) => (
+                          <li key={event.id}>
+                            <strong>
+                              {event.previousState
+                                ? `${formatStatus(event.previousState)} → `
+                                : ""}
+                              {formatStatus(event.state)}
+                            </strong>{" "}
+                            · {event.actorName} ·{" "}
+                            <time dateTime={event.createdAt}>
+                              {new Intl.DateTimeFormat(locale, {
+                                timeZone: roster.occurrenceTimezone,
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              }).format(new Date(event.createdAt))}
+                            </time>
+                            {event.reason ? <p>{event.reason}</p> : null}
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                  ) : null}
                 </div>
 
                 <div className="stack-item-actions">
-                  {canViewProgress ? <Link className="text-link" href={`/dashboard/members/${row.memberId}/progress?classTemplateId=${templateId}&date=${scheduledForDate}`}>Progress and eligibility</Link> : null}
+                  {canViewProgress ? (
+                    <Link
+                      className="text-link"
+                      href={`/dashboard/members/${row.memberId}/progress?classTemplateId=${templateId}&date=${scheduledForDate}`}
+                    >
+                      Progress and eligibility
+                    </Link>
+                  ) : null}
                   <AttendanceForm
+                    key={`${row.bookingId}:${row.attendanceVersion}`}
                     classTemplateId={roster.templateId}
                     row={row}
                     scheduledForDate={roster.scheduledForDate}
+                    requestKey={randomUUID()}
+                    noShowAllowed={roster.canClose}
                   />
                 </div>
               </article>
             ))}
           </div>
         )}
+      </section>
+
+      <section className="management-card form-stack">
+        <h3>Close roster</h3>
+        <p>
+          No-shows and bulk closure are available after the scheduled class
+          ends:{" "}
+          {new Intl.DateTimeFormat(locale, {
+            timeZone: roster.occurrenceTimezone,
+            dateStyle: "medium",
+            timeStyle: "short",
+          }).format(new Date(roster.noShowCutoffAt))}{" "}
+          ({roster.occurrenceTimezone}). This protects late arrivals.
+        </p>
+        <CloseRosterForm
+          classTemplateId={roster.templateId}
+          scheduledForDate={roster.scheduledForDate}
+          requestKey={randomUUID()}
+          canClose={roster.canClose}
+          unresolvedCount={roster.unresolvedCount}
+          members={roster.rows}
+        />
       </section>
 
       <section className="management-card">
@@ -165,7 +304,9 @@ export default async function RosterPage({
         </h3>
 
         {roster.waitlist.length === 0 ? (
-          <p className="empty-state">No active waitlist entries for this class date.</p>
+          <p className="empty-state">
+            No active waitlist entries for this class date.
+          </p>
         ) : (
           <WaitlistPanel
             classTemplateId={roster.templateId}

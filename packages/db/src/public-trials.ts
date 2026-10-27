@@ -1,8 +1,9 @@
+import { enqueueClassBookingConfirmationTx } from "./class-booking-notifications.js";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "./client.js";
 import { classOccurrenceInclude, lockClassSchedule, resolveClassOccurrence } from "./class-occurrences.js";
 import { createVerifiedTrialBookingTx } from "./class-access.js";
-import { dateOnlyStringToUtcDate, getZonedDateTimeAsUtc, parseDateOnlyString, toDateOnlyString } from "./occurrences.js";
+import { dateOnlyStringToUtcDate, parseDateOnlyString, toDateOnlyString } from "./occurrences.js";
 import { PublicEnrollmentError, publicEnrollmentFormsTx, readPublicParticipant, requirePublicWorkspace } from "./public-enrollment.js";
 
 export type VerifiedTrialResult = { status: "booked" | "already_booked"; bookingId: string; formsRequired: number } | { status: "error"; message: string };
@@ -33,11 +34,11 @@ export async function completeVerifiedTrial(args: { workspaceId: string; enrollm
       if (participant.classBookingId) {
         const prior = await tx.classBooking.findFirst({ where: { id: participant.classBookingId, workspaceId: args.workspaceId, memberId: member.id, bookingType: "TRIAL" } });
         if (!prior || prior.status === "CANCELLED") throw new TrialFailure("This trial booking was cancelled or changed. It has not been restored. Choose a new trial date or contact the gym.");
-        const forms = await publicEnrollmentFormsTx(tx, enrollment, args.actorUserId, true);
+        const forms = await publicEnrollmentFormsTx(tx, enrollment, args.actorUserId, true, now);
         return { status: "already_booked" as const, bookingId: prior.id, formsRequired: forms.filter((form) => !form.signed).length };
       }
       if (enrollment.createdAt.getTime() + 24 * 3600_000 <= now.getTime() || ["FAILED", "EXPIRED", "COMPLETE"].includes(enrollment.status)) throw new TrialFailure("This registration expired or is no longer available. Start a new trial registration.");
-      const workspace = await requirePublicWorkspace(tx, args.workspaceId);
+      const workspace = await requirePublicWorkspace(tx, args.workspaceId, now);
       if (!workspace.location) throw new TrialFailure("The gym needs to finish its location settings first.");
       const website = await tx.workspaceWebsite.findUnique({ where: { workspaceId: args.workspaceId } });
       if (!website?.publishedAt || !website.published) throw new TrialFailure("Online trial registration is not currently published.");
@@ -58,12 +59,9 @@ export async function completeVerifiedTrial(args: { workspaceId: string; enrollm
       if (booked.status === "error") throw new TrialFailure(booked.message);
       if (booked.status === "payment_required") throw new TrialFailure("This trial could not be booked. Contact the gym.");
       await tx.classBooking.update({ where: { id: booked.bookingId }, data: { acceptedPolicy: { trialEnrollmentId: enrollment.id, trialProgramId: occurrence.programId, oneTrialPerProgram: true } } });
-      const forms = await publicEnrollmentFormsTx(tx, enrollment, args.actorUserId, true);
+      const forms = await publicEnrollmentFormsTx(tx, enrollment, args.actorUserId, true, now);
       await tx.publicEnrollment.update({ where: { id: enrollment.id }, data: { status: "COMPLETE", completedAt: now, participant: { ...participant, classBookingId: booked.bookingId, identityReview: false } as unknown as Prisma.InputJsonObject, version: { increment: 1 } } });
-      const configuredOrigin = args.portalBaseUrl ?? process.env.NEXT_PUBLIC_MEMBER_WEB_URL ?? process.env.NEXT_PUBLIC_MEMBER_APP_URL ?? (process.env.NODE_ENV === "production" ? null : "http://localhost:3001");
-      const path = `/app/schedule?date=${participant.scheduledForDate}`;
-      const link = configuredOrigin ? new URL(path, configuredOrigin).href : "your secure member portal";
-      await tx.notificationJob.create({ data: { workspaceId: args.workspaceId, templateKind: "ANNOUNCEMENT", dedupeKey: `verified-trial:${enrollment.id}:${booked.bookingId}`, context: {kind:"CLASS_BOOKING",bookingId:booked.bookingId}, expiresAt: getZonedDateTimeAsUtc({dateString:participant.scheduledForDate,minutes:occurrence.startTimeMinutes,timezone:workspace.location.timezone}), recipientEmail: enrollment.email, subject: "Your trial booking is confirmed", body: `Your trial place is reserved. Sign in to review the class and any required forms: ${link}. Complete the current forms before attending.`, status: "PENDING", nextAttemptAt: now } });
+      await enqueueClassBookingConfirmationTx(tx, { workspaceId: args.workspaceId, bookingId: booked.bookingId, now, portalBaseUrl: args.portalBaseUrl });
       return { status: "booked" as const, bookingId: booked.bookingId, formsRequired: forms.filter((form) => !form.signed).length };
     });
   } catch (error) {

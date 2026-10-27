@@ -5,6 +5,11 @@ import {
   requireCoachingPaymentAuthority,
   requireCoachingPaymentViewer,
   lockClassSchedule,
+  issuePaymentConfirmationTx,
+  requireNewCoachingPurchaseTx,
+  coachingCheckoutCaptureTimeTx,
+  recordCoachingCheckoutDisclosureTx,
+  CoachingBookingPolicyError,
   prisma,
   type CoachingActor,
 } from "@flowstate/db";
@@ -257,7 +262,12 @@ export async function startCoachingPayment(
       fresh.programVersionId !== current.programVersionId
     )
       throw new CoachingError("The program changed. Reload it before paying.");
+    const capturedAt = await coachingCheckoutCaptureTimeTx(db);
+    let disclosure;
+    try { disclosure = await requireNewCoachingPurchaseTx(db,actor.workspaceId,current.id,capturedAt); }
+    catch(error){if(error instanceof CoachingBookingPolicyError)throw new CoachingError(error.message);throw error;}
     const payload = JSON.parse(JSON.stringify(checkoutRequest));
+    if(disclosure)Object.assign(payload.metadata,{appointmentBookingPolicyEventId:disclosure.policyEventId,appointmentBookingPolicyVersion:String(disclosure.policyVersion),appointmentBookingPolicyHash:disclosure.policyHash,appointmentAvailabilityHash:disclosure.availabilityHash,appointmentAvailableCount:String(disclosure.availableCount),appointmentNotOpenCount:String(disclosure.notOpenCount),appointmentBookingResolutionHours:String(disclosure.resolutionResponseHours),appointmentBookingCaseOwnerId:disclosure.resolutionOwnerWorkspaceUserId,appointmentTimesNotHeld:"true",appointmentAvailabilityReviewedAt:disclosure.reviewedAt});
     const operation = await db.financialOperation.create({
       data: {
         workspaceId: actor.workspaceId,
@@ -276,8 +286,13 @@ export async function startCoachingPayment(
         providerAccountId: stripeAccount,
         providerIdempotencyKey: operationKey,
         payload,
-        submittedAt: new Date(),
+        submittedAt: capturedAt,
+        createdAt: capturedAt,
+        updatedAt: capturedAt,
       },
+    });
+    if (disclosure) await recordCoachingCheckoutDisclosureTx(db, {
+      workspaceId: actor.workspaceId, operationId: operation.id, disclosure,
     });
     return { operation, reviewRequired: false };
   });
@@ -498,6 +513,8 @@ async function reconcileCoachingPayment(
         stripePaymentIntentId: intent.id,
       },
     });
+    const acceptedRequest = operation?.payload as { line_items?: { price_data?: { product_data?: { name?: string } } }[] } | undefined;
+    await issuePaymentConfirmationTx(db, { paymentId: payment.id, description: acceptedRequest?.line_items?.[0]?.price_data?.product_data?.name ?? "Coaching program payment" });
     await db.coachingEnrollment.update({
       where: { id: current.id },
       data: {

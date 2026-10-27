@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@flowstate/db";
+import { createFixtureCoachingBookingPolicy, deleteFixtureCoachingWorkspace } from "../../../packages/db/tests/coaching-booking-policy-fixture.js";
 import {
   commitClassSchedule,
   reviewClassSchedule,
@@ -26,6 +27,10 @@ suite("staff leave and shared scheduling", () => {
     db = api.prisma;
   });
   beforeEach(async () => {
+    // The fixture uses an explicit 2030 command clock. Mock Date alone so real
+    // advisory waits, pool timeouts and PostgreSQL transactions keep real timers.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
     const workspace = await db.workspace.create({
       data: { name: `staff-leave-${randomUUID()}` },
     });
@@ -106,22 +111,15 @@ suite("staff leave and shared scheduling", () => {
       endDate: "",
       reason: "Substitute",
     };
+    await createFixtureCoachingBookingPolicy(db, workspace.id, owner.id, now);
   });
+  afterEach(() => { vi.useRealTimers(); });
   afterAll(async () => {
-    for (const workspaceId of workspaces) {
-      await db.coachingEnrollment.deleteMany({ where: { workspaceId } });
-      await db.coachingProgramVersion.deleteMany({
-        where: { program: { workspaceId } },
-      });
-      await db.staffTimeOff.deleteMany({ where: { workspaceId } });
-      await db.classScheduleChange.deleteMany({ where: { workspaceId } });
-      await db.classBooking.deleteMany({ where: { workspaceId } });
-      await db.classInstance.deleteMany({ where: { workspaceId } });
-      await db.classTemplate.deleteMany({ where: { workspaceId } });
-      await db.workspace.delete({ where: { id: workspaceId } });
-    }
+    if (!db) return;
+    for (const workspaceId of workspaces)
+      await deleteFixtureCoachingWorkspace(db, workspaceId);
     await db.user.deleteMany({ where: { id: { in: users } } });
-  }, 30000);
+  }, 600000);
   const leaveInput = (overrides = {}) => ({
     requestId: randomUUID(),
     coachWorkspaceUserId: coachId,

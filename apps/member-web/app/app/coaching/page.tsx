@@ -1,11 +1,18 @@
 import Link from "next/link";
 import { getCoachingWorkspace, getCoachingPayerRequests } from "@flowstate/db";
-import { Badge } from "@flowstate/ui";
+import { Badge, resolveDisplayLocale } from "@flowstate/ui";
 import { MemberShell } from "../../_components/member-shell";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
-import { coachingDay, coachingLabel } from "../../../lib/coaching-fields";
+import {
+  coachingDayLabel as knownCoachingDayLabel,
+  coachingLabel,
+} from "../../../lib/coaching-fields";
+import { coachingHref } from "./navigation";
 export default async function CoachingPage() {
   const context = await requireMemberPortalContext({ scope: "account" });
+  const locale = resolveDisplayLocale(context.workspace.settings?.locale);
+  const coachingDayLabel = (value: Date) =>
+    knownCoachingDayLabel(value, locale);
   const data = await getCoachingWorkspace({
     workspaceId: context.workspace.id,
     userId: context.session.userId,
@@ -40,13 +47,22 @@ export default async function CoachingPage() {
               <article className="member-stack-item" key={enrollment.id}>
                 <div>
                   <h3>
-                    <Link href={`/app/coaching/${enrollment.id}`}>
+                    <Link
+                      href={coachingHref(
+                        enrollment.id,
+                        enrollment.status === "ACTIVE" ||
+                          enrollment.status === "PAUSED"
+                          ? "notes"
+                          : "program",
+                      )}
+                    >
                       {enrollment.programName}
                     </Link>
                   </h3>
                   <p>
-                    {enrollment.coachName} · {coachingDay(enrollment.startsOn)}{" "}
-                    – {coachingDay(enrollment.endsOn)}
+                    {enrollment.coachName} ·{" "}
+                    {coachingDayLabel(enrollment.startsOn)} –{" "}
+                    {coachingDayLabel(enrollment.endsOn)}
                   </p>
                 </div>
                 <Badge>{coachingLabel(enrollment.status)}</Badge>

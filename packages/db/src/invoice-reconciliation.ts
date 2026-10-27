@@ -1,9 +1,9 @@
 import { type Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "./client.js";
-import { lockClassSchedule } from "./class-occurrences.js";
+import { applyMembershipGraceDispositionTx, lockMembershipGraceResourcesTx } from "./membership-grace-disposition.js";
+import { issuePaymentConfirmationTx } from "./payment-confirmations.js";
 import {
   FinancialError,
-  lockFinancialAccount,
   queueFinancialReview,
   transitionFinancialOperation,
 } from "./financial-operations.js";
@@ -124,6 +124,8 @@ export async function reconcileMembershipInvoice(args: {
   eventId: string;
   db?: PrismaClient;
   now?: Date;
+  /** Internal deterministic test seam. Production disposition uses the current post-lock clock, not evidence time. */
+  graceClock?: () => Date;
 }) {
   const db = args.db ?? prisma,
     now = args.now ?? new Date(),
@@ -138,8 +140,7 @@ export async function reconcileMembershipInvoice(args: {
   )
     throw new FinancialError("Invalid invoice amounts from the processor.");
   return db.$transaction(async (tx) => {
-    await lockClassSchedule(tx, args.workspaceId);
-    await lockFinancialAccount(tx, args.workspaceId);
+    await lockMembershipGraceResourcesTx(tx, args.workspaceId);
     const settings = await tx.workspaceStripeSettings.findUnique({
       where: { workspaceId: args.workspaceId },
     });
@@ -286,7 +287,7 @@ export async function reconcileMembershipInvoice(args: {
         throw new FinancialError(
           "A settled invoice payment allocation changed and needs review.",
         );
-      await tx.payment.upsert({
+      const settledPayment = await tx.payment.upsert({
         where: { workspaceId_importedExternalId: key },
         update: {},
         create: {
@@ -302,6 +303,7 @@ export async function reconcileMembershipInvoice(args: {
           paidAt: payment.paidAt,
         },
       });
+      await issuePaymentConfirmationTx(tx, { paymentId: settledPayment.id, description: evidence.number ? `Membership payment · Invoice ${evidence.number}` : "Membership payment", now });
     }
     if (
       evidence.amountPaidCents >
@@ -404,12 +406,12 @@ export async function reconcileMembershipInvoice(args: {
           openedAt: firstFailedAt,
         },
       });
-      const email =
-        membership.payerAccount?.user.email ?? membership.member.email;
-      if (email)
+      const email = membership.payerAccount?.user.email;
+      if (email && membership.payerAccountId)
         await tx.notificationJob.create({
           data: {
             workspaceId: args.workspaceId,
+            context: { kind: "INVOICE_PAYMENT_FAILURE", invoiceId: invoice.id, payerAccountId: membership.payerAccountId },
             recipientEmail: email,
             templateKind: "FAILED_PAYMENT",
             subject: "A membership payment needs attention",
@@ -418,6 +420,7 @@ export async function reconcileMembershipInvoice(args: {
             nextAttemptAt: now,
           },
         });
+      else await queueFinancialReview(tx, { workspaceId: args.workspaceId, sourceKey: `invoice-failure-payer:${invoice.id}`, memberId: membership.memberId, reason: "Payment failure notice needs a verified payer account. No substitute member contact was emailed." });
     }
     if (!state.unpaid.length)
       await tx.failedPaymentCase.updateMany({
@@ -428,6 +431,7 @@ export async function reconcileMembershipInvoice(args: {
         },
         data: { status: "RESOLVED", resolvedAt: now },
       });
+    await applyMembershipGraceDispositionTx(tx, { workspaceId: args.workspaceId, membershipId: membership.id, limit: 20, graceClock: args.graceClock });
     return {
       status: "reconciled",
       invoiceId: invoice.id,

@@ -25,7 +25,11 @@ function restoreMotionFocus(saved,fallback=true){
  let target=saved?.node;
  if(!usable(target)&&saved?.id)target=[...root.querySelectorAll('[id]')].find(node=>node.id===saved.id);
  if(!usable(target)&&(saved?.data.action||saved?.data.page))target=[...root.querySelectorAll('button[data-action],button[data-page]')].find(node=>Object.entries(saved.data).every(([key,value])=>node.dataset[key]===value)&&usable(node));
- if(!usable(target)&&fallback)target=uiState.role==='prospect'?publicFocusTarget():phoneMedia.matches?(root.querySelector('#hl-mobile-nav [aria-current=page]')||root.querySelector('#hl-mobile-menu')):root.querySelector('#hl-nav [aria-current=page]');
+ if(!usable(target)&&fallback){
+  if(uiState.role==='prospect')target=publicFocusTarget();
+  else if(compactNavigationMedia.matches)target=(phoneMedia.matches&&uiState.role!=='coach'?root.querySelector('#hl-mobile-nav [aria-current=page]'):null)||root.querySelector('#hl-mobile-menu');
+  else target=root.querySelector('#hl-nav [aria-current=page]');
+ }
  if(usable(target))target.focus({preventScroll:true});
 }
 

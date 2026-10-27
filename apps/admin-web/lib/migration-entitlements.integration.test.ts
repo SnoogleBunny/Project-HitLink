@@ -1,3 +1,8 @@
+import {
+  inspectRetentionInventory,
+  deleteReviewedWorkspaceRecords,
+} from "../../../packages/db/src/retention-inventory";
+import { createFixtureClassSchedulingPolicy } from "../../../packages/db/tests/scheduling-policy-fixture.js";
 import { gunzipSync } from "node:zlib";
 import {
   createWorkspaceDataExport,
@@ -29,7 +34,8 @@ import { captureCutoverState } from "./migration-cutover";
 const url = process.env.TEST_DATABASE_URL;
 (url ? describe : describe.skip)("source entitlement import", () => {
   const db = new PrismaClient({ datasources: { db: { url } } }),
-    ids: string[] = [];
+    ids: string[] = [],
+    users: string[] = [];
   const actor = {
     type: "FLOWSTATE_OPERATOR" as const,
     actorId: "reviewed-test-operator",
@@ -133,27 +139,21 @@ const url = process.env.TEST_DATABASE_URL;
   });
   afterAll(async () => {
     for (const workspaceId of ids) {
-      await db.financialReviewCase.deleteMany({ where: { workspaceId } });
-      await db.importedBookingFunding.deleteMany({ where: { workspaceId } });
-      await db.importedSignatureEvidence.deleteMany({ where: { workspaceId } });
-      await db.importedFinancialEvidence.deleteMany({
-        where: { workspaceId, sourceRecordKind: "REFUND" },
-      });
-      await db.importedFinancialEvidence.deleteMany({
-        where: { workspaceId, sourceRecordKind: "PAYMENT" },
-      });
-      await db.importedFinancialEvidence.deleteMany({ where: { workspaceId } });
-      await db.classBooking.deleteMany({ where: { workspaceId } });
-      await db.membershipAllowanceOpeningBalance.deleteMany({
-        where: { workspaceId },
-      });
-      await db.sourceBillingEvidence.deleteMany({ where: { workspaceId } });
-      await db.memberMembership.deleteMany({ where: { workspaceId } });
-      await db.memberPunchCard.deleteMany({ where: { workspaceId } });
-      await db.workspace.delete({ where: { id: workspaceId } });
+      await db.$transaction(
+        async (tx) => {
+          const inventory = await inspectRetentionInventory(tx, workspaceId);
+          await deleteReviewedWorkspaceRecords(
+            tx,
+            workspaceId,
+            inventory.fingerprint,
+          );
+        },
+        { timeout: 120000 },
+      );
     }
+    await db.user.deleteMany({ where: { id: { in: users } } });
     await db.$disconnect();
-  });
+  }, 120000);
   const csv = (rows: Record<string, string>[]) => {
     const columns = Object.keys(rows[0]!);
     const quote = (v: string) => `"${v.replaceAll('"', '""')}"`;
@@ -354,6 +354,19 @@ const url = process.env.TEST_DATABASE_URL;
         ])
       ).status,
     ).toBe("ok");
+    const restored = await db.classBooking.findFirstOrThrow({
+      where: { workspaceId },
+    });
+    expect(restored.schedulingPolicySnapshot).toMatchObject({
+      mode: "SOURCE_RESTORATION",
+      policyRevisionId: null,
+      sourceRowHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(
+      await db.validationIssue.count({
+        where: { workspaceId, code: "SOURCE_SCHEDULING_POLICY_REVIEW" },
+      }),
+    ).toBe(1);
     const m = await db.memberMembership.findFirstOrThrow({
       where: { workspaceId },
     });
@@ -475,7 +488,10 @@ const url = process.env.TEST_DATABASE_URL;
         }),
       ),
     );
-    expect(results.map((r) => r.status), JSON.stringify(results)).toEqual(["ok", "ok"]);
+    expect(
+      results.map((r) => r.status),
+      JSON.stringify(results),
+    ).toEqual(["ok", "ok"]);
     expect(await db.classBooking.count({ where: { workspaceId } })).toBe(1);
     const card = await db.memberPunchCard.findFirstOrThrow({
       where: { workspaceId },
@@ -494,6 +510,7 @@ const url = process.env.TEST_DATABASE_URL;
       (await db.memberPunchCard.findUniqueOrThrow({ where: { id: card.id } }))
         .remainingPunches,
     ).toBe(4);
+    await createFixtureClassSchedulingPolicy(db, workspaceId);
     expect(
       await createAccessBackedBooking({
         workspaceId,
@@ -679,85 +696,73 @@ const url = process.env.TEST_DATABASE_URL;
     const user = await db.user.create({
       data: { email: `${randomUUID()}@source-consent.test` },
     });
-    try {
-      const staff = await db.workspaceUser.create({
-        data: { workspaceId, userId: user.id, role: "OWNER" },
-      });
-      const bytes = Buffer.from(
-          "%PDF-1.4\nOriginal document and signed receipt fixture\n%%EOF",
-        ),
-        hash = createHash("sha256").update(bytes).digest("hex");
-      const doc = await db.formDocument.create({
-        data: { workspaceId, name: "Original waiver", formType: "WAIVER" },
-      });
-      const version = await db.formVersion.create({
-        data: {
-          workspaceId,
-          formDocumentId: doc.id,
-          versionNumber: 1,
-          fileName: "original.pdf",
-          mimeType: "application/pdf",
-          fileSizeBytes: bytes.length,
-          fileSha256: hash,
-          fileData: bytes,
-          uploadedByWorkspaceUserId: staff.id,
-        },
-      });
-      await db.formDocument.update({
-        where: { id: doc.id },
-        data: { currentVersionId: version.id },
-      });
-      const row = {
-        external_id: "consent",
-        source_system: "old-system",
-        member_external_id: "member",
-        source_evidence: "Source signed document verified",
-        form_version_id: version.id,
-        source_document_sha256: hash,
-        signature_receipt_base64: bytes.toString("base64"),
-        signature_receipt_sha256: hash,
-        signer_kind: "MEMBER",
-        signer_name: "Source member",
-        source_signer_reference: "source-person-member",
-        source_beneficiary_reference: "source-person-member",
-        signer_authority_evidence: "Original adult signer identity evidence",
-        signed_at: "2025-03-09T01:30:00-08:00",
-      };
-      expect(
-        (
-          await run("SOURCE_SIGNATURE", [
-            { ...row, source_document_sha256: "a".repeat(64) },
-          ])
-        ).status,
-      ).toBe("error");
-      expect(await db.signedDocument.count({ where: { workspaceId } })).toBe(0);
-      expect(await run("SOURCE_SIGNATURE", [row])).toMatchObject({
-        status: "ok",
-      });
-      const signature = await db.signedDocument.findFirstOrThrow({
-        where: { workspaceId },
-      });
-      expect(signature).toMatchObject({
-        signatureMethod: "SOURCE_VERIFIED_RECEIPT",
-        signedFromRequestId: null,
-        signedAt: new Date("2025-03-09T09:30:00Z"),
-      });
-      expect((await run("SOURCE_SIGNATURE", [row])).status).toBe("ok");
-      expect(
-        await db.importedSignatureEvidence.count({ where: { workspaceId } }),
-      ).toBe(1);
-      await db.importedSignatureEvidence.deleteMany({ where: { workspaceId } });
-      await db.signedDocument.deleteMany({ where: { workspaceId } });
-      await db.formDocument.update({
-        where: { id: doc.id },
-        data: { currentVersionId: null },
-      });
-      await db.formVersion.deleteMany({ where: { workspaceId } });
-      await db.formDocument.delete({ where: { id: doc.id } });
-      await db.workspaceUser.delete({ where: { id: staff.id } });
-    } finally {
-      await db.user.delete({ where: { id: user.id } });
-    }
+    users.push(user.id);
+    const staff = await db.workspaceUser.create({
+      data: { workspaceId, userId: user.id, role: "OWNER" },
+    });
+    const bytes = Buffer.from(
+        "%PDF-1.4\nOriginal document and signed receipt fixture\n%%EOF",
+      ),
+      hash = createHash("sha256").update(bytes).digest("hex");
+    const doc = await db.formDocument.create({
+      data: { workspaceId, name: "Original waiver", formType: "WAIVER" },
+    });
+    const version = await db.formVersion.create({
+      data: {
+        workspaceId,
+        formDocumentId: doc.id,
+        versionNumber: 1,
+        fileName: "original.pdf",
+        mimeType: "application/pdf",
+        fileSizeBytes: bytes.length,
+        fileSha256: hash,
+        fileData: bytes,
+        uploadedByWorkspaceUserId: staff.id,
+      },
+    });
+    await db.formDocument.update({
+      where: { id: doc.id },
+      data: { currentVersionId: version.id },
+    });
+    const row = {
+      external_id: "consent",
+      source_system: "old-system",
+      member_external_id: "member",
+      source_evidence: "Source signed document verified",
+      form_version_id: version.id,
+      source_document_sha256: hash,
+      signature_receipt_base64: bytes.toString("base64"),
+      signature_receipt_sha256: hash,
+      signer_kind: "MEMBER",
+      signer_name: "Source member",
+      source_signer_reference: "source-person-member",
+      source_beneficiary_reference: "source-person-member",
+      signer_authority_evidence: "Original adult signer identity evidence",
+      signed_at: "2025-03-09T01:30:00-08:00",
+    };
+    expect(
+      (
+        await run("SOURCE_SIGNATURE", [
+          { ...row, source_document_sha256: "a".repeat(64) },
+        ])
+      ).status,
+    ).toBe("error");
+    expect(await db.signedDocument.count({ where: { workspaceId } })).toBe(0);
+    expect(await run("SOURCE_SIGNATURE", [row])).toMatchObject({
+      status: "ok",
+    });
+    const signature = await db.signedDocument.findFirstOrThrow({
+      where: { workspaceId },
+    });
+    expect(signature).toMatchObject({
+      signatureMethod: "SOURCE_VERIFIED_RECEIPT",
+      signedFromRequestId: null,
+      signedAt: new Date("2025-03-09T09:30:00Z"),
+    });
+    expect((await run("SOURCE_SIGNATURE", [row])).status).toBe("ok");
+    expect(
+      await db.importedSignatureEvidence.count({ where: { workspaceId } }),
+    ).toBe(1);
   });
 
   it("records a completed source refund with owner authority, stale-review rejection and replay protection", async () => {

@@ -1,5 +1,7 @@
+import { resolveWorkspaceClockTimezone } from "./workspace-timezones.js";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./client.js";
+import { readCoachingBookingPolicyTx } from "./coaching-booking-settings.js";
 import {
   classOccurrenceInclude,
   isUnambiguousClassTime,
@@ -130,30 +132,16 @@ async function conflicts(
         href,
       });
   };
+  const appointmentPolicy=await readCoachingBookingPolicyTx(db,workspaceId);
+  const minimumAvailabilityBuffer=appointmentPolicy?.policy.appointments.minimumBufferMinutes??0;
   const [templates, appointments, availability, lessons, events, leaves] =
     await Promise.all([
       db.classTemplate.findMany({
         where: { workspaceId, archivedAt: null },
         include: classOccurrenceInclude,
       }),
-      db.coachingAppointment.findMany({
-        where: {
-          workspaceId,
-          coachWorkspaceUserId,
-          status: { in: ["HELD", "BOOKED"] },
-          startsAt: { lt: new Date(endsAt.getTime() + 240 * 60000) },
-          endsAt: { gt: new Date(startsAt.getTime() - 240 * 60000) },
-        },
-      }),
-      db.coachingAvailability.findMany({
-        where: {
-          workspaceId,
-          coachWorkspaceUserId,
-          withdrawnAt: null,
-          startsAt: { lt: new Date(endsAt.getTime() + 240 * 60000) },
-          endsAt: { gt: new Date(startsAt.getTime() - 240 * 60000) },
-        },
-      }),
+      db.$queryRaw<Array<{id:string;startsAt:Date;endsAt:Date;bufferMinutes:number}>>`SELECT id,"startsAt","endsAt","bufferMinutes" FROM coaching_appointments WHERE "workspaceId"=${workspaceId} AND "coachWorkspaceUserId"=${coachWorkspaceUserId} AND status IN ('HELD','BOOKED') AND "startsAt"-make_interval(mins=>"bufferMinutes")<${endsAt} AND "endsAt"+make_interval(mins=>"bufferMinutes")>${startsAt}`,
+      db.$queryRaw<Array<{id:string;startsAt:Date;endsAt:Date;bufferMinutes:number}>>`SELECT id,"startsAt","endsAt",GREATEST("bufferMinutes",${minimumAvailabilityBuffer}::int) AS "bufferMinutes" FROM coaching_availability WHERE "workspaceId"=${workspaceId} AND "coachWorkspaceUserId"=${coachWorkspaceUserId} AND "withdrawnAt" IS NULL AND "startsAt"-make_interval(mins=>GREATEST("bufferMinutes",${minimumAvailabilityBuffer}::int))<${endsAt} AND "endsAt"+make_interval(mins=>GREATEST("bufferMinutes",${minimumAvailabilityBuffer}::int))>${startsAt}`,
       db.privateLessonSlot.findMany({
         where: {
           workspaceId,
@@ -183,8 +171,8 @@ async function conflicts(
       }),
     ]);
   for (
-    let date = getWorkspaceDateString(startsAt, timezone);
-    date <= getWorkspaceDateString(endsAt, timezone);
+    let date = addDays(getWorkspaceDateString(startsAt, timezone), -2);
+    date <= addDays(getWorkspaceDateString(endsAt, timezone), 2);
     date = addDays(date, 1)
   ) {
     for (const template of templates) {
@@ -201,12 +189,12 @@ async function conflicts(
         getZonedDateTimeAsUtc({
           dateString: date,
           minutes: item.startTimeMinutes,
-          timezone,
+          timezone: item.timezone ?? timezone,
         }),
         getZonedDateTimeAsUtc({
           dateString: date,
           minutes: item.endTimeMinutes,
-          timezone,
+          timezone: item.timezone ?? timezone,
         }),
         `/dashboard/schedule?date=${date}`,
       );
@@ -283,6 +271,7 @@ export async function createStaffLeave(
       const location = await tx.location.findUniqueOrThrow({
         where: { workspaceId: actor.workspaceId },
       });
+      location.timezone = await resolveWorkspaceClockTimezone({ workspaceId: actor.workspaceId, baselineTimezone: location.timezone, now, db: tx });
       const startsAt = parseStaffLeaveTime(input.startsAt, location.timezone),
         endsAt = parseStaffLeaveTime(input.endsAt, location.timezone),
         cleanReason = reason(input.reason);

@@ -109,6 +109,8 @@ async function main() {
   const [{ snapshotMembershipTerms }, { defaultMembershipLifecyclePolicy }, { snapshotPunchCardTerms }] = await Promise.all([
     import("../src/membership-allowances.js"), import("../src/membership-lifecycle-policy.js"), import("../src/punch-card-ledger.js"),
   ]);
+  const { schedulingPolicyHash, schedulingWeekdays } = await import("../src/scheduling-policy.js");
+  const classPolicy = { schemaVersion: 1, classes: { weeklyHours: schedulingWeekdays.map(weekday => ({ weekday, intervals: [{ startMinute: 360, endMinute: 1320 }] })), maxAdvanceMinutes: 60 * 1440, minimumLeadMinutes: 30 } };
   const now = new Date();
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: demoTimezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
   const startDate = dateOnly(today);
@@ -218,11 +220,13 @@ async function main() {
         role: "CUSTOMER",
       },
     }),
+    prisma.workspaceSchedulingPolicyRevision.create({ data: { id: "demo-class-scheduling-policy-v1", workspaceId: demo.ids.workspace, version: 1, policy: classPolicy, policyHash: schedulingPolicyHash(classPolicy), actorUserId: demo.ids.owner, reason: "Fictional demo: daily 06:00–22:00, rolling 60-day window, 30-minute notice", previewHash: createHash("sha256").update("reviewed-fictional-demo-class-policy-v1").digest("hex"), activatedAt: now } }),
     prisma.workspaceSetting.create({
       data: {
         id: demo.ids.workspaceSetting,
         workspaceId: demo.ids.workspace,
         allowMultipleRooms: true,
+        classReminderLeadMinutes: 1440,
       },
     }),
     prisma.workspaceStripeSettings.create({

@@ -7,15 +7,12 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2022",
+    "paths": {
+      "@flowstate/db": ["../../packages/db/src/index.ts"],
+      "@flowstate/auth": ["../../packages/auth/src/index.ts"]
+    },
     "typeRoots": ["../../apps/admin-web/node_modules/@types"],
     "types": ["node"]
   },
-  "files": [
-    "../../playwright.config.ts",
-    "browser-diagnostics.config.ts",
-    "browser-diagnostics.helper.spec.ts",
-    "browser-diagnostics.spec.ts",
-    "every-visible-feature-certification.spec.ts",
-    "support/browser-diagnostics.ts"
-  ]
+  "include": ["../../playwright.config.ts", "./**/*.ts"]
 }

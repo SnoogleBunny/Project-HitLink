@@ -1,3 +1,11 @@
+import { projectMembershipGraceReceipt } from "./membership-grace-projection.js";
+import {
+  projectFormRequirementTerms,
+  projectFormBookingSnapshot,
+  projectFormRecoveryEvidence,
+  memberFormEventKinds,
+  projectFormEvent,
+} from "./form-export-projection.js";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { Prisma } from "@prisma/client";
@@ -6,6 +14,13 @@ import {
   payerExportFields,
 } from "./member-export-fields.js";
 import { parseMembershipLifecyclePolicy } from "./membership-lifecycle-policy.js";
+import { projectMemberProfileState } from "./profile-export-projection.js";
+import { projectPaymentConfirmationSnapshot } from "./payment-confirmation-export-projection.js";
+import {
+  projectExportedWorkspaceEvent,
+  projectSchedulingSnapshot,
+  projectWaitlistHistory,
+} from "./scheduling-export-projection.js";
 
 export class MemberDataError extends Error {}
 export type MemberDataScope = "MEMBER" | "PAYER";
@@ -101,6 +116,7 @@ export async function buildMemberDataArtifact(
     scope: MemberDataScope;
     targetId: string;
     exportedAt: Date;
+    includeEmergencyContacts?: boolean;
   },
 ) {
   const tables: Record<string, Row[]> = {},
@@ -125,6 +141,31 @@ export async function buildMemberDataArtifact(
       throw new MemberDataError(
         "This record needs a larger export. Ask the named records contact to arrange it; no partial archive was created.",
       );
+    for (const row of rows) {
+      if (model === "FormRequirementRevision")
+        row.terms = projectFormRequirementTerms(row.terms);
+      if (model === "BookingFormRecovery")
+        row.evidence = projectFormRecoveryEvidence(row.evidence);
+      if (model === "ClassBooking")
+        row.formRequirementSnapshot = projectFormBookingSnapshot(
+          row.formRequirementSnapshot,
+        );
+
+      if (model === "MemberProfileEvent") {
+        const emergency = String(row.kind).startsWith("EMERGENCY_CONTACT_");
+        row.before = projectMemberProfileState(row.before, emergency);
+        row.after = projectMemberProfileState(row.after, emergency);
+      }
+      if (model === "PaymentConfirmation")
+        row.snapshot = projectPaymentConfirmationSnapshot(row.snapshot);
+      if (model === "ClassBooking" || model === "WaitlistEntry")
+        row.schedulingPolicySnapshot =
+          row.schedulingPolicySnapshot == null
+            ? null
+            : projectSchedulingSnapshot(row.schedulingPolicySnapshot);
+      if (model === "WaitlistEntry")
+        row.promotionHistory = projectWaitlistHistory(row.promotionHistory);
+    }
     tables[model] = rows;
     return rows;
   }
@@ -158,10 +199,75 @@ export async function buildMemberDataArtifact(
       }),
       read("SignedDocument", scope),
       read("Member", { workspaceId: args.workspaceId, id: args.targetId }),
+      read("AttendanceEvent", scope),
     ]);
     const membershipIds = ids(memberships),
       cardIds = ids(packs),
       bookingIds = ids(bookings);
+    await read("MemberProfileEvent", {
+      ...scope,
+      kind: {
+        in: [
+          "MEMBER_CREATED",
+          "MEMBER_PROFILE_UPDATED",
+          ...(args.includeEmergencyContacts
+            ? [
+                "EMERGENCY_CONTACT_ADDED",
+                "EMERGENCY_CONTACT_UPDATED",
+                "EMERGENCY_CONTACT_RETIRED",
+              ]
+            : []),
+        ],
+      },
+    });
+    if (args.includeEmergencyContacts)
+      await read("MemberEmergencyContact", { ...scope, retiredAt: null });
+
+    const recoveries = await read("BookingFormRecovery", {
+      workspaceId: args.workspaceId,
+      bookingId: { in: bookingIds },
+      booking: { workspaceId: args.workspaceId, memberId: args.targetId },
+    });
+    const formRevisionIds = [
+      ...new Set([
+        ...ids(signed, "requirementRevisionId"),
+        ...ids(recoveries, "requirementRevisionId"),
+        ...bookings.flatMap((booking) => {
+          const snapshot = booking.formRequirementSnapshot as {
+            requirements?: Row[];
+          } | null;
+          return snapshot?.requirements
+            ? ids(snapshot.requirements, "requirementRevisionId")
+            : [];
+        }),
+      ]),
+    ];
+    await read("FormRequirementRevision", {
+      workspaceId: args.workspaceId,
+      id: { in: formRevisionIds },
+    });
+    if (bookingIds.length) {
+      // Exact retained booking IDs bind these immutable per-funding-revision receipts.
+      const receipts = await db.$queryRaw<Row[]>`
+        SELECT id, "workspaceId", kind, metadata, "createdAt"
+        FROM workspace_data_events
+        WHERE "workspaceId" = ${args.workspaceId} AND (kind IN ('SCHEDULING_POLICY_APPLIED', 'MEMBERSHIP_GRACE_BOOKING_RELEASED') OR kind = ANY(${[...memberFormEventKinds]}::text[]))
+          AND metadata->>'bookingId' = ANY(${bookingIds}::text[])
+        ORDER BY id LIMIT 10001
+      `;
+      if (receipts.length > 10000)
+        throw new MemberDataError(
+          "This scheduling history needs a larger export. Ask the named records contact to arrange it; no partial archive was created.",
+        );
+      tables.WorkspaceDataEvent = receipts.map((row) => ({
+        ...row,
+        metadata: (memberFormEventKinds as readonly string[]).includes(
+          String(row.kind),
+        )
+          ? projectFormEvent(String(row.kind), row.metadata, true)
+          : row.kind === "MEMBERSHIP_GRACE_BOOKING_RELEASED" ? projectMembershipGraceReceipt(row.metadata, true) : projectExportedWorkspaceEvent(String(row.kind), row.metadata),
+      }));
+    }
     const importedSignatures = await read("ImportedSignatureEvidence", {
       ...scope,
       signedDocumentId: { in: ids(signed) },
@@ -349,6 +455,19 @@ export async function buildMemberDataArtifact(
         id: args.targetId,
       }),
     ]);
+    const payerIdentity = await db.financialAccount.findFirst({
+      where: { workspaceId: args.workspaceId, id: args.targetId },
+      select: { userId: true },
+    });
+    if (!payerIdentity)
+      throw new MemberDataError(
+        "This payer account is unavailable for export.",
+      );
+    await read("PaymentConfirmation", {
+      ...payerScope,
+      payerUserId: payerIdentity.userId,
+      paymentId: { in: ids(payments) },
+    });
     await Promise.all([
       read("InvoiceLineItem", {
         workspaceId: args.workspaceId,
@@ -443,21 +562,22 @@ export async function buildMemberDataArtifact(
             name,
             type: definition?.type ?? "String",
             optional: definition ? !definition.isRequired : true,
-            units: name.endsWith("Cents")
-              ? "integer minor currency units; use currency or purchaseCurrency"
-              : definition?.type === "DateTime"
-                ? "ISO 8601; date-only values represent a calendar date, not a local midnight instant"
-                : [
-                      "delta",
-                      "usedDelta",
-                      "reservedDelta",
-                      "remainingPunches",
-                      "originalPunches",
-                      "limit",
-                      "units",
-                    ].includes(name)
-                  ? "whole class or product units"
-                  : undefined,
+            units:
+              name.endsWith("Cents") || name.endsWith("Minor")
+                ? "integer minor currency units; use currency or purchaseCurrency"
+                : definition?.type === "DateTime"
+                  ? "ISO 8601; date-only values represent a calendar date, not a local midnight instant"
+                  : [
+                        "delta",
+                        "usedDelta",
+                        "reservedDelta",
+                        "remainingPunches",
+                        "originalPunches",
+                        "limit",
+                        "units",
+                      ].includes(name)
+                    ? "whole class or product units"
+                    : undefined,
           };
         }),
       ];
@@ -484,6 +604,8 @@ export async function buildMemberDataArtifact(
     targetId: args.targetId,
     workspaceId: args.workspaceId,
     exportedAt: args.exportedAt.toISOString(),
+    requiresEmergencyContactAccess:
+      args.scope === "MEMBER" && args.includeEmergencyContacts === true,
     tables: Object.fromEntries(
       Object.entries(data).map(([name, rows]) => [name, rows.length]),
     ),
@@ -502,7 +624,12 @@ export async function buildMemberDataArtifact(
       "All coaching intake, notes, plans and appointments: use the client's separate coaching export",
       args.scope === "MEMBER"
         ? "Payer invoices, payments, refunds and monetary credits"
-        : "Attendance, bookings, forms, goals and member service history",
+        : "Attendance, bookings, forms, goals, member profiles, emergency contacts and member service history",
+      ...(args.scope === "MEMBER" && !args.includeEmergencyContacts
+        ? [
+            "Emergency contact details and history without current separate authority",
+          ]
+        : []),
       "Unattributed legacy money records awaiting payer verification",
     ],
     relationships:

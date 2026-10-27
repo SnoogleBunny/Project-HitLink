@@ -37,7 +37,12 @@ export function SourceRenewalForm({
         {review.sourceContractReference}.
       </p>
       {state.message ? (
-        <Notice tone={state.ok ? "success" : "warning"}>{state.message}</Notice>
+        <Notice
+          tone={state.ok ? "success" : "warning"}
+          role={state.ok ? "status" : "alert"}
+        >
+          {state.message}
+        </Notice>
       ) : null}
       <details>
         <summary className="text-link">

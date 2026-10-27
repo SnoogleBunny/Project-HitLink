@@ -25,7 +25,7 @@ export function FormVersionUploadForm({
         <span>New PDF version</span>
         <input accept="application/pdf" name="pdf" type="file" />
         <p className="field-help">
-          Uploading a new version makes it the current required version. {pdfSizeCapLabel}.
+          Uploading creates a draft. Publish a reviewed requirement separately. {pdfSizeCapLabel}.
         </p>
       </label>
 

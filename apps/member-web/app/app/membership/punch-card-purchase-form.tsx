@@ -1,15 +1,14 @@
 "use client";
-import { formatMoney as formatKnownMoney } from "@flowstate/ui/money";
+import {
+  formatMoney as formatKnownMoney,
+  useWorkspaceLocale,
+} from "@flowstate/ui";
 
 import { useActionState } from "react";
 import { SubmitButton } from "../../_components/submit-button";
 import type { PurchasablePunchCardProduct } from "../../../lib/member-commerce";
 import { emptyMembershipActionState } from "../../form-states";
 import { startPunchCardCheckoutAction } from "./actions";
-
-function formatMoney(amountCents: number, currency: string): string {
-  return formatKnownMoney(amountCents, currency);
-}
 
 export function PunchCardPurchaseForm({
   products,
@@ -22,6 +21,9 @@ export function PunchCardPurchaseForm({
   memberId?: string;
   requestId?: string;
 }) {
+  const locale = useWorkspaceLocale();
+  const formatMoney = (amount: number, currency: string) =>
+    formatKnownMoney(amount, currency, locale);
   const [state, formAction] = useActionState(
     startPunchCardCheckoutAction,
     emptyMembershipActionState,
@@ -58,10 +60,18 @@ export function PunchCardPurchaseForm({
             </dl>
           </div>
 
-          <form action={formAction} className="member-inline-form" data-person-context>
+          <form
+            action={formAction}
+            className="member-inline-form"
+            data-person-context
+          >
             <input name="memberId" type="hidden" value={memberId} />
             <input name="punchCardProductId" type="hidden" value={product.id} />
-            <input name="requestId" type="hidden" value={requestId ? `${requestId}:${product.id}` : undefined} />
+            <input
+              name="requestId"
+              type="hidden"
+              value={requestId ? `${requestId}:${product.id}` : undefined}
+            />
             {purchaseUnavailableReason ? (
               <button
                 aria-describedby="punch-card-purchase-unavailable"

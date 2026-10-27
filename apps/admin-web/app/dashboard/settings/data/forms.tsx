@@ -28,9 +28,13 @@ export function DataForm({
     <form action={action} className="form-stack">
       <input type="hidden" name="intent" value={intent} />
       {state.error ? (
-        <Notice tone="danger">{state.error}</Notice>
+        <Notice tone="danger" role="alert">
+          {state.error}
+        </Notice>
       ) : state.success ? (
-        <Notice tone="success">{state.success}</Notice>
+        <Notice tone="success" role="status">
+          {state.success}
+        </Notice>
       ) : null}
       {children}
       <div className="dashboard-actions">

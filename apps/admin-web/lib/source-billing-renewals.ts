@@ -4,6 +4,7 @@ import {
   financialEntitlementHoldReason,
   getZonedDateTimeAsUtc,
   lockClassSchedule,
+  lockStaffAuthorityTx,
   membershipAllowanceWindows,
   parseDateOnlyString,
   prisma,
@@ -18,6 +19,7 @@ async function reviewTx(
   membershipId: string,
   db: PrismaClient | Prisma.TransactionClient,
 ) {
+  await lockStaffAuthorityTx(db, actor);
   if (
     !(await db.workspaceUser.findFirst({
       where: {
@@ -26,6 +28,7 @@ async function reviewTx(
         userId: actor.userId,
         role: "OWNER",
         isActive: true,
+        workspace: { status: { not: "DISABLED" } },
       },
     }))
   )

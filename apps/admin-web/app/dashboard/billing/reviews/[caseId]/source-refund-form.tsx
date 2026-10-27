@@ -33,15 +33,24 @@ export function SourceRefundForm({
         <Money amountMinor={review.remainingCents} currency={review.currency} />
       </p>
       {state.message ? (
-        <Notice tone={state.ok ? "success" : "warning"}>{state.message}</Notice>
+        <Notice
+          tone={state.ok ? "success" : "warning"}
+          role={state.ok ? "status" : "alert"}
+        >
+          {state.message}
+        </Notice>
       ) : null}
       {review.canRecord ? (
         <form action={action} className="form-stack">
           <input type="hidden" name="caseId" value={caseId} />
           <input type="hidden" name="reviewToken" value={review.reviewToken} />
-          <label className="field"><span>Source refund reference</span><input name="sourceReference" required maxLength={200} />
+          <label className="field">
+            <span>Source refund reference</span>
+            <input name="sourceReference" required maxLength={200} />
           </label>
-          <label className="field"><span>Refund amount ({review.currency.toUpperCase()})</span><input
+          <label className="field">
+            <span>Refund amount ({review.currency.toUpperCase()})</span>
+            <input
               name="amount"
               type="number"
               min="0.01"
@@ -51,20 +60,26 @@ export function SourceRefundForm({
               defaultValue={(review.remainingCents / 100).toFixed(2)}
             />
           </label>
-          <label className="field"><span>Receipt timestamp with timezone</span><input
+          <label className="field">
+            <span>Receipt timestamp with timezone</span>
+            <input
               name="refundedAt"
               required
               placeholder="2026-10-16T14:30:00-07:00"
             />
           </label>
-          <label className="field"><span>Original refund PDF</span><input
+          <label className="field">
+            <span>Original refund PDF</span>
+            <input
               name="receipt"
               type="file"
               accept="application/pdf"
               required
             />
           </label>
-          <label className="field"><span>Reason</span><textarea
+          <label className="field">
+            <span>Reason</span>
+            <textarea
               name="reason"
               required
               maxLength={1000}

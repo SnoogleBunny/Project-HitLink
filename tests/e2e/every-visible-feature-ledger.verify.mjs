@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { scenarioTestCases } from "./every-visible-feature-ledger.execution.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 const ledgerPath = path.join(
@@ -116,15 +117,15 @@ test("the RP-20 ledger closes every authoritative visible-feature row", () => {
       Array.isArray(scenario.assertions) && scenario.assertions.length > 0,
       scenarioId,
     );
-    assert.ok(scenario.testFile?.startsWith("tests/e2e/"), scenarioId);
-    assert.ok(scenario.testTitle?.trim(), scenarioId);
-    const testSource = fs.readFileSync(
-      path.join(repoRoot, scenario.testFile),
-      "utf8",
-    );
-    assert.ok(
-      testSource.includes(scenario.testTitle),
-      `${scenarioId}: title not found in ${scenario.testFile}`,
-    );
+    for (const selector of scenarioTestCases(scenario)) {
+      assert.ok(selector.testFile?.startsWith("tests/e2e/"), scenarioId);
+      assert.ok(selector.testTitle?.trim(), scenarioId);
+      assert.ok(
+        fs.existsSync(path.join(repoRoot, selector.testFile)),
+        scenarioId,
+      );
+      // Exact titles, including generated viewport variants, are checked by
+      // the maintained real-ledger Playwright discovery preflight.
+    }
   }
 });

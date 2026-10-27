@@ -1,6 +1,6 @@
+import { readDatabaseFailure, readOwnedErrorMessage, lockClassSchedule, requireActiveStaffAccessTx, FormRequirementError, listEffectiveFormAssignments } from "@flowstate/db";
 import {
   FORM_PDF_MAX_SIZE_BYTES,
-  cancelObsoleteOpenRequestsForDocument,
   prisma,
   validatePdfUpload,
   type FormType,
@@ -70,22 +70,11 @@ function normalizeFormName(value: string): string {
 }
 
 function getDuplicateDocumentConstraintError(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const maybeError = error as {
-    code?: string;
-    meta?: {
-      target?: string[];
-    };
-  };
-
-  return (
-    maybeError.code === "P2002" &&
-    Array.isArray(maybeError.meta?.target) &&
-    maybeError.meta.target.includes("workspaceId") &&
-    maybeError.meta.target.includes("name")
+  const failure = readDatabaseFailure(error);
+  return Boolean(
+    failure?.code === "P2002" &&
+    failure.target?.includes("workspaceId") &&
+    failure.target?.includes("name"),
   );
 }
 
@@ -160,19 +149,18 @@ export async function listWorkspaceFormDocuments(args: {
     ],
   });
 
+  const effective = await listEffectiveFormAssignments({ db, workspaceId: args.workspaceId, now: new Date() });
   return documents.map((document) => ({
     id: document.id,
     name: document.name,
     formType: document.formType,
     description: document.description,
     archivedAt: document.archivedAt,
-    currentVersionId: document.currentVersionId,
-    currentVersionNumber: document.currentVersion?.versionNumber ?? null,
-    currentVersionCreatedAt: document.currentVersion?.createdAt ?? null,
+    currentVersionId: effective.find(row => row.formDocument.id === document.id)?.formDocument.currentVersion.id ?? document.currentVersionId,
+    currentVersionNumber: effective.find(row => row.formDocument.id === document.id)?.formDocument.currentVersion.versionNumber ?? document.currentVersion?.versionNumber ?? null,
+    currentVersionCreatedAt: effective.find(row => row.formDocument.id === document.id)?.formDocument.currentVersion.createdAt ?? document.currentVersion?.createdAt ?? null,
     versionCount: document._count.versions,
-    activeRequirementTargets: document.assignments.map(
-      (assignment) => assignment.requirementTarget,
-    ),
+    activeRequirementTargets: effective.filter(row => row.formDocument.id === document.id).map(row => row.requirementTarget),
   }));
 }
 
@@ -248,19 +236,19 @@ export async function getFormDocumentDetail(args: {
     return null;
   }
 
+  const effective = await listEffectiveFormAssignments({ db, workspaceId: args.workspaceId, now: new Date() });
+  const current = effective.find(row => row.formDocument.id === document.id);
   return {
     id: document.id,
     name: document.name,
     formType: document.formType,
     description: document.description,
     archivedAt: document.archivedAt,
-    currentVersionId: document.currentVersionId,
-    currentVersionNumber: document.currentVersion?.versionNumber ?? null,
-    currentVersionCreatedAt: document.currentVersion?.createdAt ?? null,
+    currentVersionId: current?.formDocument.currentVersion.id ?? document.currentVersionId,
+    currentVersionNumber: current?.formDocument.currentVersion.versionNumber ?? document.currentVersion?.versionNumber ?? null,
+    currentVersionCreatedAt: current?.formDocument.currentVersion.createdAt ?? document.currentVersion?.createdAt ?? null,
     versionCount: document._count.versions,
-    activeRequirementTargets: document.assignments.map(
-      (assignment) => assignment.requirementTarget,
-    ),
+    activeRequirementTargets: effective.filter(row => row.formDocument.id === document.id).map(row => row.requirementTarget),
     versions: document.versions,
   };
 }
@@ -327,6 +315,10 @@ export async function createFormDocumentWithInitialVersion(args: {
   try {
     const db = args.db ?? prisma;
     const createdDocument = await db.$transaction(async (tx) => {
+      await lockClassSchedule(tx, args.workspaceId);
+      const actor = await tx.workspaceUser.findFirst({ where: { id: args.uploadedByWorkspaceUserId, workspaceId: args.workspaceId }, select: { userId: true } });
+      if (!actor) throw new FormRequirementError("Active owner membership not found.");
+      await requireActiveStaffAccessTx(tx, { workspaceId: args.workspaceId, userId: actor.userId, capability: "OWNER" });
       const document = await tx.formDocument.create({
         data: {
           workspaceId: args.workspaceId,
@@ -372,6 +364,8 @@ export async function createFormDocumentWithInitialVersion(args: {
       formDocumentId: createdDocument.id,
     };
   } catch (error) {
+    const message = readOwnedErrorMessage(error, FormRequirementError.prototype);
+    if (message !== null) return { status: "error", message };
     if (getDuplicateDocumentConstraintError(error)) {
       return {
         status: "error",
@@ -384,160 +378,33 @@ export async function createFormDocumentWithInitialVersion(args: {
 }
 
 export async function createFormVersion(args: {
-  workspaceId: string;
-  uploadedByWorkspaceUserId: string;
-  input: CreateAdminFormVersionInput;
-  db?: typeof prisma;
-}):
-  Promise<
-    | {
-        status: "created";
-        formDocumentId: string;
-        formVersionId: string;
-      }
-    | {
-        status: "error";
-        message: string;
-      }
-  > {
+  workspaceId: string; uploadedByWorkspaceUserId: string; input: CreateAdminFormVersionInput; db?: typeof prisma;
+}): Promise<{ status: "created"; formDocumentId: string; formVersionId: string } | { status: "error"; message: string }> {
+  const validation = validatePdfUpload(args.input);
+  if (validation.status === "error") return validation;
   const db = args.db ?? prisma;
-  const document = await db.formDocument.findFirst({
-    where: {
-      id: args.input.formDocumentId.trim(),
-      workspaceId: args.workspaceId,
-      archivedAt: null,
-    },
-    select: {
-      id: true,
-      currentVersionId: true,
-      versions: {
-        select: {
-          versionNumber: true,
-        },
-        orderBy: {
-          versionNumber: "desc",
-        },
-        take: 1,
-      },
-    },
-  });
-
-  if (!document) {
-    return {
-      status: "error",
-      message: "Form document not found.",
-    };
+  try {
+    return await db.$transaction(async tx => {
+      await lockClassSchedule(tx, args.workspaceId);
+      const actor = await tx.workspaceUser.findFirst({ where: { id: args.uploadedByWorkspaceUserId, workspaceId: args.workspaceId }, select: { userId: true } });
+      if (!actor) throw new FormRequirementError("Active owner membership not found.");
+      await requireActiveStaffAccessTx(tx, { workspaceId: args.workspaceId, userId: actor.userId, capability: "OWNER" });
+      await tx.$queryRaw`SELECT id FROM form_documents WHERE id=${args.input.formDocumentId} AND "workspaceId"=${args.workspaceId} FOR UPDATE`;
+      const document = await tx.formDocument.findFirst({ where: { id: args.input.formDocumentId, workspaceId: args.workspaceId, archivedAt: null }, include: { versions: { select: { versionNumber: true }, orderBy: { versionNumber: "desc" }, take: 1 } } });
+      if (!document) throw new FormRequirementError("Form document not found.");
+      const version = await tx.formVersion.create({ data: { workspaceId: args.workspaceId, formDocumentId: document.id, versionNumber: (document.versions[0]?.versionNumber ?? 0) + 1, fileName: args.input.fileName.trim(), mimeType: validation.normalizedMimeType, fileSizeBytes: args.input.fileSizeBytes, fileSha256: validation.sha256, fileData: Buffer.from(args.input.fileData), uploadedByWorkspaceUserId: args.uploadedByWorkspaceUserId } });
+      return { status: "created" as const, formDocumentId: document.id, formVersionId: version.id };
+    });
+  } catch (error) {
+    const message = readOwnedErrorMessage(error, FormRequirementError.prototype);
+    if (message !== null) return { status: "error", message };
+    throw error;
   }
-
-  const validation = validatePdfUpload({
-    fileName: args.input.fileName,
-    mimeType: args.input.mimeType,
-    fileData: args.input.fileData,
-    fileSizeBytes: args.input.fileSizeBytes,
-  });
-
-  if (validation.status === "error") {
-    return validation;
-  }
-
-  const formVersion = await db.formVersion.create({
-    data: {
-      workspaceId: args.workspaceId,
-      formDocumentId: document.id,
-      versionNumber: (document.versions[0]?.versionNumber ?? 0) + 1,
-      fileName: args.input.fileName.trim(),
-      mimeType: validation.normalizedMimeType,
-      fileSizeBytes: args.input.fileSizeBytes,
-      fileSha256: validation.sha256,
-      fileData: Buffer.from(args.input.fileData),
-      uploadedByWorkspaceUserId: args.uploadedByWorkspaceUserId,
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  await db.formDocument.update({
-    where: {
-      id: document.id,
-    },
-    data: {
-      currentVersionId: formVersion.id,
-    },
-  });
-  await cancelObsoleteOpenRequestsForDocument({
-    workspaceId: args.workspaceId,
-    formDocumentId: document.id,
-    currentVersionId: formVersion.id,
-    db,
-  });
-
-  return {
-    status: "created",
-    formDocumentId: document.id,
-    formVersionId: formVersion.id,
-  };
 }
 
-export async function setRequiredFormAssignment(args: {
-  workspaceId: string;
-  formDocumentId: string;
-  requirementTarget: RequirementTarget;
-  isActive: boolean;
-  db?: typeof prisma;
-}): Promise<void> {
-  const db = args.db ?? prisma;
-  const existingAssignment = await db.requiredFormAssignment.findFirst({
-    where: {
-      workspaceId: args.workspaceId,
-      formDocumentId: args.formDocumentId,
-      requirementTarget: args.requirementTarget,
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  if (existingAssignment) {
-    await db.requiredFormAssignment.update({
-      where: {
-        id: existingAssignment.id,
-      },
-      data: {
-        isActive: args.isActive,
-      },
-    });
-  } else {
-    await db.requiredFormAssignment.create({
-      data: {
-        workspaceId: args.workspaceId,
-        formDocumentId: args.formDocumentId,
-        requirementTarget: args.requirementTarget,
-        isActive: args.isActive,
-      },
-    });
-  }
-
-  if (!args.isActive) {
-    const remainingActiveAssignments = await db.requiredFormAssignment.count({
-      where: {
-        workspaceId: args.workspaceId,
-        formDocumentId: args.formDocumentId,
-        isActive: true,
-      },
-    });
-
-    if (remainingActiveAssignments > 0) {
-      return;
-    }
-
-    await cancelObsoleteOpenRequestsForDocument({
-      workspaceId: args.workspaceId,
-      formDocumentId: args.formDocumentId,
-      currentVersionId: null,
-      db,
-    });
-  }
+export async function setRequiredFormAssignment(_args: { workspaceId: string; formDocumentId: string; requirementTarget: RequirementTarget; isActive: boolean; db?: typeof prisma }): Promise<void> {
+  void _args;
+  throw new FormRequirementError("Preview and publish the requirement's timing, affected people and recovery before changing contexts.");
 }
 
 export function getPdfSizeCapLabel(): string {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { PrismaClient, type Prisma } from "@flowstate/db";
+import { PrismaClient, Prisma } from "@flowstate/db";
 import {
   captureCutoverState,
   recordMigrationCutoverEvidence,
@@ -164,7 +164,7 @@ const url = process.env.TEST_DATABASE_URL;
         options: { isolationLevel: Prisma.TransactionIsolationLevel },
       ) => {
         attempts++;
-        if (attempts === 1) throw { code: "P2034" };
+        if (attempts === 1) throw new Prisma.PrismaClientKnownRequestError("Retry fixture", { code: "P2034", clientVersion: "6.19.3" });
         return db.$transaction(operation, options);
       },
     } as unknown as PrismaClient;

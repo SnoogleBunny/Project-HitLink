@@ -1,19 +1,21 @@
 import { notFound } from "next/navigation";
+import { LocaleDate } from "@flowstate/ui";
 import { MemberShell } from "../../../_components/member-shell";
 import { FormSignatureForm } from "../../../_components/form-signature-form";
-import { requireMemberPortalContext } from "../../../../lib/member-auth";
-import { getPortalFormRequestPageData } from "../../../../lib/forms";
+import { getAuthorizedPortalFormRequest } from "../../../../lib/portal-form-context";
 import { signPortalFormAction } from "./actions";
 
-function formatDateTime(value: Date | null): string {
+function formatDateTime(value: Date | null) {
   if (!value) {
     return "Not signed yet";
   }
 
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
+  return (
+    <LocaleDate
+      value={value}
+      options={{ dateStyle: "medium", timeStyle: "short" }}
+    />
+  );
 }
 
 export default async function MemberFormRequestPage({
@@ -24,17 +26,11 @@ export default async function MemberFormRequestPage({
   }>;
 }) {
   const { requestId } = await params;
-  const context = await requireMemberPortalContext({ permission: "sign" });
-  const request = await getPortalFormRequestPageData({
-    workspaceId: context.workspace.id,
-    memberId: context.member.id,
-    requestId,
-    guardianId: context.permissions?.guardianId,
-  });
-
-  if (!request) {
+  const data = await getAuthorizedPortalFormRequest(requestId);
+  if (!data) {
     notFound();
   }
+  const { context, request } = data;
 
   const documentPath = `/app/forms/${request.requestId}/document`;
 
@@ -42,15 +38,19 @@ export default async function MemberFormRequestPage({
     <MemberShell
       context={context}
       title={request.formName}
-      description={`Review version ${request.versionNumber} and sign the current PDF version for this account.`}
+      description={`Review version ${request.versionNumber} for ${request.memberName}.`}
     >
       <div className="member-grid">
         <section className="member-card">
           <p className="member-eyebrow">Current document</p>
           <h3>{request.formName}</h3>
           <p className="member-copy">
-            Version {request.versionNumber} · {request.description ?? "No extra description."}
+            Version {request.versionNumber} ·{" "}
+            {request.description ?? "No extra description."}
           </p>
+          {request.effectiveAt ? <p className="member-copy">{request.upcoming ? "This scheduled requirement starts" : "This requirement is effective from"} {formatDateTime(request.effectiveAt)}.</p> : null}
+          <p className="member-copy">{request.consentValidUntil ? <>Acceptance is valid until {formatDateTime(request.consentValidUntil)}.</> : request.requirementRevisionId ? "No expiry is recorded for this acceptance cycle." : "No expiry was recorded for this legacy acceptance."}</p>
+          {request.requirementRevisionId ? <p className="member-copy">Signing records your acceptance of this exact cycle. A valid signature permits admission for that cycle. Any already-offered booking recovery choices remain separate; explicitly keep the booking or choose a remedy before class.</p> : null}
           <iframe
             src={documentPath}
             style={{
@@ -85,19 +85,19 @@ export default async function MemberFormRequestPage({
             </div>
           </dl>
 
-          {request.status === "OPEN" && !request.signedDocumentId ? (
+          {request.status === "OPEN" && request.canSign !== false && !request.signedDocumentId ? (
             <FormSignatureForm
               action={signPortalFormAction}
               requestId={request.requestId}
               memberId={context.member.id}
               signerEmail={context.accountMember?.email ?? request.memberEmail}
               signerName={context.accountMember?.fullName ?? request.memberName}
-              pendingLabel="Signing form..."
+              pendingLabel="Signing form…"
               submitLabel="Sign form"
             />
           ) : (
             <p className="member-copy">
-              This form request is no longer open for editing.
+              {request.signingUnavailableReason ?? "This form request is no longer open for editing."}
             </p>
           )}
         </section>
@@ -105,4 +105,3 @@ export default async function MemberFormRequestPage({
     </MemberShell>
   );
 }
-

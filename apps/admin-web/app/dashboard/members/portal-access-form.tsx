@@ -24,7 +24,9 @@ function PasswordFields({ memberId }: { memberId: string }) {
         <input
           autoComplete="new-password"
           name="password"
-          placeholder="At least 8 characters"
+          minLength={12}
+          maxLength={72}
+          placeholder="At least 12 characters"
           type="password"
         />
       </label>
@@ -34,10 +36,16 @@ function PasswordFields({ memberId }: { memberId: string }) {
         <input
           autoComplete="new-password"
           name="confirmPassword"
+          minLength={12}
+          maxLength={72}
           placeholder="Repeat the password"
           type="password"
         />
       </label>
+      <p className="management-copy">
+        New passwords need at least 12 characters and no more than 72 bytes.
+        Accented characters and emoji can use more than one byte.
+      </p>
     </>
   );
 }

@@ -201,6 +201,10 @@ const testUrl = process.env.TEST_DATABASE_URL;
     });
     afterAll(async () => {
       for (const workspaceId of gyms) {
+        await db.$transaction(async tx => {
+          await tx.$queryRawUnsafe("SELECT set_config('hitlink.reviewed_retention_workspace', $1, true)", workspaceId);
+          await tx.paymentConfirmation.deleteMany({ where: { workspaceId } });
+        });
         await db.financialOperationEvent.deleteMany({ where: { workspaceId } });
         await db.financialReviewCase.deleteMany({ where: { workspaceId } });
         await db.financialOperation.deleteMany({ where: { workspaceId } });
@@ -281,6 +285,8 @@ const testUrl = process.env.TEST_DATABASE_URL;
       });
       expect(payment.memberId).toBe(child);
       expect(payment.payerAccount?.memberId).toBe(payer);
+      expect(await db.paymentConfirmation.findUniqueOrThrow({ where: { paymentId: payment.id } })).toMatchObject({ payerAccountId: payment.payerAccountId, payerUserId: user, amountMinor: 12500, snapshot: expect.objectContaining({ description: "Five classes", beneficiaryName: "Child" }) });
+      expect(await db.notificationJob.count({ where: { workspaceId: gym, context: { path: ["kind"], equals: "PAYMENT_CONFIRMATION" } } })).toBe(1);
     });
     it("recovers an unknown response without changing the request or cancelling a held place", async () => {
       const original = gateway.create;

@@ -1,3 +1,4 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import Link from "next/link";
 import { AdminShell } from "../../_components/admin-shell";
 import {
@@ -10,16 +11,6 @@ import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
 import { archiveMembershipPlanAction } from "./actions";
 import { MembershipPlanForm } from "./membership-plan-form";
 
-function formatDate(value: Date | null): string {
-  if (!value) {
-    return "Not set";
-  }
-
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-  }).format(value);
-}
-
 function formatRestrictions(plan: MembershipPlanSummary): string {
   if (plan.programRestrictions.length === 0) {
     return "All active programs";
@@ -28,62 +19,96 @@ function formatRestrictions(plan: MembershipPlanSummary): string {
   return plan.programRestrictions.map((program) => program.name).join(", ");
 }
 
-function PlanCard({
-  plan,
-  archived = false,
-}: {
-  plan: MembershipPlanSummary;
-  archived?: boolean;
-}) {
-  return (
-    <article className="stack-item">
-      <div className="stack-item-copy">
-        <div className="stack-item-heading">
-          <h4>{plan.name}</h4>
-          <span
-            className={`status-pill ${archived ? "" : "status-pill-success"}`}
-          >
-            {archived ? "Archived" : "Live"}
-          </span>
-          {plan.stripePriceId ? <span className="status-pill">Stripe</span> : null}
-        </div>
-        <p>{plan.description ?? "No description yet."}</p>
-        <dl className="inline-meta">
-          <div>
-            <dt>Monthly price</dt>
-            <dd>{formatMembershipPlanPrice(plan)}</dd>
-          </div>
-          <div>
-            <dt>Programs</dt>
-            <dd>{formatRestrictions(plan)}</dd>
-          </div>
-          <div><dt>Class allowance</dt><dd>{!plan.weeklyClassLimit && !plan.monthlyClassLimit ? "Unlimited classes" : [plan.weeklyClassLimit ? `${plan.weeklyClassLimit} per billing week` : null, plan.monthlyClassLimit ? `${plan.monthlyClassLimit} per billing month` : null].filter(Boolean).join(" · ")}</dd></div>
-          {archived ? <div><dt>Archived</dt><dd>{formatDate(plan.archivedAt)}</dd></div> : null}
-        </dl>
-      </div>
-
-      <div className="dashboard-actions">
-        <Link
-          className="button button-secondary"
-          href={`/dashboard/membership-plans/${plan.id}/edit`}
-        >
-          {archived ? "View details" : "Edit plan"}
-        </Link>
-        {!archived ? (
-          <form action={archiveMembershipPlanAction}>
-            <input name="membershipPlanId" type="hidden" value={plan.id} />
-            <button className="button button-secondary" type="submit">
-              Archive
-            </button>
-          </form>
-        ) : null}
-      </div>
-    </article>
-  );
-}
-
 export default async function MembershipPlansPage() {
   const { session, workspace } = await requireOwnerWorkspaceContext();
+  const locale = resolveDisplayLocale(workspace.settings?.locale);
+  function formatDate(value: Date | null): string {
+    if (!value) {
+      return "Not set";
+    }
+
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+    }).format(value);
+  }
+
+  function PlanCard({
+    plan,
+    archived = false,
+  }: {
+    plan: MembershipPlanSummary;
+    archived?: boolean;
+  }) {
+    return (
+      <article className="stack-item">
+        <div className="stack-item-copy">
+          <div className="stack-item-heading">
+            <h4>{plan.name}</h4>
+            <span
+              className={`status-pill ${archived ? "" : "status-pill-success"}`}
+            >
+              {archived ? "Archived" : "Live"}
+            </span>
+            {plan.stripePriceId ? (
+              <span className="status-pill">Stripe</span>
+            ) : null}
+          </div>
+          <p>{plan.description ?? "No description yet."}</p>
+          <dl className="inline-meta">
+            <div>
+              <dt>Monthly price</dt>
+              <dd>{formatMembershipPlanPrice(plan, locale)}</dd>
+            </div>
+            <div>
+              <dt>Programs</dt>
+              <dd>{formatRestrictions(plan)}</dd>
+            </div>
+            <div>
+              <dt>Class allowance</dt>
+              <dd>
+                {!plan.weeklyClassLimit && !plan.monthlyClassLimit
+                  ? "Unlimited classes"
+                  : [
+                      plan.weeklyClassLimit
+                        ? `${plan.weeklyClassLimit} per billing week`
+                        : null,
+                      plan.monthlyClassLimit
+                        ? `${plan.monthlyClassLimit} per billing month`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+              </dd>
+            </div>
+            {archived ? (
+              <div>
+                <dt>Archived</dt>
+                <dd>{formatDate(plan.archivedAt)}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
+
+        <div className="dashboard-actions">
+          <Link
+            className="button button-secondary"
+            href={`/dashboard/membership-plans/${plan.id}/edit`}
+          >
+            {archived ? "View details" : "Edit plan"}
+          </Link>
+          {!archived ? (
+            <form action={archiveMembershipPlanAction}>
+              <input name="membershipPlanId" type="hidden" value={plan.id} />
+              <button className="button button-secondary" type="submit">
+                Archive
+              </button>
+            </form>
+          ) : null}
+        </div>
+      </article>
+    );
+  }
+
   const [plans, options] = await Promise.all([
     listMembershipPlans({
       workspaceId: workspace.id,
@@ -116,7 +141,10 @@ export default async function MembershipPlansPage() {
           <p className="dashboard-card-label">Policy notes</p>
           <h3>Terms stay with the member</h3>
           <p className="management-copy">
-            New members accept the plan version shown at signup or assignment. Existing memberships keep their accepted price, class limits and cancellation policy. Review a member’s contract before making an exception.
+            New members accept the plan version shown at signup or assignment.
+            Existing memberships keep their accepted price, class limits and
+            cancellation policy. Review a member’s contract before making an
+            exception.
           </p>
           <dl className="detail-list">
             <div>
@@ -169,4 +197,3 @@ export default async function MembershipPlansPage() {
     </AdminShell>
   );
 }
-

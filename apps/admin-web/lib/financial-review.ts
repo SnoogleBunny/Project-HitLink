@@ -11,6 +11,7 @@ const reviewSelect = {
   bookingId: true,
   paymentId: true,
   operationId: true,
+  disputeId: true,
   member: { select: { fullName: true } },
   payerAccount: { select: { member: { select: { fullName: true } } } },
   booking: { select: { classTemplateId: true, scheduledForDate: true } },

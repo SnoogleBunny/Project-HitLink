@@ -12,9 +12,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("./admin-access", async () => {
-  const actual = await vi.importActual<typeof import("./admin-access")>(
-    "./admin-access",
-  );
+  const actual =
+    await vi.importActual<typeof import("./admin-access")>("./admin-access");
 
   return {
     ...actual,
@@ -93,6 +92,8 @@ describe("requireOperationsWorkspaceContext", () => {
       include: {
         location: true,
         settings: true,
+        setup: { select: { id: true } },
+        setupActivation: true,
         migration: {
           select: {
             stage: true,
@@ -123,6 +124,66 @@ describe("requireOperationsWorkspaceContext", () => {
     const result = await requireOperationsWorkspaceContext({ db });
 
     expect(result.workspaceUserRole).toBe("OWNER");
+  });
+
+  it("allows operations after clean verified activation without inventing migration readiness", async () => {
+    getSessionOrNullMock.mockResolvedValue({
+      userId: "coach_1",
+      workspaceId: "workspace_1",
+      role: "COACH",
+    });
+    const db = buildDb();
+    const workspace = await db.workspace.findUnique();
+    db.workspace.findUnique.mockResolvedValue({
+      ...workspace,
+      migration: null,
+      setup: { id: "clean-setup" },
+      setupActivation: {
+        ownerUserId: "owner_1",
+        snapshotHash: "a".repeat(64),
+        ownerVerifiedAt: new Date("2030-01-01T12:00:00Z"),
+        activatedAt: new Date("2030-01-01T12:05:00Z"),
+      },
+    });
+    expect(
+      (await requireOperationsWorkspaceContext({ db })).workspaceUserRole,
+    ).toBe("COACH");
+  });
+
+  it("redirects an unactivated clean setup owner to setup while rejecting an unactivated coach", async () => {
+    const db = buildDb();
+    const workspace = await db.workspace.findUnique();
+    db.workspace.findUnique.mockResolvedValue({
+      ...workspace,
+      status: "SETUP_INCOMPLETE",
+      migration: null,
+      setup: { id: "clean-setup" },
+      setupActivation: null,
+    });
+    db.workspaceUser.findFirst.mockResolvedValue({
+      id: "workspace_owner",
+      role: "OWNER",
+    });
+    getSessionOrNullMock.mockResolvedValue({
+      userId: "owner_1",
+      workspaceId: "workspace_1",
+      role: "OWNER",
+    });
+    await expect(requireOperationsWorkspaceContext({ db })).rejects.toThrow(
+      "NEXT_REDIRECT:/dashboard/setup",
+    );
+    db.workspaceUser.findFirst.mockResolvedValue({
+      id: "workspace_coach",
+      role: "COACH",
+    });
+    getSessionOrNullMock.mockResolvedValue({
+      userId: "coach_1",
+      workspaceId: "workspace_1",
+      role: "COACH",
+    });
+    await expect(requireOperationsWorkspaceContext({ db })).rejects.toThrow(
+      "NEXT_REDIRECT:/unauthorized",
+    );
   });
 
   it("redirects a pre-ready owner from operations to migration", async () => {

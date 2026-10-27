@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { emptyFormState, type BasicFormState } from "../../../lib/admin-access";
 import { createClassBooking } from "../../../lib/bookings";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
-import { isWorkspaceMigrationReady } from "../../../lib/workspace-migration";
+import { isWorkspaceOperationallyReady } from "@flowstate/db";
 
 function parseBookingOption(value: string): {
   classTemplateId: string;
@@ -25,8 +25,9 @@ export async function createClassBookingAction(
   const { workspace, location } = await requireOwnerWorkspaceContext();
 
   if (
-    !isWorkspaceMigrationReady({
+    !isWorkspaceOperationallyReady({
       workspaceStatus: workspace.status,
+      setupActivation: workspace.setupActivation,
       migrationStage: workspace.migration?.stage,
       ownerReviewAcknowledgedAt:
         workspace.migration?.ownerReviewAcknowledgedAt,
@@ -39,7 +40,7 @@ export async function createClassBookingAction(
   ) {
     return {
       error:
-        "Class bookings are unavailable until migration readiness is complete.",
+        "Class bookings are unavailable until business setup or migration readiness is complete.",
     };
   }
 

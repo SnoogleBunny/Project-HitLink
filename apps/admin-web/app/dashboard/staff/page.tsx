@@ -1,20 +1,28 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
-import { getStaffLeave } from "@flowstate/db";
+import { getStaffLeave, getStaffAccess } from "@flowstate/db";
 import { Badge } from "@flowstate/ui";
 import { AdminShell } from "../../_components/admin-shell";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
 import { StaffLeaveForm } from "./form";
+import { StaffAccessForm } from "./access-form";
 
 export default async function StaffPage() {
   const context = await requireOwnerWorkspaceContext();
+  const locale = resolveDisplayLocale(context.workspace.settings?.locale);
+
   const { staff, leave } = await getStaffLeave({
+    workspaceId: context.workspace.id,
+    userId: context.session.userId,
+  });
+  const access = await getStaffAccess({
     workspaceId: context.workspace.id,
     userId: context.session.userId,
   });
   const timezone = context.location.timezone;
   const format = (value: Date) =>
-    new Intl.DateTimeFormat("en-CA", {
+    new Intl.DateTimeFormat(locale, {
       dateStyle: "medium",
       timeStyle: "short",
       timeZone: timezone,
@@ -94,10 +102,62 @@ export default async function StaffPage() {
                 <p>{item.role === "OWNER" ? "Owner" : "Coach"}</p>
               </div>
               <Badge>{item.isActive ? "Active" : "Inactive"}</Badge>
+              <details>
+                <summary>Manage {name(item.id)} access</summary>
+                {access.staff.find((person) => person.id === item.id) ? (
+                  <StaffAccessForm
+                    operationId={randomUUID()}
+                    staff={{
+                      id: item.id,
+                      role: item.role,
+                      isActive: item.isActive,
+                      updatedAt: access.staff
+                        .find((person) => person.id === item.id)!
+                        .updatedAt.toISOString(),
+                    }}
+                  />
+                ) : null}
+              </details>
             </div>
           ))}
         </section>
       </div>
+      <section className="management-card form-stack">
+        <h2>Staff access history</h2>
+        <p>
+          Access changes preserve the prior role, actor, reason and session
+          revocation. At least one active owner must remain.
+        </p>
+        {access.events.length ? (
+          access.events.map((event) => {
+            const evidence = event.metadata as {
+              targetWorkspaceUserId?: string;
+              before?: { role?: string; isActive?: boolean };
+              after?: { role?: string; isActive?: boolean };
+              reason?: string;
+              revokedSessionCount?: number;
+            };
+            return (
+              <article className="record-card" key={event.id}>
+                <h3>{name(evidence.targetWorkspaceUserId ?? "")}</h3>
+                <p>
+                  {evidence.before?.role} (
+                  {evidence.before?.isActive ? "active" : "inactive"}) →{" "}
+                  {evidence.after?.role} (
+                  {evidence.after?.isActive ? "active" : "inactive"})
+                </p>
+                <p>{evidence.reason}</p>
+                <p>
+                  {format(event.createdAt)} ·{" "}
+                  {evidence.revokedSessionCount ?? 0} sessions revoked
+                </p>
+              </article>
+            );
+          })
+        ) : (
+          <p>No staff access changes recorded.</p>
+        )}
+      </section>
       <section className="management-card form-stack">
         <h2>Leave records</h2>
         {!leave.length ? (

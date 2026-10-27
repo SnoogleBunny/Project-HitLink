@@ -1,3 +1,4 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import { SourceRefundForm } from "./source-refund-form";
 import { getSourceRefundReview } from "../../../../../lib/source-refund-receipts";
 import Link from "next/link";
@@ -7,12 +8,15 @@ import { toDateOnlyString } from "@flowstate/db";
 import { AdminShell } from "../../../../_components/admin-shell";
 import { requireOwnerWorkspaceContext } from "../../../../../lib/owner-workspace";
 import { getFinancialReviewCase } from "../../../../../lib/financial-review";
+import { DisputePanel } from "./dispute-panel";
 export default async function FinancialReviewPage({
   params,
 }: {
   params: Promise<{ caseId: string }>;
 }) {
   const context = await requireOwnerWorkspaceContext();
+  const locale = resolveDisplayLocale(context.workspace.settings?.locale);
+
   const { caseId } = await params;
   const item = await getFinancialReviewCase({
     workspaceId: context.workspace.id,
@@ -28,7 +32,7 @@ export default async function FinancialReviewPage({
     caseId,
   );
   const date = (value: Date) =>
-    new Intl.DateTimeFormat("en-CA", {
+    new Intl.DateTimeFormat(locale, {
       dateStyle: "medium",
       timeStyle: "short",
       timeZone: context.location.timezone,
@@ -47,7 +51,11 @@ export default async function FinancialReviewPage({
     >
       <section className="management-card hl-payment-review">
         <div className="hl-payment-record-heading">
-          <h3>{item.payerAccount?.member.fullName ?? sourceRefund?.payerName ?? "Payer not recorded"}</h3>
+          <h3>
+            {item.payerAccount?.member.fullName ??
+              sourceRefund?.payerName ??
+              "Payer not recorded"}
+          </h3>
           <Badge tone={item.resolvedAt ? "success" : "warning"}>
             {item.resolvedAt ? "Resolved" : "Needs review"}
           </Badge>
@@ -103,7 +111,7 @@ export default async function FinancialReviewPage({
               Open financial request
             </Link>
           ) : null}
-          {item.paymentId && !sourceRefund ? (
+          {item.paymentId && !sourceRefund && !item.disputeId ? (
             <Link
               className="text-link"
               href={`/dashboard/billing/refunds/${item.paymentId}`}
@@ -129,6 +137,7 @@ export default async function FinancialReviewPage({
           ) : null}
         </div>
       </section>
+      {item.disputeId ? <DisputePanel workspaceId={context.workspace.id} actorUserId={context.session.userId} disputeId={item.disputeId} locale={locale} timezone={context.location.timezone} /> : null}
       {sourceRefund ? (
         <SourceRefundForm caseId={caseId} review={sourceRefund} />
       ) : null}

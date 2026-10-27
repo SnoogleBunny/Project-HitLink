@@ -85,6 +85,8 @@ describe("requireOwnerWorkspaceContext", () => {
       include: {
         location: true,
         settings: true,
+        setup: { select: { id: true } },
+        setupActivation: true,
         migration: true,
       },
     });

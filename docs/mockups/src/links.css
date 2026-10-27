@@ -13,7 +13,7 @@
  justify-content:center;text-align:center;
 }
 /* The visible label stays aligned; extra height provides the touch target. */
-@media(max-width:640px),(pointer:coarse){
+@media(max-width:767px),(pointer:coarse){
  #hitlink-prototype .hl-button.hl-text-link{min-height:44px;min-width:44px;padding-block:10px}
  #hitlink-prototype :is(.hl-pagehead,.hl-dialog-foot) .hl-button.hl-text-link{min-height:44px}
 }

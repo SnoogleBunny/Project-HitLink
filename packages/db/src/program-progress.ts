@@ -1,7 +1,9 @@
+import { resolveWorkspaceClockTimezone } from "./workspace-timezones.js";
 import { memberNotificationRecipients } from "./member-notification-recipients.js";
 import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "./client.js";
+import { lockStaffAuthorityTx } from "./staff-access.js";
 import {
   classOccurrenceInclude,
   lockClassSchedule,
@@ -43,12 +45,14 @@ async function staff(
   actor: ProgressActor,
   capability: "canManageProgress" | "canOverridePrerequisites" | "owner",
 ) {
+  await lockStaffAuthorityTx(db, actor);
   const person = await db.workspaceUser.findFirst({
     where: {
       workspaceId: actor.workspaceId,
       userId: actor.userId,
       isActive: true,
       role: { in: ["OWNER", "COACH"] },
+      workspace: { status: { not: "DISABLED" } },
     },
   });
   if (
@@ -81,7 +85,7 @@ export async function checkMemberClassEligibility(args: {
   const [member, program, promotion] = await Promise.all([
     db.member.findFirst({
       where: { id: args.memberId, workspaceId: args.workspaceId },
-      select: { dateOfBirth: true, tags: true },
+      select: { dateOfBirth: true, tags: true, archivedAt: true },
     }),
     db.program.findFirst({
       where: { id: args.occurrence.programId, workspaceId: args.workspaceId },
@@ -109,6 +113,8 @@ export async function checkMemberClassEligibility(args: {
       currentRank: "Unranked",
       fingerprint,
     };
+  if (member.archivedAt)
+    return { eligible: false, reason: "Reactivate this member before booking a class.", currentRank: "Unranked", fingerprint };
   const rank =
     args.prospectiveRank &&
     args.prospectiveRank.effectiveOn <= args.scheduledForDate &&
@@ -349,9 +355,10 @@ async function inspectProgramPolicy(
     throw new ProgramProgressError(
       "Keep ranks and stripe limits that are used in promotion history. Turn the module off to hide it without erasing history.",
     );
-  const timezone = (await db.location.findUnique({
+  const baselineTimezone = (await db.location.findUnique({
     where: { workspaceId: actor.workspaceId },
   }))!.timezone;
+  const timezone = await resolveWorkspaceClockTimezone({ workspaceId: actor.workspaceId, baselineTimezone, now, db });
   const bookings = await db.classBooking.findMany({
     where: {
       workspaceId: actor.workspaceId,
@@ -378,7 +385,7 @@ async function inspectProgramPolicy(
       getZonedDateTimeAsUtc({
         dateString: date,
         minutes: occurrence.startTimeMinutes,
-        timezone,
+        timezone: occurrence.timezone ?? timezone,
       }) <= now
     )
       continue;
@@ -596,6 +603,7 @@ export async function recordProgramPromotion(
       throw new ProgramProgressError(
         "Choose a member, configured rank, stripe count, and awarding coach in this gym.",
       );
+    if (location) location.timezone = await resolveWorkspaceClockTimezone({ workspaceId: actor.workspaceId, baselineTimezone: location.timezone, now, db });
     if (
       parseDateOnlyString(args.effectiveOn).status === "error" ||
       args.effectiveOn > getWorkspaceDateString(now, location!.timezone)

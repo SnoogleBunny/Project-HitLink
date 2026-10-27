@@ -1,20 +1,20 @@
 import { AuthPanel } from "../_components/auth-panel";
-import { OnboardingForm } from "./onboarding-form";
+import { OnboardingChoice } from "./onboarding-choice";
 import { requireOnboardingSession } from "../../lib/admin-access";
 
 export default async function OnboardingPage() {
-  await requireOnboardingSession();
+  const session = await requireOnboardingSession();
 
   const defaultTimezone =
     Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Vancouver";
 
   return (
     <AuthPanel
-      eyebrow="Migration intake"
-      title="Set up your gym migration"
-      description="Share the access or export instructions Flowstate needs to start. The rest of this intake helps us scope the service internally, not push configuration work onto you."
+      eyebrow="Business setup"
+      title="Set up your business"
+      description="Start a new business workspace or arrange a reviewed migration from your current system."
     >
-      <OnboardingForm defaultTimezone={defaultTimezone} />
+      <OnboardingChoice defaultTimezone={defaultTimezone} ownerEmail={session.email} />
     </AuthPanel>
   );
 }

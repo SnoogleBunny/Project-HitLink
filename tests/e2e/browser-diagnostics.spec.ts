@@ -1,17 +1,14 @@
 import { expect, test } from "./support/browser-diagnostics";
 
-test("fails the case when Chromium emits an unallowlisted diagnostic", async ({
-  page,
-}) => {
-  test.fail(
-    true,
-    "The diagnostics fixture must turn this otherwise-passing page into a failure.",
-  );
-
-  await page.setContent(
-    "<main>diagnostics probe</main><script>console.error('RP-12 fail-closed probe')</script>",
-  );
-});
+// Declare the intentional failure during discovery as well as execution.
+test.fail(
+  "fails the case when Chromium emits an unallowlisted diagnostic",
+  async ({ page }) => {
+    await page.setContent(
+      "<main>diagnostics probe</main><script>console.error('RP-12 fail-closed probe')</script>",
+    );
+  },
+);
 
 test("collects an allowlisted browser diagnostic in a real Chromium page", async ({
   browserDiagnostics,

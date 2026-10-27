@@ -1,4 +1,7 @@
+import { Prisma } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MigrationEntitlementError } from "./migration-entitlement-parser";
+import { consumedErrorFixtures } from "./test-support/consumed-error-fixtures";
 import {
   buildInitialMigrationData,
   classifyMigrationSchedule,
@@ -35,12 +38,24 @@ describe("workspace migration helpers", () => {
     vi.unstubAllEnvs();
   });
 
+  it("does not retry a supplied serialization-code getter", async () => {
+    let reads = 0;
+    const failure = { get code() { reads++; throw new Error("must not execute"); } };
+    const transaction = vi.fn().mockRejectedValue(failure);
+    await expect(runMigrationImport({ workspaceId: "gym", locationId: "room", importJobId: "job",
+      actor: { type: "FLOWSTATE_OPERATOR", actorId: "operator" },
+      db: { $transaction: transaction } as unknown as ImportDb,
+    })).resolves.toMatchObject({ status: "error" });
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(reads).toBe(0);
+  });
+
   it("retries a rolled-back import beyond brief serialization contention and remains bounded", async () => {
     vi.useFakeTimers();
     try {
       const transaction = vi.fn();
       for (let n = 0; n < 7; n++)
-        transaction.mockRejectedValueOnce({ code: "P2034" });
+        transaction.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError("Retry fixture", { code: "P2034", clientVersion: "6.19.3" }));
       transaction.mockResolvedValueOnce({ status: "ok" });
       const args = {
         workspaceId: "gym",
@@ -53,7 +68,7 @@ describe("workspace migration helpers", () => {
       await vi.runAllTimersAsync();
       await expect(recovered).resolves.toEqual({ status: "ok" });
       expect(transaction).toHaveBeenCalledTimes(8);
-      transaction.mockReset().mockRejectedValue({ code: "P2034" });
+      transaction.mockReset().mockRejectedValue(new Prisma.PrismaClientKnownRequestError("Retry fixture", { code: "P2034", clientVersion: "6.19.3" }));
       const exhausted = runMigrationImport(args);
       await vi.runAllTimersAsync();
       await expect(exhausted).resolves.toMatchObject({ status: "error" });
@@ -1795,5 +1810,62 @@ describe("workspace migration helpers", () => {
       migrationStage: "GO_LIVE_SCHEDULED",
       workspaceStatus: "SETUP_INCOMPLETE",
     });
+  });
+});
+
+describe("strict migration calendar dates", () => {
+  it.each(["2026-02-31", "2026-02-29", "2026-04-31", "invalid", "", "   "])("does not normalize an invalid optional intake date: %s", (targetGoLiveDate) => {
+    expect(buildInitialMigrationData({ targetGoLiveDate }).targetGoLiveDate).toBeNull();
+  });
+
+  it("retains a valid leap-day intake and an absent optional date", () => {
+    expect(buildInitialMigrationData({ targetGoLiveDate: " 2024-02-29 " }).targetGoLiveDate).toEqual(new Date("2024-02-29T00:00:00Z"));
+    expect(buildInitialMigrationData({}).targetGoLiveDate).toBeNull();
+  });
+
+  it.each([
+    ["2026-02-31", false, null],
+    ["2026-02-29", false, null],
+    ["2024-02-29", true, "2024-02-29T00:00:00.000Z"],
+    ["", true, null],
+  ])("stages DOB %s without inventing another birth date", async (dateOfBirth, ready, expectedDate) => {
+    const tx = {
+      importJob: { create: vi.fn().mockResolvedValue({ id: "date-job" }), update: vi.fn().mockResolvedValue({}) },
+      importSourceFile: { create: vi.fn().mockResolvedValue({ id: "date-source" }) },
+      stagingRecord: { create: vi.fn().mockResolvedValue({ id: "date-stage" }) },
+      validationIssue: { create: vi.fn().mockResolvedValue({}) },
+      workspaceMigration: { findUnique: vi.fn().mockResolvedValue({ stage: "MIGRATION_IN_PROGRESS" }), update: vi.fn().mockResolvedValue({}) },
+    };
+    const db = { $transaction: vi.fn((callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx)) };
+    const csv = `id,name,date_of_birth,status\nmember-date,Fictional Person,${dateOfBirth},ACTIVE\n`;
+    const result = await uploadAndStageMigrationCsv({ workspaceId: "date-workspace", actor: { type: "FLOWSTATE_OPERATOR", actorId: "operator" }, input: { recordKind: "MEMBER", fileName: "dates.csv", mimeType: "text/csv", fileSizeBytes: Buffer.byteLength(csv), fileData: csvBytes(csv) }, db: db as unknown as UploadDb });
+    expect(result).toMatchObject({ status: "ok", message: ready ? "Staged 1 row with 0 blocking issues." : "Staged 1 row with 1 blocking issue." });
+    expect(tx.stagingRecord.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ isReadyForImport: ready, rawData: expect.objectContaining({ date_of_birth: dateOfBirth }), mappedData: expect.objectContaining({ dateOfBirth: expectedDate }) }) }));
+    if (ready) expect(tx.validationIssue.create).not.toHaveBeenCalled();
+    else expect(tx.validationIssue.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ code: "INVALID_DATE", fieldName: "date_of_birth", severity: "ERROR" }) }));
+  });
+});
+
+describe("migration import actual-consumer error projection", () => {
+  function failingImport(error: unknown) {
+    const tx = {
+      $queryRawUnsafe: vi.fn().mockResolvedValue([]),
+      workspaceMigration: { findUnique: vi.fn().mockRejectedValue(error) },
+    };
+    const transaction = vi.fn((callback: (db: typeof tx) => Promise<unknown>) => callback(tx));
+    return { transaction, result: runMigrationImport({ workspaceId: "workspace_1", locationId: "location_1", importJobId: "job_1", actor: { type: "FLOWSTATE_OPERATOR", actorId: "operator_1" }, db: { $transaction: transaction } as unknown as ImportDb }) };
+  }
+
+  it.each(consumedErrorFixtures(new MigrationEntitlementError("Owned entitlement failure")))("returns generic failure for $label without getters, traps or retry", async (fixture) => {
+    const { transaction, result } = failingImport(fixture.error);
+    await expect(result).resolves.toEqual({ status: "error", message: "The import failed. Check the source data and retry." });
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(fixture.reads()).toBe(0);
+  });
+
+  it("retains a genuine entitlement error's own message", async () => {
+    const { transaction, result } = failingImport(new MigrationEntitlementError("Opening allowance evidence is incomplete."));
+    await expect(result).resolves.toEqual({ status: "error", message: "Opening allowance evidence is incomplete." });
+    expect(transaction).toHaveBeenCalledOnce();
   });
 });

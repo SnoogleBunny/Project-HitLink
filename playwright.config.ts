@@ -69,6 +69,8 @@ const e2eEnvironment = {
   RESEND_API_KEY: "",
   HITLINK_EMAIL_FROM: "",
   HITLINK_WORKER_SECRET: "",
+  HITLINK_AUTH_THROTTLE_SECRET: "local-disposable-e2e-only-auth-throttle-secret",
+  HITLINK_AUTH_TRUST_PROXY: "false",
 };
 Object.assign(process.env, e2eEnvironment);
 const sharedServerEnv: Record<string, string> = Object.fromEntries(

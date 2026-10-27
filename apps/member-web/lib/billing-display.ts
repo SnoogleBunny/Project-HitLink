@@ -71,15 +71,18 @@ const actionableFailureStatuses = new Set([
 
 const supportedCurrencyCodes = new Set(Intl.supportedValuesOf("currency"));
 
-const calendarDateFormatter = new Intl.DateTimeFormat("en-CA", {
+const calendarDateOptions: Intl.DateTimeFormatOptions = {
   month: "short",
   day: "numeric",
   year: "numeric",
   timeZone: "UTC",
-});
+};
 
-function createInstantFormatter(timeZone: string): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat("en-CA", {
+function createInstantFormatter(
+  timeZone: string,
+  locale = "en-CA",
+): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat(locale, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -110,27 +113,28 @@ export function formatPunchCardStatus(status: string): string {
   return punchCardStatusLabels[status] ?? "Status unavailable";
 }
 
-export function formatCalendarDate(value: Date): string {
-  return calendarDateFormatter.format(value);
+export function formatCalendarDate(value: Date, locale = "en-CA"): string {
+  return new Intl.DateTimeFormat(locale, calendarDateOptions).format(value);
 }
 
 export function formatGymDateTime(
   value: Date | null,
   gymTimeZone: string,
   nullLabel = "Not available",
+  locale = "en-CA",
 ): string {
   if (!value) {
     return nullLabel;
   }
 
   try {
-    return createInstantFormatter(gymTimeZone).format(value);
+    return createInstantFormatter(gymTimeZone, locale).format(value);
   } catch (error) {
     if (!(error instanceof RangeError)) {
       throw error;
     }
 
-    return `${createInstantFormatter("UTC").format(value)} (gym timezone unavailable)`;
+    return `${createInstantFormatter("UTC", locale).format(value)} (gym timezone unavailable)`;
   }
 }
 
@@ -159,6 +163,7 @@ export function formatFailureDetail(args: {
 export function formatMoney(
   amountCents: number | null,
   currency: string | null,
+  locale = "en-CA",
 ): string {
   if (amountCents === null) {
     return "Amount not recorded";
@@ -174,5 +179,5 @@ export function formatMoney(
     return `${amountCents} ${currencyCode} amount units`;
   }
 
-  return formatKnownMoney(amountCents, currencyCode);
+  return formatKnownMoney(amountCents, currencyCode, locale);
 }

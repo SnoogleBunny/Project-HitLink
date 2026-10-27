@@ -4,34 +4,44 @@ import {
   getCoachingReviewAuthorization,
   type CoachingActor,
 } from "@flowstate/db";
-import { coachingDay, coachingTime } from "../../../../lib/coaching-fields";
+import {
+  coachingDayLabel as knownCoachingDayLabel,
+  coachingTime,
+} from "../../../../lib/coaching-fields";
 import { CoachingForm } from "../form";
+import type { CoachingView } from "../navigation";
 
 export async function CoachingRecordsPanel({
   actor,
   enrollmentId,
   version,
   timezone,
+  returnView,
+  locale = "en-CA",
 }: {
   actor: CoachingActor;
   enrollmentId: string;
   version: number;
   timezone: string;
+  returnView?: CoachingView;
+  locale?: string;
 }) {
+  const coachingDayLabel = (value: Date) =>
+    knownCoachingDayLabel(value, locale);
   const data = await getCoachingRecordReview(actor, enrollmentId);
   const grants = await Promise.all(
     data.grants.map((grant) => getCoachingReviewAuthorization(actor, grant.id)),
   );
   if (!data.withdrawals.length && !grants.length) return null;
-  const form = { enrollmentId, version };
+  const form = { enrollmentId, version, returnView };
   return (
     <section className="member-card">
       <h2>Record corrections and consent</h2>
       {data.withdrawals.map((note) => (
         <p key={note.id}>
-          The note for {coachingDay(note.localDate)} was withdrawn. Contact your
-          coach about a corrected version. Any copy you already downloaded is
-          unchanged.
+          The note for {coachingDayLabel(note.localDate)} was withdrawn. Contact
+          your coach about a corrected version. Any copy you already downloaded
+          is unchanged.
         </p>
       ))}
       {grants.map((grant) => (
@@ -41,8 +51,10 @@ export async function CoachingRecordsPanel({
           <p>
             Reviewer: {grant.reviewerName}. Author: {grant.authorName}. Exact
             dates:{" "}
-            {grant.notes.map((note) => coachingDay(note.localDate)).join(", ")}.
-            Expires {coachingTime(grant.expiresAt, timezone)}.
+            {grant.notes
+              .map((note) => coachingDayLabel(note.localDate))
+              .join(", ")}
+            . Expires {coachingTime(grant.expiresAt, timezone, locale)}.
           </p>
           <p>
             This allows only the named reviewer to read these private notes for

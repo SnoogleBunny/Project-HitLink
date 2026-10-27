@@ -1,7 +1,262 @@
-.today-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-.today-metric{display:flex;flex-direction:column;gap:12px;text-decoration:none;color:var(--hl-fg);min-width:0}
-.today-metric>span:last-child{margin-top:auto;color:var(--hl-muted);font-size:.9375rem}
-.today-metric-value{font-family:var(--hl-font-heading);font-size:2rem;line-height:1.2;font-variant-numeric:tabular-nums}
-a.today-metric:hover{border-color:var(--hl-focus);background:var(--hl-hover)}
-a.today-metric:focus-visible{outline:3px solid var(--hl-focus);outline-offset:3px}
-@media(max-width:700px){.today-metrics{grid-template-columns:1fr;gap:12px}.today-metric{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px}.today-metric-value{grid-column:2;grid-row:1/3;align-self:center}.today-metric>span:last-child{grid-column:1}}
+.today-metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.today-metric {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 16px;
+  color: var(--hl-fg);
+  text-decoration: none;
+}
+.today-metric-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--hl-muted);
+  font-size: 13px;
+}
+.today-metric-icon {
+  display: none;
+}
+.today-metric-value {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  font: 600 1.8rem/1.2 var(--hl-font-heading);
+  font-variant-numeric: tabular-nums;
+}
+.today-metric-footer {
+  display: grid;
+  gap: 4px;
+  color: var(--hl-muted);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.today-metric-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--hl-link);
+  font-weight: 600;
+}
+.today-metric-action > [aria-hidden] {
+  font-size: 18px;
+  line-height: 1;
+}
+.today-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+.today-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 0;
+}
+.today-section-heading h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font: 600 16px/1.4 var(--hl-font-body);
+}
+.today-count {
+  color: var(--hl-muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+.today-attention-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.today-attention-list > li,
+.today-trial-list > article,
+.today-class-list > article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--hl-line);
+  padding: 12px 0;
+}
+.today-attention-list > li:first-child,
+.today-trial-list > article:first-child,
+.today-class-list > article:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.today-attention-list > li:last-child,
+.today-trial-list > article:last-child,
+.today-class-list > article:last-child {
+  padding-bottom: 0;
+}
+.today-attention-list > li > div,
+.today-trial-list > article > div,
+.today-class-details {
+  flex: 1;
+  min-width: 0;
+}
+.today-attention-list h3 {
+  margin: 4px 0 0;
+  font: 600 15px/1.4 var(--hl-font-body);
+}
+.today-attention-list p,
+.today-trial-list p,
+.today-class-list p,
+.today-empty,
+.today-clear p {
+  margin: 4px 0 0;
+  color: var(--hl-muted);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.today-attention-list .button,
+.today-class-list > article > .text-link {
+  flex-shrink: 0;
+}
+.today-class-list h3 {
+  margin: 0;
+  font: 600 15px/1.4 var(--hl-font-body);
+  overflow-wrap: anywhere;
+}
+.today-class-list .class-room {
+  margin: 2px 0 0;
+  color: var(--hl-muted);
+  font-size: 13px;
+}
+.today-class-list .class-coach {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 2px;
+  color: var(--hl-muted);
+  font-size: 13px;
+}
+.today-class-list .class-coach .text-link {
+  font-size: 13px;
+}
+.today-clear {
+  display: grid;
+  gap: 8px;
+}
+.today-more {
+  margin-top: 12px;
+  border-top: 1px solid var(--hl-line);
+}
+.today-more > summary {
+  width: fit-content;
+  max-width: 100%;
+  min-height: 44px;
+  padding-block: 10px;
+  color: var(--hl-link);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.today-more[open] > summary {
+  margin-bottom: 8px;
+}
+@media (hover: hover) and (pointer: fine) {
+  a.today-metric:hover {
+    border-color: var(--hl-hover-border);
+    background: var(--hl-hover);
+    box-shadow: none;
+  }
+}
+a.today-metric:focus-visible {
+  outline: 3px solid var(--hl-focus);
+  outline-offset: 3px;
+}
+@media (min-width: 600px) {
+  .today-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .today-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .today-metric-value {
+    font-size: 2rem;
+  }
+  .today-metric-footer {
+    margin-top: auto;
+  }
+  .today-metric-icon {
+    display: inline-flex;
+    flex: 0 0 20px;
+    color: var(--hl-link);
+  }
+}
+@container workspace (min-width: 800px) {
+  .today-class-details {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 1fr) minmax(
+        160px,
+        0.8fr
+      );
+    align-items: center;
+    column-gap: 20px;
+  }
+  .today-class-details h3 {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .today-class-details .class-room {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .today-class-details .today-class-meta {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    margin: 0;
+  }
+  .today-class-details .class-coach {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    margin: 0;
+  }
+}
+@media (max-width: 599px) {
+  .today-attention-list > li {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .today-attention-list > li > div {
+    flex-basis: 100%;
+  }
+  .today-trial-list > article {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .today-class-list > article {
+    align-items: flex-start;
+  }
+  .today-class-list > article > .text-link {
+    min-height: 44px;
+  }
+}
+
+.today-attention,
+.today-classes,
+.today-trials {
+  gap: 12px;
+}
+.today-metric-footer {
+  min-height: 0;
+}

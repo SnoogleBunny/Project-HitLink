@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { publicMembershipActivationFailure } from "./public-membership-failures.js";
 import { Prisma, type PrismaClient, type InvoiceEvidence, prisma, FinancialError,
   requirePublicWorkspace, readPublicParticipant, publicEnrollmentFormsTx, requireFinancialPayer,
   lockClassSchedule, lockFinancialAccount, reserveFinancialOperation, transitionFinancialOperation, queueFinancialReview,
@@ -57,14 +58,15 @@ export function createStripePublicMembershipGateway(stripe = paymentProvider()):
   };
 }
 async function financialLock(tx: Prisma.TransactionClient, workspaceId: string) { await lockClassSchedule(tx, workspaceId); await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`family-access:${workspaceId}`}))`; await lockFinancialAccount(tx, workspaceId); }
-async function enrollmentAuthority(tx: Prisma.TransactionClient, workspaceId: string, enrollmentId: string, actorUserId: string, validateForms: boolean) {
+async function enrollmentAuthority(tx: Prisma.TransactionClient, workspaceId: string, enrollmentId: string, actorUserId: string, validateForms: boolean, now = new Date()) {
   const enrollment = await tx.publicEnrollment.findFirst({ where: { id: enrollmentId, workspaceId, kind: "MEMBERSHIP" } });
   if (!enrollment?.verifiedAt || !enrollment.memberId) throw new FinancialError("Verify the registration account before payment.");
+  if (validateForms && !await tx.member.findFirst({ where: { id: enrollment.memberId, workspaceId, archivedAt: null }, select: { id: true } })) throw new FinancialError("Ask the gym to reactivate this participant before purchasing a membership.");
   const participant = readPublicParticipant(enrollment);
   if (participant.accountUserId !== actorUserId || !participant.payerMemberId) throw new FinancialError("Sign in with the verified registration account.");
   const identity = await requireFinancialPayer(tx, { workspaceId, actorUserId, payerMemberId: participant.payerMemberId, beneficiaryMemberId: enrollment.memberId });
   if (participant.guardianId && !await tx.memberPortalGrant.findFirst({ where: { workspaceId, userId: actorUserId, memberId: enrollment.memberId, guardianId: participant.guardianId, revokedAt: null, canBook: true, canSign: true, canPay: true } })) throw new FinancialError("The gym must verify your family permissions before this membership can begin.");
-  if (validateForms && (await publicEnrollmentFormsTx(tx, enrollment, actorUserId)).some((form) => !form.signed)) throw new FinancialError("Complete every current required form before paying for this membership.");
+  if (validateForms && (await publicEnrollmentFormsTx(tx, enrollment, actorUserId, false, now)).some((form) => !form.signed)) throw new FinancialError("Complete every current required form before paying for this membership.");
   return { enrollment, participant, identity };
 }
 function validateReturnUrl(value: string) {
@@ -77,8 +79,8 @@ export async function startPublicMembershipCheckout(args: { workspaceId: string;
   const db = args.db ?? prisma, now = args.now ?? new Date(), returnUrl = validateReturnUrl(args.returnUrl);
   const operation = await db.$transaction(async (tx) => {
     await financialLock(tx, args.workspaceId);
-    const workspace = await requirePublicWorkspace(tx, args.workspaceId);
-    const { enrollment, participant, identity } = await enrollmentAuthority(tx, args.workspaceId, args.enrollmentId, args.actorUserId, true);
+    const workspace = await requirePublicWorkspace(tx, args.workspaceId, now);
+    const { enrollment, participant, identity } = await enrollmentAuthority(tx, args.workspaceId, args.enrollmentId, args.actorUserId, true, now);
     if (enrollment.operationId) return tx.financialOperation.findUniqueOrThrow({ where: { id: enrollment.operationId } });
     if (enrollment.createdAt.getTime() + 24 * 3600000 < now.getTime()) throw new FinancialError("This registration expired. Review the current offer and start again.");
     const accepted = enrollment.acceptedTerms as Prisma.JsonObject | null;
@@ -177,7 +179,7 @@ async function consumePublicMembershipEvidence(db: PrismaClient, operationId: st
       const enrollment = await tx.publicEnrollment.findUniqueOrThrow({ where: { id: request.enrollmentId } });
       if (enrollment.status === "COMPLETE") return { status: "COMPLETE", operationId };
       await requirePublicWorkspace(tx, operation.workspaceId);
-      await enrollmentAuthority(tx, operation.workspaceId, request.enrollmentId, operation.actorUserId!, true);
+      await enrollmentAuthority(tx, operation.workspaceId, request.enrollmentId, operation.actorUserId!, true, now);
       if (membership.status !== "PENDING_PAYMENT_METHOD" || membership.endedAt || membership.frozenFrom || membership.currentMembershipSlot !== "CURRENT" || await tx.membershipLifecycleRequest.findFirst({ where: { membershipId: membership.id, activeSlot: "ACTIVE" } }) || await tx.financialEntitlementHold.findFirst({ where: { workspaceId: membership.workspaceId, targetKind: "MEMBERSHIP", targetId: membership.id, activeSlot: "ACTIVE" } })) throw new FinancialError("Payment settled, but this membership changed before activation. The gym must reconcile access and money.");
       const subscription = evidence.subscription!;
       if (subscription.currentPeriodStart > subscription.startsAt + 60 || subscription.billingAnchor !== subscription.startsAt) throw new FinancialError("The subscription has moved beyond its initial billing period or changed its anchor before registration completed. Review current debt and service dates before activation.");
@@ -191,7 +193,7 @@ async function consumePublicMembershipEvidence(db: PrismaClient, operationId: st
       return { status: "COMPLETE", operationId };
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Payment settled but access needs review.";
+    const message = publicMembershipActivationFailure(error).reason;
     await recordReview(db, operation.id, message);
     return { status: "REVIEW_REQUIRED", operationId, message: "Your payment was received. The gym must review this registration before access can begin." };
   }

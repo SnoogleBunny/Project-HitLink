@@ -1,4 +1,4 @@
-import { prisma, lockClassSchedule, snapshotPunchCardTerms, type Prisma } from "@flowstate/db";
+import { readDatabaseFailure, prisma, lockClassSchedule, snapshotPunchCardTerms, type Prisma } from "@flowstate/db";
 
 const currencyPattern = /^[a-z]{3}$/;
 
@@ -343,22 +343,11 @@ async function validateProgramRestrictions(args: {
 }
 
 function isWorkspaceNameUniqueConstraint(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const maybeError = error as {
-    code?: string;
-    meta?: {
-      target?: string[];
-    };
-  };
-
-  return (
-    maybeError.code === "P2002" &&
-    Array.isArray(maybeError.meta?.target) &&
-    maybeError.meta.target.includes("workspaceId") &&
-    maybeError.meta.target.includes("name")
+  const failure = readDatabaseFailure(error);
+  return Boolean(
+    failure?.code === "P2002" &&
+    failure.target?.includes("workspaceId") &&
+    failure.target?.includes("name"),
   );
 }
 

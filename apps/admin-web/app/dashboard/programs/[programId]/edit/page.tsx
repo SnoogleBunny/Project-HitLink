@@ -1,3 +1,4 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@flowstate/db";
@@ -5,13 +6,6 @@ import { AdminShell } from "../../../../_components/admin-shell";
 import { requireOwnerWorkspaceContext } from "../../../../../lib/owner-workspace";
 import { archiveProgramAction } from "../../actions";
 import { ProgramEditForm } from "../../program-edit-form";
-
-function formatDate(value: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
-}
 
 export default async function EditProgramPage({
   params,
@@ -22,6 +16,14 @@ export default async function EditProgramPage({
 }) {
   const { programId } = await params;
   const { session, workspace } = await requireOwnerWorkspaceContext();
+  const locale = resolveDisplayLocale(workspace.settings?.locale);
+  function formatDate(value: Date): string {
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(value);
+  }
+
   const program = await prisma.program.findFirst({
     where: {
       id: programId,
@@ -72,13 +74,18 @@ export default async function EditProgramPage({
             </div>
             <div>
               <dt>Archived at</dt>
-              <dd>{program.archivedAt ? formatDate(program.archivedAt) : "Not archived"}</dd>
+              <dd>
+                {program.archivedAt
+                  ? formatDate(program.archivedAt)
+                  : "Not archived"}
+              </dd>
             </div>
           </dl>
 
           {program.archivedAt ? (
             <p className="empty-state">
-              This program is already archived. Restore is intentionally deferred.
+              This program is already archived. Restore is intentionally
+              deferred.
             </p>
           ) : (
             <form action={archiveProgramAction} className="inline-form">

@@ -88,13 +88,11 @@ describe("onboardingAction", () => {
     });
 
     expect(redirectMock).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith({
+    expect(warnSpy).toHaveBeenCalledExactlyOnceWith({
       event: "owner_onboarding_blocked_inactive_membership",
-      userId: "user_1",
-      email: "owner@example.com",
-      workspaceUserId: "workspace_user_1",
-      isActive: false,
+      reason: "inactive-membership",
     });
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toMatch(/owner@example.com|user_1|workspace_user_1/);
 
     warnSpy.mockRestore();
   });
@@ -125,7 +123,10 @@ describe("onboardingAction", () => {
           billingStatus: "Active subscriptions",
           scheduleComplexity: "Seven days a week",
           formsAndWaivers: "Adult and child waivers",
-          dataScope: ["Members and contact details", "Programs and weekly schedule"],
+          dataScope: [
+            "Members and contact details",
+            "Programs and weekly schedule",
+          ],
           accessInstructions: "Exports are ready.",
         },
       }),
@@ -149,5 +150,84 @@ describe("onboardingAction", () => {
     ).rejects.toThrow("NEXT_REDIRECT:/dashboard");
 
     expect(redirectMock).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("creates a clean coaching setup from the current owner without legacy fields or posted actor authority", async () => {
+    const form = new FormData();
+    for (const [key, value] of Object.entries({
+      onboardingKind: "NEW_BUSINESS",
+      workspaceName: "Virtual coaching",
+      timezone: "UTC",
+      serviceMode: "COACHING",
+      currency: "cad",
+      locale: "en-CA",
+      contactEmail: "owner@example.test",
+      userId: "forged-owner",
+    }))
+      form.set(key, value);
+    createOwnerWorkspaceOnboardingMock.mockResolvedValue({
+      status: "created",
+      workspaceId: "new-business",
+    });
+    await expect(onboardingAction({ error: null }, form)).rejects.toThrow(
+      "NEXT_REDIRECT:/dashboard/setup",
+    );
+    expect(createOwnerWorkspaceOnboardingMock).toHaveBeenCalledWith({
+      input: expect.objectContaining({
+        userId: "user_1",
+        kind: "NEW_BUSINESS",
+        serviceMode: "COACHING",
+        workspaceName: "Virtual coaching",
+        timezone: "UTC",
+        currency: "cad",
+        locale: "en-CA",
+        contactEmail: "owner@example.test",
+      }),
+    });
+  });
+
+  it("rejects unsupported new-business configuration before any workspace is written", async () => {
+    const form = new FormData();
+    for (const [key, value] of Object.entries({
+      onboardingKind: "NEW_BUSINESS",
+      workspaceName: "Virtual coaching",
+      timezone: "UTC",
+      serviceMode: "COACHING",
+      currency: "",
+      locale: "en-CA",
+      contactEmail: "owner@example.test",
+    }))
+      form.set(key, value);
+    expect((await onboardingAction({ error: null }, form)).error).toContain(
+      "currency",
+    );
+    expect(createOwnerWorkspaceOnboardingMock).not.toHaveBeenCalled();
+    form.set("workspaceName", "");
+    expect(await onboardingAction({ error: null }, form)).toEqual({
+      error: "Business name and timezone are required.",
+    });
+  });
+
+  it("does not read a session email accessor when logging the expected inactive-membership outcome", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const email = vi.fn(() => { throw new Error("PRIVATE_SESSION_EMAIL"); });
+    requireOnboardingSessionMock.mockResolvedValue(Object.defineProperty({ userId: "PRIVATE_ACTOR_ID" }, "email", { get: email }));
+    createOwnerWorkspaceOnboardingMock.mockResolvedValue({ status: "blocked", message: "Contact support before creating another workspace.", workspaceUserId: "PRIVATE_MEMBERSHIP_ID", isActive: false });
+    try {
+      expect(await onboardingAction({ error: null }, buildFormData())).toEqual({ error: "Contact support before creating another workspace." });
+      expect(email).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledExactlyOnceWith({ event: "owner_onboarding_blocked_inactive_membership", reason: "inactive-membership" });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain("PRIVATE_");
+      expect(redirectMock).not.toHaveBeenCalled();
+    } finally { warn.mockRestore(); }
+  });
+
+  it("returns the same blocked inline response when its diagnostic sink fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => { throw new Error("PRIVATE_LOG_SINK"); });
+    createOwnerWorkspaceOnboardingMock.mockResolvedValue({ status: "blocked", message: "Contact support before creating another workspace.", workspaceUserId: "workspace_user_1", isActive: false });
+    try {
+      expect(await onboardingAction({ error: null }, buildFormData())).toEqual({ error: "Contact support before creating another workspace." });
+      expect(redirectMock).not.toHaveBeenCalled();
+    } finally { warn.mockRestore(); }
   });
 });

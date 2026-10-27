@@ -1,16 +1,12 @@
+import { resolveWorkspaceClockTimezone } from "./workspace-timezones.js";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { assertStaffNotOnLeave, StaffLeaveError } from "./staff-leave.js";
+import { StaffLeaveError } from "./staff-leave.js";
 import {
   Prisma,
   PrismaClient,
   type CoachingEnrollment,
-  type CoachingProgramVersion,
 } from "@prisma/client";
-import {
-  classOccurrenceInclude,
-  lockClassSchedule,
-  resolveClassOccurrence,
-} from "./class-occurrences.js";
+import { lockClassSchedule } from "./class-occurrences.js";
 import {
   addDays,
   getWorkspaceDateString,
@@ -33,7 +29,15 @@ import {
   coachingPayerCommands,
   executeCoachingPayer,
 } from "./coaching-payer.js";
+import {
+  lockStaffAuthorityTx,
+  normalizeAuthoritySerializationError,
+} from "./staff-access.js";
 
+import { readCoachingBookingPolicyTx, requireCoachingPolicySlotTx } from "./coaching-booking-settings.js";
+import { CoachingBookingPolicyError } from "./coaching-booking-policy.js";
+import { findCoachingResourceConflictTx, coachingPresaleTx } from "./coaching-availability.js";
+import { parseStaffLeaveTime } from "./staff-leave.js";
 export interface CoachingActor {
   workspaceId: string;
   userId: string;
@@ -46,10 +50,6 @@ const globalCoaching = globalThis as typeof globalThis & {
 const prisma = globalCoaching.coachingPrisma ?? new PrismaClient({ log: [] });
 globalCoaching.coachingPrisma = prisma;
 type Tx = Prisma.TransactionClient;
-type Enrollment = CoachingEnrollment & {
-  programVersion: CoachingProgramVersion;
-  currentCoach?: { isActive: boolean } | null;
-};
 export class CoachingError extends Error {}
 function fail(message: string): never {
   throw new CoachingError(message);
@@ -93,7 +93,7 @@ export function isCoachingAdult(
   return eighteenth <= localDate;
 }
 export function coachingStatus(
-  enrollment: Enrollment,
+  enrollment: Pick<CoachingEnrollment, "closedAt" | "status" | "acceptedAt" | "contactVerifiedAt" | "currentCoachWorkspaceUserId" | "paymentState" | "timezone" | "startsOn" | "endsOn" | "pauseStartsOn" | "pauseEndsOn"> & { currentCoach?: { isActive: boolean } | null },
   now = new Date(),
 ): string {
   if (enrollment.closedAt) return "CLOSED";
@@ -171,6 +171,13 @@ async function identity(db: Tx, actor: CoachingActor) {
   return { staff, member };
 }
 async function requireCoach(db: Tx, id: string, workspaceId: string) {
+  // The candidate coach may have been deactivated while this command waited
+  // on the schedule lock. Lock the exact membership before its active-role read.
+  try {
+    await db.$queryRaw`SELECT id FROM workspace_users WHERE id=${id} AND "workspaceId"=${workspaceId} FOR SHARE`;
+  } catch (error) {
+    throw normalizeAuthoritySerializationError(error);
+  }
   return (
     (await db.workspaceUser.findFirst({
       where: {
@@ -301,6 +308,18 @@ export async function runCoachingCommand(
     prisma.$transaction(
       async (db) => {
         await lockClassSchedule(db, actor.workspaceId);
+        await lockStaffAuthorityTx(db, actor);
+        if (command.enrollmentId) {
+          try {
+            // An active coach can lose this client without losing their gym role.
+            // Exact parent/assignment locks force a whole-command retry when a
+            // handoff won after this Serializable transaction took its snapshot.
+            await db.$queryRaw`SELECT id FROM coaching_enrollments WHERE id=${command.enrollmentId} AND "workspaceId"=${actor.workspaceId} FOR SHARE`;
+            await db.$queryRaw`SELECT a.id FROM coaching_assignments a JOIN coaching_enrollments e ON e.id=a."enrollmentId" WHERE e.id=${command.enrollmentId} AND e."workspaceId"=${actor.workspaceId} ORDER BY a.id FOR SHARE OF a`;
+          } catch (error) {
+            throw normalizeAuthoritySerializationError(error);
+          }
+        }
         const who = await identity(db, actor);
         const prior = await db.coachingEvent.findUnique({
           where: {
@@ -386,6 +405,7 @@ export async function runCoachingCommand(
     try {
       return await transact();
     } catch (error) {
+      if (error instanceof CoachingBookingPolicyError || error instanceof StaffLeaveError) throw new CoachingError(error.message);
       if (
         !(error instanceof Prisma.PrismaClientKnownRequestError) ||
         !["P2034", "P2002"].includes(error.code) ||
@@ -505,13 +525,14 @@ async function execute(
       fail("Only the owner can offer a program.");
     const member =
       (await db.member.findFirst({
-        where: { id: String(input.memberId), workspaceId: actor.workspaceId },
+        where: { id: String(input.memberId), workspaceId: actor.workspaceId, archivedAt: null },
         include: { user: true },
       })) ?? fail("Client not found.");
     const location =
       (await db.location.findUnique({
         where: { workspaceId: actor.workspaceId },
       })) ?? fail("Set the workspace timezone first.");
+    location.timezone = await resolveWorkspaceClockTimezone({ workspaceId: actor.workspaceId, baselineTimezone: location.timezone, now, db });
     if (
       !member.user ||
       !isCoachingAdult(
@@ -588,8 +609,16 @@ async function execute(
       });
       return slot.id;
     }
-    const startsAt = instant(input.startsAt),
-      endsAt = instant(input.endsAt);
+    const localInstant = async (value:unknown) => {
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(String(value ?? ""))) return instant(value);
+      const location = await db.location.findUnique({where:{workspaceId:actor.workspaceId}});
+      if(!location)fail("Set the business timezone before publishing appointments.");
+      const date=String(value).slice(0,10), zones=await db.workspaceTimezoneRevision.findMany({where:{workspaceId:actor.workspaceId},orderBy:{version:"asc"}});
+      const timezone = (await import("./workspace-timezones.js")).timezoneForOccurrenceDate(location.timezone,zones,date);
+      return parseStaffLeaveTime(String(value),timezone);
+    };
+    const startsAt = await localInstant(input.startsAt),
+      endsAt = await localInstant(input.endsAt);
     if (
       startsAt <= now ||
       endsAt <= startsAt ||
@@ -617,7 +646,9 @@ async function execute(
     }
     if (!roomId && !virtualUrl)
       fail("Choose a room or provide a private meeting link.");
-    const bufferMinutes = integer(input.bufferMinutes ?? 0, 0, 240, "Buffer");
+    const explicitBuffer = integer(input.bufferMinutes ?? 0, 0, 2147483647, "Buffer");
+    const policy = await requireCoachingPolicySlotTx(db, actor.workspaceId, {startsAt,endsAt,bufferMinutes:explicitBuffer},now);
+    const bufferMinutes=policy.bufferMinutes;
     await ensureAppointmentFree(db, actor.workspaceId, { coachWorkspaceUserId: who.staff.id, roomId, startsAt, endsAt, bufferMinutes });
     return (
       await db.coachingAvailability.create({
@@ -640,6 +671,14 @@ async function execute(
   const ctx = await access(db, actor, command.enrollmentId ?? "");
   const e = ctx.enrollment;
   expected(e.version, command.expectedVersion);
+  if (
+    ["proposePlan", "acceptPlan"].includes(kind) && e.paymentId &&
+    await db.paymentDisputeEvent.findFirst({ where: {
+      workspaceId: actor.workspaceId, kind: "ACCESS_OUTCOME_REVIEWED",
+      after: { path: ["closedEnrollmentIds"], array_contains: [e.id] },
+      dispute: { allocations: { some: { paymentId: e.paymentId } } },
+    }, select: { id: true } })
+  ) fail("This program's original funding was retired after a payment dispute. A new verified purchase is required before its plan can be restarted.");
   if (coachingSettlementCommands.has(kind))
     return executeCoachingSettlement(db, actor, command);
   const affectsEntitlement = [
@@ -671,7 +710,7 @@ async function execute(
     }))
   ) {
     fail(
-      "A refund or credit is being reconciled for this program. Delivery and appointment changes are held until its outcome is known.",
+      "A refund, credit or payment dispute is being reconciled for this program. Delivery and appointment changes are held until its outcome is known.",
     );
   }
   const bump = async (
@@ -869,6 +908,7 @@ async function execute(
     const acceptedIntake = await db.coachingIntake.findUniqueOrThrow({
       where: { enrollmentId: e.id },
     });
+    const presale = version.appointmentUnits>0 ? await coachingPresaleTx(db,{...e,programVersion:version,startsOn,endsOn},now) : null;
     await db.coachingAcceptedPlan.create({
       data: {
         workspaceId: actor.workspaceId,
@@ -879,7 +919,7 @@ async function execute(
         startsOn,
         endsOn,
         timezone: e.timezone,
-        snapshot: JSON.parse(JSON.stringify(version)),
+        snapshot: JSON.parse(JSON.stringify({...version,...(presale ? {appointmentBookingDisclosure:presale.disclosure} : {})})),
         agreement: {
           acceptedTerms: true,
           acceptedAt: now.toISOString(),
@@ -1056,6 +1096,8 @@ async function execute(
       fail("Finish program acceptance and payment before booking.");
     if (!e.programVersion.appointmentUnits)
       fail("This program has no appointments.");
+    try { await db.$queryRaw`SELECT id FROM coaching_availability WHERE id=${String(input.availabilityId)} AND "workspaceId"=${actor.workspaceId} FOR SHARE`; }
+    catch(error){throw normalizeAuthoritySerializationError(error);}
     const slot =
       (await db.coachingAvailability.findFirst({
         where: {
@@ -1131,16 +1173,19 @@ async function execute(
       })) >= e.programVersion.appointmentUnits
     )
       fail("All included appointment units are used or reserved.");
-    await ensureAppointmentFree(db, actor.workspaceId, slot, previous?.id);
+    const bookingRules=await requireCoachingPolicySlotTx(db,actor.workspaceId,slot,now);
+    const effectiveSlot={...slot,bufferMinutes:bookingRules.bufferMinutes};
+    await ensureAppointmentFree(db, actor.workspaceId, effectiveSlot, previous?.id);
     const data = {
       availabilityId: slot.id,
       coachWorkspaceUserId: slot.coachWorkspaceUserId,
       roomId: slot.roomId,
       startsAt: slot.startsAt,
       endsAt: slot.endsAt,
-      bufferMinutes: slot.bufferMinutes,
+      bufferMinutes: effectiveSlot.bufferMinutes,
       virtualUrl: slot.virtualUrl,
       policySnapshot: {
+        bookingRules:bookingRules.bookingRules,
         programVersionId: e.programVersionId,
         cancellationHours: e.programVersion.cancellationHours,
         noShowGraceMinutes: e.programVersion.noShowGraceMinutes,
@@ -1516,98 +1561,9 @@ async function execute(
   return fail("Unsupported coaching action.");
 }
 
-async function ensureAppointmentFree(
-  db: Tx,
-  workspaceId: string,
-  slot: {
-    coachWorkspaceUserId: string;
-    roomId: string | null;
-    startsAt: Date;
-    endsAt: Date;
-    bufferMinutes: number;
-  },
-  excludedId?: string,
-) {
-  const from = new Date(slot.startsAt.getTime() - slot.bufferMinutes * 60000),
-    until = new Date(slot.endsAt.getTime() + slot.bufferMinutes * 60000);
-  try {
-    await assertStaffNotOnLeave(db, { workspaceId, coachWorkspaceUserId: slot.coachWorkspaceUserId, startsAt: from, endsAt: until });
-  } catch (error) {
-    if (error instanceof StaffLeaveError) fail(error.message);
-    throw error;
-  }
-  const conflicts = await db.coachingAppointment.findMany({
-    where: {
-      workspaceId,
-      id: excludedId ? { not: excludedId } : undefined,
-      status: { in: ["HELD", "BOOKED"] },
-      OR: [
-        { coachWorkspaceUserId: slot.coachWorkspaceUserId },
-        ...(slot.roomId ? [{ roomId: slot.roomId }] : []),
-      ],
-      startsAt: { lt: new Date(until.getTime() + 240 * 60000) },
-      endsAt: { gt: new Date(from.getTime() - 240 * 60000) },
-    },
-  });
-  if (
-    conflicts.some(
-      (item) =>
-        item.startsAt.getTime() - item.bufferMinutes * 60000 <
-          until.getTime() &&
-        item.endsAt.getTime() + item.bufferMinutes * 60000 > from.getTime(),
-    )
-  )
-    fail(
-      "The coach or room was booked for another appointment. Choose another time.",
-    );
-  const location = await db.location.findUniqueOrThrow({
-    where: { workspaceId },
-  });
-  const templates = await db.classTemplate.findMany({
-    where: { workspaceId, archivedAt: null },
-    include: classOccurrenceInclude,
-  });
-  for (
-    let day = getWorkspaceDateString(from, location.timezone);
-    day <= getWorkspaceDateString(until, location.timezone);
-    day = addDays(day, 1)
-  ) {
-    for (const template of templates) {
-      const occurrence = resolveClassOccurrence({
-        template,
-        scheduledForDate: day,
-      });
-      if (
-        !occurrence ||
-        occurrence.status === "CANCELLED" ||
-        (occurrence.coachWorkspaceUserId !== slot.coachWorkspaceUserId &&
-          (!slot.roomId || occurrence.roomId !== slot.roomId))
-      )
-        continue;
-      const startsAt = getZonedDateTimeAsUtc({
-        dateString: day,
-        minutes: occurrence.startTimeMinutes,
-        timezone: location.timezone,
-      });
-      const endsAt = getZonedDateTimeAsUtc({
-        dateString: day,
-        minutes: occurrence.endTimeMinutes,
-        timezone: location.timezone,
-      });
-      if (startsAt < until && endsAt > from)
-        fail("The coach or room has a class at that time.");
-    }
-  }
-  const lesson = await db.privateLessonSlot.findFirst({
-    where: {
-      workspaceId,
-      coachWorkspaceUserId: slot.coachWorkspaceUserId,
-      status: { not: "CANCELLED" },
-      startsAt: { lt: until },
-      endsAt: { gt: from },
-    },
-  });
-  if (lesson) fail("The coach has a private lesson at that time.");
+async function ensureAppointmentFree(db:Tx,workspaceId:string,slot:{coachWorkspaceUserId:string;roomId:string|null;startsAt:Date;endsAt:Date;bufferMinutes:number},excludedId?:string){
+  const conflict=await findCoachingResourceConflictTx(db,workspaceId,slot,excludedId);
+  if(conflict)fail(conflict);
 }
 
 /** Narrow DTOs keep owner operations, member records and author drafts physically separate. */
@@ -1697,6 +1653,7 @@ export async function getCoachingWorkspace(actor: CoachingActor) {
       members,
       rooms,
       availability,
+      bookingRules: who.staff ? await readCoachingBookingPolicyTx(db, actor.workspaceId) : null,
       enrollments: enrollments.map((e) => ({
         id: e.id,
         memberName: e.member.fullName,
@@ -1813,40 +1770,19 @@ export async function getCoachingDetail(
       },
       orderBy: { startsAt: "desc" },
     });
-    const availability =
-      (canRead || ctx.owner) &&
-      e.currentCoachWorkspaceUserId &&
-      e.programVersion.appointmentUnits > 0 &&
-      !e.closedAt
-        ? await db.coachingAvailability.findMany({
-            where: {
-              workspaceId: actor.workspaceId,
-              coachWorkspaceUserId: e.currentCoachWorkspaceUserId,
-              withdrawnAt: null,
-              startsAt: { gt: new Date() },
-              appointments: { none: { status: { in: ["BOOKED", "HELD"] } } },
-            },
-            select: {
-              id: true,
-              startsAt: true,
-              endsAt: true,
-              room: { select: { name: true } },
-            },
-            orderBy: { startsAt: "asc" },
-          })
-        : [];
+    const proposedPlan = canRead && e.proposedProgramVersionId
+      ? await db.coachingProgramVersion.findUnique({where:{id:e.proposedProgramVersionId}}) : null;
+    const bookingAvailability = (canRead || ctx.owner) && !e.closedAt
+      ? await coachingPresaleTx(db,{...e,programVersion:e.programVersion},new Date()) : null;
+    const availability = bookingAvailability?.slots ?? [];
     const deliveryExceptions = ctx.owner
       ? await db.coachingDeliveryException.findMany({
           where: { workspaceId: actor.workspaceId, enrollmentId: e.id },
           orderBy: { localDate: "desc" },
         })
       : [];
-    const proposedPlan =
-      canRead && e.proposedProgramVersionId
-        ? await db.coachingProgramVersion.findUnique({
-            where: { id: e.proposedProgramVersionId },
-          })
-        : null;
+    const proposedBookingAvailability = proposedPlan && (canRead || ctx.owner) && !e.closedAt
+      ? await coachingPresaleTx(db,{...e,programVersion:proposedPlan,startsOn:e.proposedStartsOn??e.startsOn,endsOn:e.proposedEndsOn??e.endsOn},new Date()) : bookingAvailability;
     if (canRead)
       await db.coachingRecordAccessEvent.create({
         data: {
@@ -1910,6 +1846,8 @@ export async function getCoachingDetail(
       appointments,
       deliveryExceptions,
       availability,
+      bookingAvailability,
+      proposedBookingAvailability,
       includedUnits: e.programVersion.appointmentUnits,
       reservedOrUsedUnits: appointments.filter((a) =>
         ["HELD", "CONSUMED", "DISPUTED"].includes(a.unitState),

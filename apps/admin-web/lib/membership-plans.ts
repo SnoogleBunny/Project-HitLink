@@ -1,5 +1,5 @@
 import { formatMoney as formatKnownMoney } from "@flowstate/ui/money";
-import { prisma, defaultMembershipLifecyclePolicy, parseMembershipLifecyclePolicy, type MembershipLifecyclePolicy, type MembershipPlan } from "@flowstate/db";
+import { readDatabaseFailure, prisma, defaultMembershipLifecyclePolicy, parseMembershipLifecyclePolicy, type MembershipLifecyclePolicy, type MembershipPlan } from "@flowstate/db";
 
 const currencyPattern = /^[a-z]{3}$/;
 
@@ -172,22 +172,11 @@ function sanitizeMembershipPlanInput(input: MembershipPlanFormInput) {
 }
 
 function isPlanNameUniqueConstraint(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const maybeError = error as {
-    code?: string;
-    meta?: {
-      target?: string[];
-    };
-  };
-
-  return (
-    maybeError.code === "P2002" &&
-    Array.isArray(maybeError.meta?.target) &&
-    maybeError.meta.target.includes("workspaceId") &&
-    maybeError.meta.target.includes("name")
+  const failure = readDatabaseFailure(error);
+  return Boolean(
+    failure?.code === "P2002" &&
+    failure.target?.includes("workspaceId") &&
+    failure.target?.includes("name"),
   );
 }
 
@@ -626,7 +615,8 @@ export async function archiveMembershipPlan(args: {
 
 export function formatMembershipPlanPrice(
   plan: Pick<MembershipPlan, "monthlyPriceCents" | "currency">,
+  locale = "en-CA",
 ): string {
-  return formatKnownMoney(plan.monthlyPriceCents, plan.currency);
+  return formatKnownMoney(plan.monthlyPriceCents, plan.currency, locale);
 }
 

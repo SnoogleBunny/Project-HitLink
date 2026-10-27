@@ -6,6 +6,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "./client.js";
 import { lockClassSchedule } from "./class-occurrences.js";
+import { issuePaymentConfirmationTx } from "./payment-confirmations.js";
 import {
   expireDropInBookingPayment,
   finalizeDropInBookingPayment,
@@ -643,6 +644,7 @@ export async function saveCheckoutEvidence(args: {
       throw new FinancialError(
         "This payment has conflicting evidence and needs review.",
       );
+    if (payment) await issuePaymentConfirmationTx(tx, { paymentId: payment.id, description: requestOf(current).name, now });
     if (evidence.customerId && current.payerAccountId)
       await tx.financialAccount.updateMany({
         where: { id: current.payerAccountId, stripeCustomerId: null },

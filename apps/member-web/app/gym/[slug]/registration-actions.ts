@@ -1,13 +1,18 @@
 "use server";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   createSession,
+  consumePublicAuthAttempt,
+  clearSuccessfulPublicAuthLogin,
+  getPublicAuthNetworkIdentity,
+  PublicAuthThrottleError,
   getSession,
   hashPassword,
   MEMBER_SESSION_COOKIE_NAME,
   verifyPassword,
+  validateNewPassword,
 } from "@flowstate/auth";
 import {
   FinancialError,
@@ -58,6 +63,12 @@ export async function publicRegistrationAction(
       return { error: null };
     }
     if (action === "start") {
+      await consumePublicAuthAttempt({
+        email: String(form.get("email") ?? ""),
+        action: "signup",
+        portal: "member",
+        networkIdentity: getPublicAuthNetworkIdentity(await headers()),
+      });
       const [classTemplateId = "", scheduledForDate = ""] = String(
         form.get("bookingOption") ?? "",
       ).split("|");
@@ -115,6 +126,12 @@ export async function publicRegistrationAction(
         if (action === "account") {
           if (!enrollment.verifiedAt)
             throw new PublicEnrollmentError("Verify your email first.");
+          const admission = await consumePublicAuthAttempt({
+            email: enrollment.email,
+            action: "login",
+            portal: "member",
+            networkIdentity: getPublicAuthNetworkIdentity(await headers()),
+          });
           const existing = await prisma.user.findUnique({
             where: { email: enrollment.email },
           });
@@ -134,10 +151,10 @@ export async function publicRegistrationAction(
             throw new PublicEnrollmentError(
               "Enter the password for this email to continue.",
             );
-          if (!existing && (password.length < 12 || password.length > 128))
-            throw new PublicEnrollmentError(
-              "Choose a password between 12 and 128 characters.",
-            );
+          if (!existing) {
+            const passwordError = validateNewPassword(password);
+            if (passwordError) throw new PublicEnrollmentError(passwordError);
+          }
           const identity = await preparePublicEnrollmentIdentity({
             token,
             workspaceId: site.workspaceId,
@@ -149,7 +166,11 @@ export async function publicRegistrationAction(
               userId: identity.userId,
               cookieStore: jar,
               cookieName: MEMBER_SESSION_COOKIE_NAME,
+              ...(existing
+                ? { expectedPasswordHash: existing.passwordHash }
+                : {}),
             });
+            await clearSuccessfulPublicAuthLogin(admission).catch(() => {});
             session = await getSession({
               cookieStore: jar,
               cookieName: MEMBER_SESSION_COOKIE_NAME,
@@ -183,7 +204,11 @@ export async function publicRegistrationAction(
               actorUserId: session.userId,
               ensure: true,
             });
-            setMemberSelectionCookie(jar, site.workspaceId, enrollment.memberId!);
+            setMemberSelectionCookie(
+              jar,
+              site.workspaceId,
+              enrollment.memberId!,
+            );
           } else if (action === "book") {
             const result = await completeVerifiedTrial({
               workspaceId: site.workspaceId,
@@ -225,6 +250,7 @@ export async function publicRegistrationAction(
     revalidatePath(path);
   } catch (error) {
     if (
+      error instanceof PublicAuthThrottleError ||
       error instanceof PublicEnrollmentError ||
       error instanceof FinancialError
     )

@@ -1,8 +1,12 @@
-import type { ReactNode } from "react";
-import { WorkspaceShell } from "@flowstate/ui";
+import { Suspense, type ReactNode } from "react";
+import { WorkspaceShell, WorkspaceLocaleProvider } from "@flowstate/ui";
 import type { MemberPortalContext } from "../../lib/member-auth";
 import { logoutAction } from "../actions/logout";
-import { MemberIdentity, MemberNav } from "./member-nav";
+import {
+  MemberIdentity,
+  MemberNav,
+  type CoachingNavigationContext,
+} from "./member-nav";
 
 interface MemberShellProps {
   children: ReactNode;
@@ -41,37 +45,56 @@ export function MemberWorkspace({
   context,
   memberControl,
   hasCoaching = false,
+  coachingNavigation,
 }: {
   children: ReactNode;
   context: MemberPortalContext;
   memberControl?: ReactNode;
   hasCoaching?: boolean;
+  coachingNavigation?: CoachingNavigationContext;
 }) {
   return (
-    <WorkspaceShell
-      workspaceName={context.workspace.name}
-      contextLabel="Member portal"
-      identity={
-        <MemberIdentity
-          name={context.member.fullName}
-          control={memberControl}
-        />
-      }
-      navigation={<MemberNav hasCoaching={hasCoaching} />}
-      compactNavigation={<MemberNav compact />}
-      account={
-        <>
-          <strong>{context.session.displayName}</strong>
-          <span>{context.session.email}</span>
-          <form action={logoutAction}>
-            <button className="hl-text-link" type="submit">
-              Log out
-            </button>
-          </form>
-        </>
-      }
-    >
-      {children}
-    </WorkspaceShell>
+    <WorkspaceLocaleProvider locale={context.workspace.settings?.locale}>
+      <WorkspaceShell
+        workspaceName={context.workspace.name}
+        contextLabel="Member portal"
+        identity={
+          <MemberIdentity
+            name={context.member.fullName}
+            control={memberControl}
+          />
+        }
+        navigation={
+          <Suspense>
+            <MemberNav
+              hasCoaching={hasCoaching}
+              coachingNavigation={coachingNavigation}
+            />
+          </Suspense>
+        }
+        compactNavigation={
+          <Suspense>
+            <MemberNav
+              compact
+              hasCoaching={hasCoaching}
+              coachingNavigation={coachingNavigation}
+            />
+          </Suspense>
+        }
+        account={
+          <>
+            <strong>{context.session.displayName}</strong>
+            <span>{context.session.email}</span>
+            <form action={logoutAction}>
+              <button className="hl-text-link" type="submit">
+                Log out
+              </button>
+            </form>
+          </>
+        }
+      >
+        {children}
+      </WorkspaceShell>
+    </WorkspaceLocaleProvider>
   );
 }

@@ -38,6 +38,7 @@ describe("session lookup", () => {
     const repository = {
       create: vi.fn(),
       findByTokenHash: vi.fn().mockResolvedValue({
+        id: "stored-session-1",
         userId: "user_1",
         expiresAt: new Date(Date.now() + 60_000),
         email: "owner@example.com",
@@ -91,6 +92,7 @@ describe("session lookup", () => {
     const repository = {
       create: vi.fn(),
       findByTokenHash: vi.fn().mockResolvedValue({
+        id: "stored-session-1",
         userId: "user_1",
         expiresAt: new Date(Date.now() - 1_000),
         email: "owner@example.com",

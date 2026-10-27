@@ -1,17 +1,19 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import Link from "next/link";
 import { prisma } from "@flowstate/db";
 import { AdminShell } from "../../_components/admin-shell";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
 import { RoomCreateForm } from "./room-create-form";
 
-function formatDate(value: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-  }).format(value);
-}
-
 export default async function RoomsPage() {
   const { session, workspace, location } = await requireOwnerWorkspaceContext();
+  const locale = resolveDisplayLocale(workspace.settings?.locale);
+  function formatDate(value: Date): string {
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+    }).format(value);
+  }
+
   const [rooms, archivedRooms] = await Promise.all([
     prisma.room.findMany({
       where: {
@@ -120,7 +122,10 @@ export default async function RoomsPage() {
                   </div>
                   <p>
                     Archived on{" "}
-                    {room.archivedAt ? formatDate(room.archivedAt) : "an earlier date"}.
+                    {room.archivedAt
+                      ? formatDate(room.archivedAt)
+                      : "an earlier date"}
+                    .
                   </p>
                 </div>
 

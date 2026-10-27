@@ -4,7 +4,7 @@ import {
   getWorkspaceDateString,
   parseDateOnlyString,
 } from "@flowstate/db";
-import { Notice } from "@flowstate/ui";
+import { Notice, resolveDisplayLocale } from "@flowstate/ui";
 import Link from "next/link";
 import { MemberShell } from "../../_components/member-shell";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
@@ -22,10 +22,12 @@ export default async function SchedulePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const context = await requireMemberPortalContext();
+  const locale = resolveDisplayLocale(context.workspace.settings?.locale);
   const query = await searchParams;
   const today = getWorkspaceDateString(new Date(), context.location.timezone);
   const [bookings, forms, membership] = await Promise.all([
     listMemberBookings({
+      locale,
       workspaceId: context.workspace.id,
       memberId: context.member.id,
       timezone: context.location.timezone,
@@ -67,6 +69,7 @@ export default async function SchedulePage({
   const outsideWindow = date < normalMin || date > normalMax;
   const [schedule, allowance] = await Promise.all([
     listEligibleSelfServiceOccurrences({
+      locale,
       workspaceId: context.workspace.id,
       memberId: context.member.id,
       timezone: context.location.timezone,
@@ -133,7 +136,9 @@ export default async function SchedulePage({
             </Link>
           }
         >
-          This membership has an unresolved payment or payment setup step.
+          This membership has an unresolved payment or payment setup step. Class
+          packs and coaching keep their own status; each booking checks the
+          selected product and participant.
         </Notice>
       ) : null}
       <ScheduleList

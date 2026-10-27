@@ -1,0 +1,102 @@
+/* Shell widths: phone <768, tablet drawer <1024, rail >=1024.
+   Main-content grids respond to the room left after navigation and padding. */
+#hitlink-prototype{
+ --hl-sidebar-width:224px;
+ --hl-content-max:1440px;
+}
+#hitlink-prototype #hl-main,
+#hitlink-prototype .hl-panel{container:hl-content / inline-size}
+#hitlink-prototype #hl-main .hl-grid,
+#hitlink-prototype #hl-main .hl-grid-3,
+#hitlink-prototype #hl-main .hl-grid-wide{grid-template-columns:minmax(0,1fr)}
+#hitlink-prototype[data-page=a-today] #hl-main .hl-screen-content>.hl-grid{grid-template-columns:minmax(0,1fr)}
+@container hl-content (min-width:760px){
+ #hitlink-prototype #hl-main .hl-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@container hl-content (min-width:840px){
+ #hitlink-prototype #hl-main .hl-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@container hl-content (min-width:900px){
+ #hitlink-prototype #hl-main .hl-grid-wide{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
+ #hitlink-prototype[data-page=a-today] #hl-main .hl-screen-content>.hl-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(min-width:1024px){
+ #hitlink-prototype:not([data-navigation=top]):not([data-role=prospect]) .hl-app{
+  grid-template-columns:var(--hl-sidebar-width) minmax(0,1fr);
+ }
+}
+@media(min-width:1024px) and (max-width:1279px){
+ #hitlink-prototype{--hl-pad:var(--hl-space-inset)}
+}
+@media(min-width:1280px){
+ #hitlink-prototype{--hl-pad:var(--hl-space-section)}
+}
+@media(min-width:1536px){
+ #hitlink-prototype #hl-main>.hl-route-frame{max-width:var(--hl-content-max);margin-inline:auto}
+}
+
+/* Text reflows instead of making targets tiny or clipping essential values. */
+#hitlink-prototype :is(h1,h2,h3,p,dt,dd,th,td,.hl-kicker,.hl-person strong,
+ .hl-workspace strong,.hl-workspace>div>span,.hl-member-name,.hl-account-scope,
+ .hl-public-brand,.hl-mobile-workspace,#hl-breadcrumb){
+ overflow-wrap:anywhere;
+ word-break:normal;
+}
+#hitlink-prototype :is(.hl-pagehead>div,.hl-panel-head,.hl-list-row>div,
+ .hl-person>div,.hl-workspace>div,.hl-member-name,.hl-mobile-workspace,
+ .hl-notice-content,#hl-breadcrumb){min-width:0;max-width:100%}
+#hitlink-prototype .hl-pagehead,
+#hitlink-prototype .hl-list-row{flex-wrap:wrap}
+#hitlink-prototype .hl-pagehead>div:first-child{flex:1 1 280px}
+#hitlink-prototype .hl-pagehead>.hl-row{flex:0 1 auto;max-width:100%}
+#hitlink-prototype #hl-nav>.hl-nav-button{
+ height:auto;
+ min-height:44px;
+ padding-block:var(--hl-space-related);
+ font-size:14px;
+ line-height:1.4;
+ white-space:normal;
+}
+#hitlink-prototype #hl-nav>.hl-nav-button>span{
+ overflow-wrap:anywhere;
+ word-break:normal;
+}
+#hitlink-prototype .hl-topbar{
+ height:auto;
+ min-height:64px;
+ flex-wrap:wrap;
+ padding-block:var(--hl-space-related);
+}
+#hitlink-prototype #hl-breadcrumb{flex:1 1 180px}
+#hitlink-prototype .hl-topbar>[data-member-slot]{flex:0 1 auto;max-width:50%}
+#hitlink-prototype .hl-member-trigger,
+#hitlink-prototype .hl-member-static{
+ min-width:0;
+ max-width:100%;
+ white-space:normal;
+ text-align:left;
+ line-height:1.4;
+}
+#hitlink-prototype .hl-member-label,
+#hitlink-prototype .hl-member-trigger>svg{flex-shrink:0}
+#hitlink-prototype .hl-account-scope{white-space:normal}
+#hitlink-prototype .hl-tag-long .hl-tag-label{overflow-wrap:anywhere;word-break:normal}
+#hitlink-prototype .hl-button{overflow-wrap:anywhere}
+#hitlink-prototype .hl-table-wrap{min-width:0;max-width:100%;overflow-x:auto}
+#hitlink-prototype .hl-detail-list{grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr)}
+#hitlink-prototype .hl-public-header,
+#hitlink-prototype .hl-public-header nav{flex-wrap:wrap}
+@media(max-width:767px){
+ #hitlink-prototype .hl-pagehead>div:first-child{flex:0 1 auto}
+}
+@media(max-width:1023px){
+ #hitlink-prototype:not([data-role=prospect]) .hl-app{grid-template-rows:auto minmax(0,1fr)}
+ #hitlink-prototype .hl-mobile-header{height:auto;flex-wrap:wrap}
+ #hitlink-prototype .hl-mobile-header [data-member-slot]{flex:1 1 120px;min-width:0;max-width:100%}
+ #hitlink-prototype .hl-mobile-header .hl-member-trigger{max-width:100%}
+ #hitlink-prototype #hl-nav>.hl-nav-button{min-height:48px}
+ #hitlink-prototype .hl-theme-button,
+ #hitlink-prototype .hl-input,
+ #hitlink-prototype select:not([multiple]){min-height:44px}
+ #hitlink-prototype .hl-button:not(.ghost){min-height:44px}
+}

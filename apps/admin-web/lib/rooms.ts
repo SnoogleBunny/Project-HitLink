@@ -1,4 +1,4 @@
-import { prisma } from "@flowstate/db";
+import { readDatabaseFailure, prisma } from "@flowstate/db";
 
 export interface RoomFormInput {
   name: string;
@@ -93,22 +93,11 @@ function sanitizeRoomInput(input: RoomFormInput) {
 }
 
 function isRoomNameUniqueConstraint(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const maybeError = error as {
-    code?: string;
-    meta?: {
-      target?: string[];
-    };
-  };
-
-  return (
-    maybeError.code === "P2002" &&
-    Array.isArray(maybeError.meta?.target) &&
-    maybeError.meta.target.includes("locationId") &&
-    maybeError.meta.target.includes("name")
+  const failure = readDatabaseFailure(error);
+  return Boolean(
+    failure?.code === "P2002" &&
+    failure.target?.includes("locationId") &&
+    failure.target?.includes("name"),
   );
 }
 
@@ -212,7 +201,6 @@ export async function updateRoom(args: {
       },
       data: {
         name: input.name,
-        capacity: input.capacity,
         isActive: input.isActive,
       },
     });

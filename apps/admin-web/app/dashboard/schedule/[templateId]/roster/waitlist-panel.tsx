@@ -17,6 +17,8 @@ interface WaitlistRow {
   phone: string | null;
   position: number;
   joinedAt: Date;
+  autoPromotionOptedInAt?: Date | null;
+  lastSkipReason?: string | null;
 }
 
 export function WaitlistPanel({
@@ -39,6 +41,7 @@ export function WaitlistPanel({
 
   return (
     <div className="stack-list">
+      <p>Opted-in eligible members are booked automatically in queue order before both booking and cancellation deadlines. This control retries the same policy; older entries require fresh member or guardian consent.</p>
       {promoteState.error ? <p className="form-error">{promoteState.error}</p> : null}
       {removeState.error ? <p className="form-error">{removeState.error}</p> : null}
 
@@ -62,6 +65,8 @@ export function WaitlistPanel({
               <span className="status-pill">{row.memberStatus}</span>
             </div>
             <p>{row.email ?? row.phone ?? "No contact details"}</p>
+            <p>{row.autoPromotionOptedInAt ? "Automatic booking consent recorded" : "Fresh automatic booking consent needed"}</p>
+            {row.lastSkipReason ? <p>Last skipped: {row.lastSkipReason}</p> : null}
           </div>
 
           <form action={removeAction} className="stack-item-actions">

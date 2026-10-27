@@ -31,6 +31,7 @@ export interface AppSession {
 }
 
 export interface StoredSessionRecord {
+  id: string;
   userId: string;
   expiresAt: Date;
   email: string;
@@ -47,9 +48,20 @@ export interface SessionRepository {
     userId: string;
     tokenHash: string;
     expiresAt: Date;
+    expectedPasswordHash?: string | null;
   }): Promise<void>;
   findByTokenHash(tokenHash: string): Promise<StoredSessionRecord | null>;
   deleteByTokenHash(tokenHash: string): Promise<void>;
+}
+
+export interface CurrentSessionReference {
+  readonly id: string;
+  readonly userId: string;
+}
+
+export interface ResolvedSession {
+  readonly session: AppSession;
+  readonly currentSession: CurrentSessionReference;
 }
 
 interface SessionCookieOptions {
@@ -62,13 +74,26 @@ export type DeleteSessionResult =
   | { status: "no_token" };
 
 export const prismaSessionRepository: SessionRepository = {
-  async create({ userId, tokenHash, expiresAt }) {
-    await prisma.authSession.create({
-      data: {
-        userId,
-        tokenHash,
-        expiresAt,
-      },
+  async create({ userId, tokenHash, expiresAt, expectedPasswordHash }) {
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe(
+        "SELECT pg_advisory_xact_lock(hashtext($1))::text",
+        `account-security:${userId}`,
+      );
+      const current = await tx.user.findUnique({
+        where: { id: userId },
+        select: { passwordHash: true },
+      });
+      if (
+        !current ||
+        (expectedPasswordHash !== undefined &&
+          current.passwordHash !== expectedPasswordHash)
+      )
+        throw new AuthError(
+          "UNAUTHENTICATED",
+          "Your account changed. Sign in again with your current password.",
+        );
+      await tx.authSession.create({ data: { userId, tokenHash, expiresAt } });
     });
   },
   async findByTokenHash(tokenHash) {
@@ -105,6 +130,7 @@ export const prismaSessionRepository: SessionRepository = {
     }
 
     return {
+      id: record.id,
       userId: record.userId,
       expiresAt: record.expiresAt,
       email: record.user.email,
@@ -193,6 +219,7 @@ export async function createSession(args: {
   cookieStore: SessionCookieStore;
   repository?: SessionRepository;
   cookieName?: string;
+  expectedPasswordHash?: string | null;
 }): Promise<void> {
   const repository = args.repository ?? prismaSessionRepository;
   const token = randomBytes(32).toString("hex");
@@ -203,6 +230,9 @@ export async function createSession(args: {
     userId: args.userId,
     tokenHash,
     expiresAt,
+    ...(args.expectedPasswordHash !== undefined
+      ? { expectedPasswordHash: args.expectedPasswordHash }
+      : {}),
   });
 
   setSessionCookie(args.cookieStore, token, expiresAt, {
@@ -210,27 +240,39 @@ export async function createSession(args: {
   });
 }
 
-export async function getSessionFromToken(args: {
+async function resolveSessionFromToken(args: {
   token: string;
   repository?: SessionRepository;
-}): Promise<AppSession | null> {
-  if (!args.token) {
-    return null;
-  }
-
+}): Promise<ResolvedSession | null> {
+  if (!args.token) return null;
   const repository = args.repository ?? prismaSessionRepository;
   const record = await repository.findByTokenHash(hashSessionToken(args.token));
-
-  if (!record) {
-    return null;
-  }
-
+  if (!record) return null;
   if (record.expiresAt.getTime() <= Date.now()) {
     await repository.deleteByTokenHash(hashSessionToken(args.token));
     return null;
   }
+  // The reference must come from the persisted session, never from user identity.
+  if (!record.id?.trim()) return null;
+  const session = buildAppSession(record);
+  return session ? { session, currentSession: { id: record.id, userId: record.userId } } : null;
+}
 
-  return buildAppSession(record);
+export async function getSessionFromToken(args: {
+  token: string;
+  repository?: SessionRepository;
+}): Promise<AppSession | null> {
+  return (await resolveSessionFromToken(args))?.session ?? null;
+}
+
+/** Server command identity only. Never serialize currentSession into product data. */
+export async function getSessionWithReference(args: {
+  cookieStore: SessionCookieStore;
+  repository?: SessionRepository;
+  cookieName?: string;
+}): Promise<ResolvedSession | null> {
+  const token = args.cookieStore.get(getCookieName(args.cookieName))?.value?.trim() ?? "";
+  return resolveSessionFromToken({ token, repository: args.repository });
 }
 
 export async function getSession(args: {
@@ -238,14 +280,7 @@ export async function getSession(args: {
   repository?: SessionRepository;
   cookieName?: string;
 }): Promise<AppSession | null> {
-  const token =
-    args.cookieStore.get(getCookieName(args.cookieName))?.value?.trim() ?? "";
-  const session = await getSessionFromToken({
-    token,
-    repository: args.repository,
-  });
-
-  return session;
+  return (await getSessionWithReference(args))?.session ?? null;
 }
 
 export async function deleteSession(args: {
@@ -304,10 +339,7 @@ export async function requireRole(args: {
   }
 
   if (!args.allowedRoles.includes(session.role)) {
-    throw new AuthError(
-      "UNAUTHORIZED",
-      "Your role cannot access this route.",
-    );
+    throw new AuthError("UNAUTHORIZED", "Your role cannot access this route.");
   }
 
   return session;

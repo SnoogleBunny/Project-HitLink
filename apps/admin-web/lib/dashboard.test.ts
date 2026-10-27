@@ -92,7 +92,10 @@ function buildTemplateRecord() {
   };
 }
 
-function buildBookingRecord(index: number, bookingType: "MEMBERSHIP" | "TRIAL") {
+function buildBookingRecord(
+  index: number,
+  bookingType: "MEMBERSHIP" | "TRIAL",
+) {
   return {
     id: `booking_${index}`,
     memberId: `member_${index}`,
@@ -127,13 +130,11 @@ function createDashboardDb(args?: {
   }>;
 }): DashboardTestDb {
   const templates = args?.templates ?? [buildTemplateRecord()];
-  const bookings =
-    args?.bookings ??
-    [
-      buildBookingRecord(1, "TRIAL"),
-      buildBookingRecord(2, "MEMBERSHIP"),
-      buildBookingRecord(3, "MEMBERSHIP"),
-    ];
+  const bookings = args?.bookings ?? [
+    buildBookingRecord(1, "TRIAL"),
+    buildBookingRecord(2, "MEMBERSHIP"),
+    buildBookingRecord(3, "MEMBERSHIP"),
+  ];
   const attendanceRecords = Array.from(
     {
       length: args?.attendanceCount ?? 1,
@@ -149,6 +150,15 @@ function createDashboardDb(args?: {
   );
   const db = {
     $transaction: vi.fn(async (callback) => callback(db)),
+    workspaceUser: { findFirst: vi.fn().mockResolvedValue(null) },
+    attendanceOperation: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: "operation_1" }),
+    },
+    attendanceEvent: {
+      findMany: vi.fn().mockResolvedValue([]),
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
     program: {
       count: vi.fn().mockResolvedValue(2),
     },
@@ -209,6 +219,7 @@ function createDashboardDb(args?: {
       }),
     },
     attendanceRecord: {
+      findFirst: vi.fn().mockResolvedValue(null),
       findMany: vi.fn().mockResolvedValue(attendanceRecords),
       upsert: vi.fn().mockResolvedValue({
         id: "attendance_1",
@@ -319,8 +330,7 @@ describe("dashboard aggregation", () => {
     ]);
     expect(summary.attentionItems[0]).toMatchObject({
       title: "Payment needs action: Maya Chen",
-      context:
-        "Payment Failed · Failed May 22, 2026 · Grace ends May 29, 2026",
+      context: "Payment Failed · Failed May 22, 2026 · Grace ends May 29, 2026",
       href: "/dashboard/billing",
       severity: "danger",
     });

@@ -1,6 +1,16 @@
+import { EmergencyContacts, resolveDisplayLocale } from "@flowstate/ui";
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { resolveRequiredFormStatusesForMember, getMemberProgramProgress } from "@flowstate/db";
+import {
+  readOwnerMemberServiceSummary,
+  resolveRequiredFormStatusesForMember,
+  getMemberProgramProgress,
+  getMemberEmergencyProfile,
+  getMemberProfileHistory,
+  getMemberOperations,
+  MemberOperationsError,
+} from "@flowstate/db";
 import { AdminShell } from "../../../_components/admin-shell";
 import { formatMinutesAsTime } from "../../../../lib/class-templates";
 import {
@@ -12,26 +22,14 @@ import { getMemberProfile } from "../../../../lib/members";
 import { requireOwnerWorkspaceContext } from "../../../../lib/owner-workspace";
 import { GuardianLinkForm } from "../guardian-link-form";
 import { MemberEditForm } from "../member-form";
+import { MemberOperationsPanel } from "./operations-panel";
+import { MemberServiceSummaryPanel } from "../member-service-summary";
 import { PortalAccessForm } from "../portal-access-form";
 import { FamilyAccessForm } from "../family-access-form";
 import { getFamilyPortalAccess } from "../../../../lib/family-portal-access";
-
-function formatDate(value: Date | null): string {
-  if (!value) {
-    return "Not set";
-  }
-
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-  }).format(value);
-}
-
-function formatDateTime(value: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
-}
+import { getMemberArchive } from "../../../../lib/member-archive";
+import { MemberArchiveForm } from "../archive-form";
+import { changeEmergencyContactAction } from "../emergency-actions";
 
 function formatStatus(value: string): string {
   return value.charAt(0) + value.slice(1).toLowerCase();
@@ -46,18 +44,65 @@ export default async function MemberProfilePage({
 }) {
   const { memberId } = await params;
   const { session, workspace } = await requireOwnerWorkspaceContext();
-  const [member, forms, familyAccess, progress] = await Promise.all([
-    getMemberProfile({
-      workspaceId: workspace.id,
-      memberId,
-    }),
-    resolveRequiredFormStatusesForMember({
-      workspaceId: workspace.id,
-      memberId,
-    }),
-    getFamilyPortalAccess(workspace.id, memberId),
-    getMemberProgramProgress({workspaceId:workspace.id,userId:session.userId},memberId),
-  ]);
+  const locale = resolveDisplayLocale(workspace.settings?.locale);
+  function formatDate(value: Date | null): string {
+    if (!value) {
+      return "Not set";
+    }
+
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+    }).format(value);
+  }
+
+  function formatDateTime(value: Date): string {
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(value);
+  }
+
+  const member = await getMemberProfile({
+    workspaceId: workspace.id,
+    memberId,
+  });
+  if (!member) notFound();
+  const serviceStatus = await readOwnerMemberServiceSummary(
+    { workspaceId: workspace.id, userId: session.userId },
+    memberId,
+  );
+  if (!serviceStatus) notFound();
+  const operations = await getMemberOperations(
+    { workspaceId: workspace.id, userId: session.userId },
+    memberId,
+  ).catch((error) => {
+    if (error instanceof MemberOperationsError) notFound();
+    throw error;
+  });
+  const [forms, familyAccess, progress, archive, emergency, profileHistory] =
+    await Promise.all([
+      resolveRequiredFormStatusesForMember({
+        workspaceId: workspace.id,
+        memberId,
+      }),
+      getFamilyPortalAccess(workspace.id, memberId),
+      getMemberProgramProgress(
+        { workspaceId: workspace.id, userId: session.userId },
+        memberId,
+      ),
+      getMemberArchive(
+        { workspaceId: workspace.id, userId: session.userId },
+        memberId,
+      ),
+      getMemberEmergencyProfile(
+        { workspaceId: workspace.id, userId: session.userId },
+        memberId,
+      ),
+      getMemberProfileHistory(
+        { workspaceId: workspace.id, userId: session.userId },
+        memberId,
+      ),
+    ]);
 
   if (!member) {
     notFound();
@@ -72,9 +117,24 @@ export default async function MemberProfilePage({
       description="Profile details, internal notes, family links, and booked trial dates."
       actions={
         <>
-          <Link className="text-link" href={`/dashboard/members/${member.id}/records`}>Export records</Link>
-          {progress.length ? <Link className="button button-secondary" href={`/dashboard/members/${member.id}/progress`}>Progress</Link> : null}
-          <Link className="button" href={`/dashboard/members/${member.id}/billing`}>
+          <Link
+            className="text-link"
+            href={`/dashboard/members/${member.id}/records`}
+          >
+            Export records
+          </Link>
+          {progress.length ? (
+            <Link
+              className="button button-secondary"
+              href={`/dashboard/members/${member.id}/progress`}
+            >
+              Progress
+            </Link>
+          ) : null}
+          <Link
+            className="button"
+            href={`/dashboard/members/${member.id}/billing`}
+          >
             Open billing
           </Link>
           <Link className="button button-secondary" href="/dashboard/members">
@@ -84,11 +144,39 @@ export default async function MemberProfilePage({
       }
     >
       <section className="management-card">
+        <h2>Independent services</h2>
+        {serviceStatus.archived ? (
+          <p>
+            This person is archived. Existing contracts, money, balances and
+            records remain recorded; reactivation needs its own review.
+          </p>
+        ) : null}
+        <MemberServiceSummaryPanel services={serviceStatus.services} />
+      </section>
+      <section className="management-card">
         <h2>Family portal access</h2>
-        <FamilyAccessForm memberId={member.id}
-          accounts={familyAccess.accounts.filter((account) => account.userId && account.user).map((account) => ({ userId: account.userId!, label: `${account.fullName} · ${account.user!.email}` }))}
-          guardians={familyAccess.links.map((link) => ({ id: link.guardian.id, fullName: link.guardian.fullName }))}
-          grants={familyAccess.grants.map((grant) => ({ userId: grant.userId, guardianId: grant.guardianId, version: grant.version, canBook: grant.canBook, canSign: grant.canSign, canPay: grant.canPay, revoked: Boolean(grant.revokedAt) }))}
+        <FamilyAccessForm
+          memberId={member.id}
+          accounts={familyAccess.accounts
+            .filter((account) => account.userId && account.user)
+            .map((account) => ({
+              userId: account.userId!,
+              label: `${account.fullName} · ${account.user!.email}`,
+            }))}
+          guardians={familyAccess.links.map((link) => ({
+            id: link.guardian.id,
+            fullName: link.guardian.fullName,
+          }))}
+          grants={familyAccess.grants.map((grant) => ({
+            userId: grant.userId,
+            guardianId: grant.guardianId,
+            version: grant.version,
+            canBook: grant.canBook,
+            canSign: grant.canSign,
+            canPay: grant.canPay,
+            canManageEmergencyContacts: grant.canManageEmergencyContacts,
+            revoked: Boolean(grant.revokedAt),
+          }))}
         />
       </section>
       <div className="management-grid">
@@ -97,7 +185,7 @@ export default async function MemberProfilePage({
           <h3>Member basics</h3>
           <dl className="detail-list">
             <div>
-              <dt>Status</dt>
+              <dt>Profile label</dt>
               <dd>{formatStatus(member.status)}</dd>
             </div>
             <div>
@@ -114,7 +202,7 @@ export default async function MemberProfilePage({
             </div>
             <div>
               <dt>Tags</dt>
-              <dd>{member.tags.length > 0 ? member.tags.join(", ") : "No tags"}</dd>
+              <dd>Managed in Internal operations below.</dd>
             </div>
             <div>
               <dt>Created</dt>
@@ -125,19 +213,139 @@ export default async function MemberProfilePage({
               <dd>{formatDateTime(member.updatedAt)}</dd>
             </div>
           </dl>
-
-          <div className="info-callout">
-            <strong>Notes</strong>
-            <p>{member.notes ?? "No internal notes yet."}</p>
-          </div>
         </section>
 
         <section className="management-card">
           <p className="dashboard-card-label">Edit profile</p>
           <h3>Update basics</h3>
-          <MemberEditForm member={member} />
+          <MemberEditForm
+            key={member.profileVersion}
+            member={member}
+            operationId={randomUUID()}
+          />
         </section>
       </div>
+
+      <MemberOperationsPanel
+        view={operations}
+        scope={{ memberId }}
+        locale={locale}
+        timezone={workspace.location.timezone}
+        noteKey={`note:${randomUUID()}`}
+        operationIds={Object.fromEntries(
+          [
+            "newNote",
+            "newTag",
+            ...operations.notes.map((note) => note.recordKey),
+            ...operations.tags.map((tag) => tag.recordKey),
+            ...(operations.legacy?.unclassifiedTags.map(
+              (label) => `legacy:${label}`,
+            ) ?? []),
+          ].map((key) => [key, randomUUID()]),
+        )}
+      />
+
+      <section
+        className="management-card"
+        aria-labelledby="member-emergency-title"
+      >
+        <h2 id="member-emergency-title">Emergency contacts</h2>
+        <EmergencyContacts
+          {...emergency}
+          operationIds={Object.fromEntries(
+            ["new", ...emergency.contacts.map((contact) => contact.id)].map(
+              (id) => [id, randomUUID()],
+            ),
+          )}
+          action={changeEmergencyContactAction}
+        />
+      </section>
+      <section
+        className="management-card"
+        aria-labelledby="member-profile-history-title"
+      >
+        <h2 id="member-profile-history-title">
+          Profile and emergency contact history
+        </h2>
+        {profileHistory.length ? (
+          <ol className="stack-list">
+            {profileHistory.map((change) => (
+              <li key={change.id} className="stack-item">
+                <div>
+                  <p>
+                    <strong>
+                      {change.kind.toLowerCase().replaceAll("_", " ")}
+                    </strong>{" "}
+                    · {change.actorNameSnapshot} ·{" "}
+                    {formatDateTime(change.createdAt)}
+                  </p>
+                  {change.reason ? <p>{change.reason}</p> : null}
+                  <details>
+                    <summary>View changed details</summary>
+                    <dl className="detail-list">
+                      {[
+                        "fullName",
+                        "email",
+                        "phone",
+                        "dateOfBirth",
+                        "relationshipLabel",
+                        "retiredAt",
+                      ].flatMap((field) => {
+                        const before =
+                          change.before &&
+                          typeof change.before === "object" &&
+                          !Array.isArray(change.before)
+                            ? (change.before as Record<string, unknown>)[field]
+                            : undefined;
+                        const after =
+                          change.after &&
+                          typeof change.after === "object" &&
+                          !Array.isArray(change.after)
+                            ? (change.after as Record<string, unknown>)[field]
+                            : undefined;
+                        return before === after ||
+                          (before === undefined && after === undefined)
+                          ? []
+                          : [
+                              <div key={field}>
+                                <dt>
+                                  {
+                                    {
+                                      fullName: "Name",
+                                      email: "Email",
+                                      phone: "Phone",
+                                      dateOfBirth: "Date of birth",
+                                      relationshipLabel: "Relationship",
+                                      retiredAt: "Removed as current contact",
+                                    }[field]
+                                  }
+                                </dt>
+                                <dd>
+                                  {String(before ?? "Not set")} →{" "}
+                                  {String(after ?? "Not set")}
+                                </dd>
+                              </div>,
+                            ];
+                      })}
+                    </dl>
+                  </details>
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p>
+            No profile changes have been recorded yet. Earlier details have no
+            attributed change history.
+          </p>
+        )}
+        {profileHistory.length === 100 ? (
+          <p>
+            The latest 100 changes are shown. The full reviewed history remains
+            in business records.
+          </p>
+        ) : null}
+      </section>
 
       <div className="management-grid">
         <section className="management-card">
@@ -166,8 +374,8 @@ export default async function MemberProfilePage({
                       </span>
                     </div>
                     <p>
-                      {formatRequirementTarget(item.requirementTarget)} · Current
-                      version {item.currentVersionNumber}
+                      {formatRequirementTarget(item.requirementTarget)} ·
+                      Current version {item.currentVersionNumber}
                     </p>
                     <dl className="inline-meta">
                       <div>
@@ -180,7 +388,11 @@ export default async function MemberProfilePage({
                       </div>
                       <div>
                         <dt>Signed at</dt>
-                        <dd>{item.signedAt ? formatDateTime(item.signedAt) : "Not signed yet"}</dd>
+                        <dd>
+                          {item.signedAt
+                            ? formatDateTime(item.signedAt)
+                            : "Not signed yet"}
+                        </dd>
                       </div>
                     </dl>
 
@@ -229,8 +441,8 @@ export default async function MemberProfilePage({
                     </div>
                     <p>
                       {formatStatus(item.signerKind)}
-                      {item.guardianName ? ` · ${item.guardianName}` : ""} signed on{" "}
-                      {formatDateTime(item.signedAt)}
+                      {item.guardianName ? ` · ${item.guardianName}` : ""}{" "}
+                      signed on {formatDateTime(item.signedAt)}
                     </p>
                     <dl className="inline-meta">
                       <div>
@@ -315,11 +527,14 @@ export default async function MemberProfilePage({
         <section className="management-card">
           <p className="dashboard-card-label">Portal access</p>
           <h3>
-            {member.portalAccess ? "Member login is active" : "Create member login"}
+            {member.portalAccess
+              ? "Member login is active"
+              : "Create member login"}
           </h3>
           <p className="management-copy">
             Keep member login scoped to this one profile only. This screen does
-            not reuse unrelated existing users or support family account linking.
+            not reuse unrelated existing users or support family account
+            linking.
           </p>
           <dl className="detail-list">
             <div>
@@ -328,7 +543,11 @@ export default async function MemberProfilePage({
             </div>
             <div>
               <dt>Login email</dt>
-              <dd>{member.portalAccess?.email ?? member.email ?? "Add member email first"}</dd>
+              <dd>
+                {member.portalAccess?.email ??
+                  member.email ??
+                  "Add member email first"}
+              </dd>
             </div>
           </dl>
         </section>
@@ -338,7 +557,9 @@ export default async function MemberProfilePage({
             {member.portalAccess ? "Reset password" : "Provision login"}
           </p>
           <h3>
-            {member.portalAccess ? "Replace temporary password" : "Create member portal access"}
+            {member.portalAccess
+              ? "Replace temporary password"
+              : "Create member portal access"}
           </h3>
           <PortalAccessForm
             memberEmail={member.email}
@@ -435,6 +656,14 @@ export default async function MemberProfilePage({
           </div>
         )}
       </section>
+      {archive ? (
+        <MemberArchiveForm
+          memberId={memberId}
+          archived={Boolean(archive.archivedAt)}
+          version={archive.archiveVersion}
+          impact={archive.impact}
+        />
+      ) : null}
     </AdminShell>
   );
 }

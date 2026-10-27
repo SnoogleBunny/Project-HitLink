@@ -1,3 +1,4 @@
+import { fixtureSchedulingRevision } from "../../../packages/db/tests/scheduling-policy-fixture.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { createAccessBackedBookingMock } = vi.hoisted(() => ({
@@ -5,9 +6,8 @@ const { createAccessBackedBookingMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@flowstate/db", async () => {
-  const actual = await vi.importActual<typeof import("@flowstate/db")>(
-    "@flowstate/db",
-  );
+  const actual =
+    await vi.importActual<typeof import("@flowstate/db")>("@flowstate/db");
 
   return {
     ...actual,
@@ -17,7 +17,9 @@ vi.mock("@flowstate/db", async () => {
 
 import { createClassBooking, listBookingFormOptions } from "./bookings";
 
-type BookingTestDb = NonNullable<Parameters<typeof createClassBooking>[0]["db"]>;
+type BookingTestDb = NonNullable<
+  Parameters<typeof createClassBooking>[0]["db"]
+>;
 
 function buildTemplateRecord() {
   return {
@@ -26,6 +28,7 @@ function buildTemplateRecord() {
     weekday: "TUESDAY" as const,
     startTimeMinutes: 18 * 60,
     endTimeMinutes: 19 * 60,
+    bookingCutoffMinutes: 0,
     program: {
       name: "Muay Thai Fundamentals",
     },
@@ -44,6 +47,9 @@ function buildTemplateRecord() {
 
 function createMockDb(): BookingTestDb {
   return {
+    workspaceSchedulingPolicyRevision: {
+      findFirst: vi.fn().mockResolvedValue(fixtureSchedulingRevision()),
+    },
     $transaction: vi.fn(async (callback) => callback(createMockDb())),
     member: {
       findMany: vi.fn().mockResolvedValue([
@@ -99,6 +105,20 @@ describe("booking helpers", () => {
     createAccessBackedBookingMock.mockReset();
   });
 
+  it("offers no new owner booking dates without confirmed rules", async () => {
+    const db = createMockDb();
+    db.workspaceSchedulingPolicyRevision!.findFirst = vi
+      .fn()
+      .mockResolvedValue(null);
+    const options = await listBookingFormOptions({
+      workspaceId: "workspace_1",
+      timezone: "America/Vancouver",
+      db,
+      now: new Date("2026-04-01T12:00:00Z"),
+    });
+    expect(options.templates).toEqual([]);
+  });
+
   it("lists members and eligible future occurrence options", async () => {
     const db = createMockDb();
 
@@ -133,16 +153,64 @@ describe("booking helpers", () => {
 
   it("uses daily revisions, dated cancellations and substitute coaches in owner booking options", async () => {
     const db = createMockDb();
-    const base = { ...buildTemplateRecord(), coachWorkspaceUser: null, coachWorkspaceUserId: null };
-    db.classTemplate.findMany = vi.fn().mockResolvedValue([{ ...base,
-      scheduleRevisions: [{ ...base, id: "revision", effectiveFrom: new Date("2026-04-01"), startDate: new Date("2026-04-01"), endDate: null, recurrence: "DAILY", weekdays: [] }],
-      classInstances: [{ ...base, id: "cancelled", scheduledForDate: new Date("2026-04-08"), status: "CANCELLED", isScheduleOverride: false, coachAssignmentMode: "INHERIT" }, { ...base, id: "substitute", scheduledForDate: new Date("2026-04-09"), status: "ACTIVE", isScheduleOverride: false, coachAssignmentMode: "ASSIGNED", coachWorkspaceUser: { user: { fullName: "Substitute Coach", email: "sub@example.com" } } }],
-    }]);
-    const result = await listBookingFormOptions({ workspaceId: "workspace_1", timezone: "America/Vancouver", now: new Date("2026-04-08T00:30:00Z"), db });
+    const base = {
+      ...buildTemplateRecord(),
+      coachWorkspaceUser: null,
+      coachWorkspaceUserId: null,
+    };
+    db.classTemplate.findMany = vi.fn().mockResolvedValue([
+      {
+        ...base,
+        scheduleRevisions: [
+          {
+            ...base,
+            id: "revision",
+            effectiveFrom: new Date("2026-04-01"),
+            startDate: new Date("2026-04-01"),
+            endDate: null,
+            recurrence: "DAILY",
+            weekdays: [],
+          },
+        ],
+        classInstances: [
+          {
+            ...base,
+            id: "cancelled",
+            scheduledForDate: new Date("2026-04-08"),
+            status: "CANCELLED",
+            isScheduleOverride: false,
+            coachAssignmentMode: "INHERIT",
+          },
+          {
+            ...base,
+            id: "substitute",
+            scheduledForDate: new Date("2026-04-09"),
+            status: "ACTIVE",
+            isScheduleOverride: false,
+            coachAssignmentMode: "ASSIGNED",
+            coachWorkspaceUser: {
+              user: { fullName: "Substitute Coach", email: "sub@example.com" },
+            },
+          },
+        ],
+      },
+    ]);
+    const result = await listBookingFormOptions({
+      workspaceId: "workspace_1",
+      timezone: "America/Vancouver",
+      now: new Date("2026-04-08T00:30:00Z"),
+      db,
+    });
     const dates = result.templates[0]!.dateOptions;
-    expect(dates.some((date) => date.scheduledForDate === "2026-04-08")).toBe(false);
-    expect(dates.find((date) => date.scheduledForDate === "2026-04-09")?.label).toContain("Substitute Coach");
-    expect(dates.find((date) => date.scheduledForDate === "2026-04-10")?.label).toContain("Coach to be confirmed");
+    expect(dates.some((date) => date.scheduledForDate === "2026-04-08")).toBe(
+      false,
+    );
+    expect(
+      dates.find((date) => date.scheduledForDate === "2026-04-09")?.label,
+    ).toContain("Substitute Coach");
+    expect(
+      dates.find((date) => date.scheduledForDate === "2026-04-10")?.label,
+    ).toContain("Coach to be confirmed");
   });
 
   it("delegates membership-backed bookings to the shared access helper", async () => {
@@ -218,7 +286,11 @@ describe("booking helpers", () => {
 
   it("surfaces shared dated trial validation without writing directly", async () => {
     const db = createMockDb();
-    createAccessBackedBookingMock.mockResolvedValue({ status: "error", code: "INVALID", message: "Choose a valid upcoming date for this class." });
+    createAccessBackedBookingMock.mockResolvedValue({
+      status: "error",
+      code: "INVALID",
+      message: "Choose a valid upcoming date for this class.",
+    });
 
     await expect(
       createClassBooking({
@@ -238,7 +310,9 @@ describe("booking helpers", () => {
       message: "Choose a valid upcoming date for this class.",
     });
     expect(db.classBooking.create).not.toHaveBeenCalled();
-    expect(createAccessBackedBookingMock).toHaveBeenCalledWith(expect.objectContaining({ trial: true }));
+    expect(createAccessBackedBookingMock).toHaveBeenCalledWith(
+      expect.objectContaining({ trial: true }),
+    );
   });
 
   it("rejects cross-workspace member selections", async () => {
@@ -265,7 +339,11 @@ describe("booking helpers", () => {
 
   it("rejects active duplicate trials and restores cancelled rows", async () => {
     const db = createMockDb();
-    createAccessBackedBookingMock.mockResolvedValueOnce({ status: "error", code: "DUPLICATE", message: "This member already has an active booking for that class date." });
+    createAccessBackedBookingMock.mockResolvedValueOnce({
+      status: "error",
+      code: "DUPLICATE",
+      message: "This member already has an active booking for that class date.",
+    });
 
     await expect(
       createClassBooking({
@@ -286,7 +364,11 @@ describe("booking helpers", () => {
     });
     expect(db.classBooking.create).not.toHaveBeenCalled();
 
-    createAccessBackedBookingMock.mockResolvedValueOnce({ status: "restored", bookingId: "booking_1", bookingType: "TRIAL" });
+    createAccessBackedBookingMock.mockResolvedValueOnce({
+      status: "restored",
+      bookingId: "booking_1",
+      bookingType: "TRIAL",
+    });
 
     await expect(
       createClassBooking({

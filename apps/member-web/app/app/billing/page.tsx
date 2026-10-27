@@ -1,3 +1,4 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import { MemberShell } from "../../_components/member-shell";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
 import { BillingActions } from "./billing-actions";
@@ -9,8 +10,8 @@ import {
   formatBillingRecordType,
   formatBillingStateStatus,
   formatFailureDetail,
-  formatGymDateTime,
-  formatMoney,
+  formatGymDateTime as knownformatGymDateTime,
+  formatMoney as knownformatMoney,
 } from "../../../lib/billing-display";
 
 export default async function BillingPage({
@@ -19,6 +20,14 @@ export default async function BillingPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 } = {}) {
   const context = await requireMemberPortalContext({ scope: "account" });
+  const locale = resolveDisplayLocale(context.workspace.settings?.locale);
+  const formatGymDateTime = (
+    value: Date | null,
+    timezone: string,
+    nullLabel?: string,
+  ) => knownformatGymDateTime(value, timezone, nullLabel, locale);
+  const formatMoney = (amount: number | null, currency: string | null) =>
+    knownformatMoney(amount, currency, locale);
   const [billing, payer, params] = await Promise.all([
     getMemberBillingSummary({
       workspaceId: context.workspace.id,
@@ -42,6 +51,7 @@ export default async function BillingPage({
       description="Payments and credits for your account, including purchases for family members."
     >
       <AccountPayments
+        locale={locale}
         data={payer}
         timezone={context.location.timezone}
         history={params.view === "history"}

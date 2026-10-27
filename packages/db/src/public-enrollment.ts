@@ -1,3 +1,4 @@
+import { resolveWorkspaceClockTimezone } from "./workspace-timezones.js";
 import {
   createHash,
   randomBytes,
@@ -10,10 +11,21 @@ import {
   type PublicEnrollment,
 } from "@prisma/client";
 import { prisma } from "./client.js";
-import { lockClassSchedule } from "./class-occurrences.js";
-import { isWorkspaceMigrationReady } from "./workspace-readiness.js";
+import {
+  lockClassSchedule,
+  getClassOccurrence,
+  isUnambiguousClassTime,
+} from "./class-occurrences.js";
+import { getZonedDateTimeAsUtc } from "./occurrences.js";
+import { isWorkspaceOperationallyReady } from "./workspace-readiness.js";
 import { isPublishedOfferCurrent, parseGymWebsiteContent } from "./website.js";
 import { snapshotMembershipTerms } from "./membership-allowances.js";
+import { listEffectiveFormAssignments } from "./form-requirement-bindings.js";
+import {
+  getSignerKindForTarget,
+  isRequirementTargetApplicable,
+} from "./forms.js";
+import { matchingAcceptance } from "./form-requirements-policy.js";
 
 export class PublicEnrollmentError extends Error {}
 export interface PublicParticipant {
@@ -109,16 +121,17 @@ function participantInput(
     );
   return result;
 }
-export async function requirePublicWorkspace(db: Db, workspaceId: string) {
+export async function requirePublicWorkspace(db: Db, workspaceId: string, now = new Date()) {
   const workspace = await db.workspace.findUnique({
     where: { id: workspaceId },
-    include: { migration: true, location: true },
+    include: { migration: true, setupActivation: true, location: true },
   });
   const migration = workspace?.migration;
   if (
     !workspace ||
-    !isWorkspaceMigrationReady({
+    !isWorkspaceOperationallyReady({
       workspaceStatus: workspace.status,
+      setupActivation: workspace.setupActivation,
       migrationStage: migration?.stage,
       ownerReviewAcknowledgedAt: migration?.ownerReviewAcknowledgedAt,
       ownerReviewAcknowledgedByUserId:
@@ -130,6 +143,7 @@ export async function requirePublicWorkspace(db: Db, workspaceId: string) {
     throw new PublicEnrollmentError(
       "Online registration is not open for this gym yet.",
     );
+  if (workspace.location) workspace.location.timezone = await resolveWorkspaceClockTimezone({ workspaceId, baselineTimezone: workspace.location.timezone, now, db });
   return workspace;
 }
 async function currentOffer(
@@ -687,82 +701,244 @@ export async function acceptPublicMembershipTerms(args: {
   });
 }
 
+/** Enrollment intent determines required targets; the same effective-binding and
+ * exact acceptance resolver governs PDF cycles/expiry. A TRIAL-status person
+ * purchasing a membership must not lose the MEMBER activation requirement. */
+async function effectiveEnrollmentFormsTx(
+  db: Db,
+  enrollment: PublicEnrollment,
+  ensure: boolean,
+  now: Date,
+) {
+  const participant = readPublicParticipant(enrollment);
+  const member = await db.member.findFirst({
+    where: { id: enrollment.memberId!, workspaceId: enrollment.workspaceId },
+    include: { familyLinks: { include: { guardian: true } } },
+  });
+  if (!member)
+    throw new PublicEnrollmentError(
+      "This participant is no longer available for registration.",
+    );
+  // A trial accepts one named dated occurrence. Resolve its real effective
+  // schedule and timezone under the caller's schedule lock; membership consent
+  // remains evaluated at activation now rather than at an invented class date.
+  let serviceAt = now;
+  if (enrollment.kind === "TRIAL") {
+    const occurrence = await getClassOccurrence({
+      workspaceId: enrollment.workspaceId,
+      classTemplateId: participant.classTemplateId,
+      scheduledForDate: participant.scheduledForDate,
+      db,
+    });
+    if (
+      !occurrence ||
+      occurrence.status !== "ACTIVE" ||
+      occurrence.program.archivedAt ||
+      occurrence.room.archivedAt ||
+      occurrence.room.isActive === false ||
+      !occurrence.timezone ||
+      !isUnambiguousClassTime(
+        participant.scheduledForDate,
+        occurrence.startTimeMinutes,
+        occurrence.timezone,
+      ) ||
+      !isUnambiguousClassTime(
+        participant.scheduledForDate,
+        occurrence.endTimeMinutes,
+        occurrence.timezone,
+      )
+    )
+      throw new PublicEnrollmentError(
+        "This trial class changed or is unavailable. Choose another trial date or ask the gym to review it.",
+      );
+    serviceAt = getZonedDateTimeAsUtc({
+      dateString: participant.scheduledForDate,
+      minutes: occurrence.startTimeMinutes,
+      timezone: occurrence.timezone,
+    });
+    if (serviceAt <= now)
+      throw new PublicEnrollmentError(
+        "This trial class is no longer upcoming. Choose another trial date or ask the gym to review it.",
+      );
+  }
+  const targets =
+    enrollment.kind === "TRIAL"
+      ? (["TRIAL", "MEMBER", "GUARDIAN"] as const).filter((requirementTarget) =>
+          isRequirementTargetApplicable({
+            requirementTarget,
+            memberStatus: member.status,
+            guardianCount: member.familyLinks.length,
+          }),
+        )
+      : [
+          "MEMBER" as const,
+          "MEMBERSHIP_ACTIVATION" as const,
+          ...(participant.guardianId ? ["GUARDIAN" as const] : []),
+        ];
+  const missingPdf = await db.requiredFormAssignment.findFirst({
+    where: {
+      workspaceId: enrollment.workspaceId,
+      isActive: true,
+      requirementTarget: { in: targets },
+      formDocument: {
+        archivedAt: null,
+        currentVersionId: null,
+        requirementRevisions: { none: {} },
+      },
+    },
+    select: { id: true },
+  });
+  if (missingPdf)
+    throw new PublicEnrollmentError(
+      "The gym needs to publish a required form before registration can continue.",
+    );
+  const bindings = await listEffectiveFormAssignments({
+    db,
+    workspaceId: enrollment.workspaceId,
+    targets,
+    now,
+    serviceAt,
+  });
+  const intendedSigner = participant.guardianId
+    ? ("GUARDIAN" as const)
+    : ("MEMBER" as const);
+  const proofs = await db.signedDocument.findMany({
+    where: {
+      workspaceId: enrollment.workspaceId,
+      memberId: member.id,
+      signerKind: intendedSigner,
+    },
+    select: {
+      id: true,
+      workspaceId: true,
+      memberId: true,
+      formVersionId: true,
+      requirementRevisionId: true,
+      acceptanceCycleKey: true,
+      signerKind: true,
+      signedAt: true,
+      validUntil: true,
+    },
+  });
+  const result: Array<{
+      name: string;
+      version: number;
+      signed: boolean;
+      requestId: string | null;
+    }> = [],
+    seen = new Set<string>();
+  for (const binding of bindings) {
+    const signerKind = getSignerKindForTarget(
+      binding.requirementTarget,
+      member,
+      now,
+    );
+    if (signerKind !== intendedSigner)
+      throw new PublicEnrollmentError(
+        signerKind === "GUARDIAN"
+          ? "A currently verified guardian must sign this participant's forms."
+          : "The adult participant must sign through their own current account.",
+      );
+    if (
+      enrollment.kind === "TRIAL" &&
+      getSignerKindForTarget(binding.requirementTarget, member, serviceAt) !==
+        signerKind
+    )
+      throw new PublicEnrollmentError(
+        "The participant's signing authority changes before this trial class. Ask the gym to review it, or return after the birthday through the adult participant's own account.",
+      );
+    const key = `${binding.formDocument.currentVersionId}:${binding.acceptanceCycleKey}:${signerKind}:${participant.guardianId ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const proof = matchingAcceptance({
+      workspaceId: enrollment.workspaceId,
+      memberId: member.id,
+      requirement: {
+        formDocumentId: binding.formDocument.id,
+        formVersionId: binding.formDocument.currentVersionId,
+        requirementRevisionId: binding.requirementRevisionId,
+        revisionHash: binding.revisionHash,
+        acceptanceCycleKey: binding.acceptanceCycleKey,
+        signerKind,
+        effectiveAt: binding.effectiveAt?.toISOString() ?? null,
+        publishedAt: binding.publishedAt?.toISOString() ?? null,
+        consentValidUntil: binding.consentValidUntil?.toISOString() ?? null,
+        basis: binding.requirementRevisionId
+          ? "PUBLISHED_REVISION"
+          : "OBSERVED_LEGACY",
+      },
+      proofs: proofs.map((row) => ({
+        ...row,
+        signedAt: row.signedAt.toISOString(),
+        validUntil: row.validUntil?.toISOString() ?? null,
+      })),
+      serviceAt: serviceAt.toISOString(),
+      acceptedBy: now.toISOString(),
+    });
+    const expired =
+      !!binding.consentValidUntil && binding.consentValidUntil <= serviceAt;
+    if (expired && enrollment.kind === "TRIAL")
+      throw new PublicEnrollmentError(
+        "A required form expires before this trial class. Ask the gym to publish a renewal covering this date or choose another trial date.",
+      );
+    let request =
+      !proof && !expired
+        ? await db.signatureRequest.findFirst({
+            where: {
+              workspaceId: enrollment.workspaceId,
+              memberId: member.id,
+              guardianId: participant.guardianId ?? null,
+              formVersionId: binding.formDocument.currentVersionId,
+              requirementRevisionId: binding.requirementRevisionId,
+              acceptanceCycleKey: binding.acceptanceCycleKey,
+              signerKind,
+              accessMethod: "PORTAL",
+              status: "OPEN",
+              OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+            },
+            select: { id: true },
+          })
+        : null;
+    if (!proof && !expired && !request && ensure)
+      request = await db.signatureRequest.create({
+        data: {
+          workspaceId: enrollment.workspaceId,
+          memberId: member.id,
+          guardianId: participant.guardianId ?? null,
+          formVersionId: binding.formDocument.currentVersionId,
+          requirementRevisionId: binding.requirementRevisionId,
+          acceptanceCycleKey: binding.acceptanceCycleKey,
+          signerKind,
+          accessMethod: "PORTAL",
+          expiresAt: binding.consentValidUntil,
+        },
+        select: { id: true },
+      });
+    result.push({
+      name: binding.formDocument.name,
+      version: binding.formDocument.currentVersion.versionNumber,
+      signed: !!proof,
+      requestId: request?.id ?? null,
+    });
+  }
+  return result;
+}
 export async function publicEnrollmentFormsTx(
   db: Db,
   enrollment: PublicEnrollment,
   actorUserId: string,
   ensure = false,
+  now = new Date(),
 ) {
-  const participant = readPublicParticipant(enrollment);
   await requireEnrollmentAuthority(db, enrollment, actorUserId, "sign");
-  const assignments = await db.requiredFormAssignment.findMany({
-    where: {
-      workspaceId: enrollment.workspaceId,
-      isActive: true,
-      requirementTarget: {
-        in:
-          enrollment.kind === "TRIAL"
-            ? [
-                "TRIAL",
-                ...(participant.guardianId ? ["GUARDIAN" as const] : []),
-              ]
-            : [
-                "MEMBER",
-                "MEMBERSHIP_ACTIVATION",
-                ...(participant.guardianId ? ["GUARDIAN" as const] : []),
-              ],
-      },
-      formDocument: { archivedAt: null },
-    },
-    include: { formDocument: { include: { currentVersion: true } } },
-  });
-  const forms: Array<{
-    name: string;
-    version: number;
-    signed: boolean;
-    requestId: string | null;
-  }> = [];
-  const seen = new Set<string>();
-  for (const assignment of assignments) {
-    const version = assignment.formDocument.currentVersion;
-    if (!version)
-      throw new PublicEnrollmentError(
-        "The gym needs to publish a required form before registration can continue.",
-      );
-    if (seen.has(version.id)) continue;
-    seen.add(version.id);
-    const signerKind = participant.guardianId
-      ? ("GUARDIAN" as const)
-      : ("MEMBER" as const);
-    const identity = {
-      workspaceId: enrollment.workspaceId,
-      memberId: enrollment.memberId!,
-      guardianId: participant.guardianId ?? null,
-      signerKind,
-      formVersionId: version.id,
-    };
-    const signed = !!(await db.signedDocument.findFirst({ where: identity }));
-    let request = await db.signatureRequest.findFirst({
-      where: { ...identity, accessMethod: "PORTAL", status: "OPEN" },
-    });
-    if (!signed && !request && ensure)
-      request = await db.signatureRequest.create({
-        data: { ...identity, accessMethod: "PORTAL" },
-      });
-    forms.push({
-      name: assignment.formDocument.name,
-      version: version.versionNumber,
-      signed,
-      requestId: request?.id ?? null,
-    });
-  }
-  return forms;
+  return effectiveEnrollmentFormsTx(db, enrollment, ensure, now);
 }
 export async function getPublicEnrollmentForms(args: {
   workspaceId: string;
   enrollmentId: string;
   actorUserId: string;
   ensure?: boolean;
+  now?: Date;
   db?: PrismaClient;
 }) {
   return (args.db ?? prisma).$transaction(async (db) => {
@@ -776,6 +952,7 @@ export async function getPublicEnrollmentForms(args: {
       enrollment,
       args.actorUserId,
       args.ensure,
+      args.now,
     );
   });
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { publicEnrollmentFormsFailure } from "../../../lib/public-enrollment-form-failures";
 import { notFound } from "next/navigation";
 import { getSession, MEMBER_SESSION_COOKIE_NAME } from "@flowstate/auth";
 import {
@@ -158,10 +159,7 @@ export default async function PublicRegistrationPage({
         actorUserId: session.userId,
       });
     } catch (error) {
-      authorityError =
-        error instanceof Error
-          ? error.message
-          : "Ask the gym to verify your access before continuing.";
+      authorityError = publicEnrollmentFormsFailure(error).message;
     }
   }
   const operation =
@@ -272,9 +270,14 @@ export default async function PublicRegistrationPage({
                       type="password"
                       autoComplete="current-password"
                       maxLength={128}
+                      aria-describedby="registration-password-help"
                       required
                     />
-                    <span>New passwords need at least 12 characters.</span>
+                    <span id="registration-password-help">
+                      Use your existing password. New passwords need at least 12
+                      characters and no more than 72 bytes; accented characters
+                      and emoji can use more than one byte.
+                    </span>
                   </label>
                 ) : null}
               </RegistrationActionForm>
@@ -294,7 +297,7 @@ export default async function PublicRegistrationPage({
                 <div role="status">
                   <p>
                     {kind === "TRIAL"
-                      ? "Your trial is booked. Complete any remaining forms before class."
+                      ? "Your trial is booked. Check your forms again if the gym publishes an update before class."
                       : "Payment confirmed. Your membership is ready."}
                   </p>
                   <Link className="button" href="/app/schedule">
@@ -384,17 +387,17 @@ export default async function PublicRegistrationPage({
                         </p>
                       )}
                     </RegistrationActionForm>
+                  ) : forms.some((form) => !form.signed) ? (
+                    <p role="status">
+                      Sign the current required forms below before continuing to
+                      {kind === "TRIAL" ? " book your trial." : " payment."}
+                    </p>
                   ) : kind === "TRIAL" ? (
                     <RegistrationActionForm
                       {...actionProps}
                       step="book"
                       label={`Book trial for ${participant?.fullName}`}
                     />
-                  ) : forms.some((form) => !form.signed) ? (
-                    <p role="status">
-                      Sign the current required forms below before continuing to
-                      payment.
-                    </p>
                   ) : (
                     <RegistrationActionForm
                       {...actionProps}

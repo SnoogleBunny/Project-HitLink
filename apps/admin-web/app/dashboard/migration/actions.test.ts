@@ -175,6 +175,24 @@ describe("migration readiness action", () => {
       ).rejects.toThrow(
         `NEXT_REDIRECT:/dashboard/migration?review=blocked&reason=${expected}`,
       );
+      expect(consoleWarnMock).toHaveBeenCalledExactlyOnceWith({ event: "migration_owner_review_acknowledgment_blocked", reason: expected });
+      expect(JSON.stringify(consoleWarnMock.mock.calls)).not.toContain("Owner acknowledgment was not saved.");
     },
   );
+
+  it("maps an unknown reason to the existing safe redirect without reading or logging the result message", async () => {
+    const message = vi.fn(() => { throw new Error("PRIVATE_RESULT_MESSAGE"); });
+    acknowledgeMigrationOwnerReviewMock.mockResolvedValue(Object.defineProperty({ status: "error", reason: "PRIVATE_UNKNOWN_REASON" }, "message", { get: message }));
+    await expect(acknowledgeMigrationReviewAction(buildAcknowledgmentFormData())).rejects.toThrow("NEXT_REDIRECT:/dashboard/migration?review=blocked&reason=remaining-checks");
+    expect(message).not.toHaveBeenCalled();
+    expect(consoleWarnMock).toHaveBeenCalledExactlyOnceWith({ event: "migration_owner_review_acknowledgment_blocked", reason: "remaining-checks" });
+    expect(JSON.stringify(consoleWarnMock.mock.calls)).not.toContain("PRIVATE_");
+  });
+
+  it("keeps the same blocked redirect when the expected-event log sink fails", async () => {
+    consoleWarnMock.mockImplementationOnce(() => { throw new Error("PRIVATE_LOG_SINK"); });
+    acknowledgeMigrationOwnerReviewMock.mockResolvedValue({ status: "error", reason: "schedule-passed", message: "PRIVATE_HUMAN_MESSAGE" });
+    await expect(acknowledgeMigrationReviewAction(buildAcknowledgmentFormData())).rejects.toThrow("NEXT_REDIRECT:/dashboard/migration?review=blocked&reason=schedule-passed");
+    expect(acknowledgeMigrationOwnerReviewMock).toHaveBeenCalledTimes(1);
+  });
 });

@@ -34,6 +34,8 @@ export function LoginForm() {
 
       <SubmitButton pendingLabel="Logging in...">Log in</SubmitButton>
 
+      <Link className="text-link" href="/forgot-password">Forgot your password?</Link>
+
       <p className="form-meta">
         Need an owner account?{" "}
         <Link className="text-link" href="/signup">

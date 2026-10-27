@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { resolveDisplayLocale } from "@flowstate/ui";
 import { notFound } from "next/navigation";
 import { AdminShell } from "../../../../_components/admin-shell";
 import {
@@ -40,7 +41,10 @@ export default async function EditMembershipPlanPage({
       title={plan.name}
       description="Edit the owner-facing plan details. Synced Stripe prices stay immutable."
       actions={
-        <Link className="button button-secondary" href="/dashboard/membership-plans">
+        <Link
+          className="button button-secondary"
+          href="/dashboard/membership-plans"
+        >
           Back to plans
         </Link>
       }
@@ -48,7 +52,13 @@ export default async function EditMembershipPlanPage({
       <div className="management-grid">
         <section className="management-card">
           <p className="dashboard-card-label">Edit plan</p>
-          <h3>{formatMembershipPlanPrice(plan)} monthly</h3>
+          <h3>
+            {formatMembershipPlanPrice(
+              plan,
+              resolveDisplayLocale(workspace.settings?.locale),
+            )}{" "}
+            monthly
+          </h3>
           <MembershipPlanForm mode="edit" options={options} plan={plan} />
         </section>
 
@@ -70,4 +80,3 @@ export default async function EditMembershipPlanPage({
     </AdminShell>
   );
 }
-

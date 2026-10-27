@@ -18,7 +18,7 @@
     "@flowstate/payments": "workspace:*",
     "@flowstate/ui": "workspace:*",
     "csv-parse": "^6.2.1",
-    "next": "16.2.12",
+    "next": "16.4.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "stripe": "^22.0.0"

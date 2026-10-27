@@ -1,13 +1,21 @@
 export { prisma } from "./client.js";
+export * from "./database-failure.js";
+export { readOwnedErrorMessage } from "./owned-error-message.js";
 export * from "./class-occurrences.js";
+export * from "./workspace-timezones.js";
 export * from "./coaching.js";
 export * from "./financial-operations.js";
 export * from "./checkout-payments.js";
 export * from "./website.js";
 export * from "./invoice-reconciliation.js";
+export * from "./staff-access.js";
+export * from "./payment-confirmations.js";
+export { shouldDeliverNotification } from "./notification-context.js";
 
 export {
   isWorkspaceMigrationReady,
+  isWorkspaceOperationallyReady,
+  type WorkspaceSetupActivationReadiness,
   type WorkspaceMigrationReadinessInput,
 } from "./workspace-readiness.js";
 
@@ -38,7 +46,9 @@ export {
   cleanupExpiredPendingBookings,
   countActiveOccurrenceBookings,
   createAccessBackedBooking,
+  createReviewedDirectClassBooking,
   moveAccessBackedBooking,
+  resolveBookingFormRecovery,
   findEligibleDropInProduct,
   getEffectiveCapacity,
   getOccurrenceStartsAt,
@@ -47,6 +57,8 @@ export {
   listOccurrenceWaitlist,
   pickOldestEligiblePunchCard,
   promoteNextWaitlistEntry,
+  processWorkspaceWaitlists,
+  WAITLIST_AUTO_PROMOTION_POLICY,
   removeWaitlistEntry,
   resolveBookingAccessForProgram,
   cancelAccessBackedBooking,
@@ -93,6 +105,7 @@ export {
   NotificationDeliveryError,
   enqueueNotificationJob,
   processNotificationOutbox,
+  processAccountSetupNotificationOutbox,
   type EnqueueNotificationInput,
   type NotificationDeliveryAdapter,
   type NotificationJobRecord,
@@ -239,3 +252,51 @@ export { createImportedClassBookingTx } from "./class-access.js";
 export * from "./member-data.js";
 export * from "./workspace-billing-handover.js";
 export * from "./staff-leave.js";
+
+export * from "./payment-disputes.js";
+export * from "./workspace-setup.js";
+export * from "./member-profiles.js";
+
+export * from "./scheduling-policy.js";
+
+export * from "./class-scheduling-settings.js";
+
+export {
+  OwnerLateBookingError,
+  previewOwnerLateClassBooking,
+  confirmOwnerLateClassBooking,
+  type OwnerLateBookingInput,
+  type OwnerLateBookingReview,
+} from "./class-access.js";
+
+export * from "./member-operations.js";
+
+export * from "./room-capacity.js";
+
+export * from "./form-requirements-policy.js";
+
+export * from "./form-requirement-bindings.js";
+
+export * from "./form-requirement-signing.js";
+
+export * from "./form-requirements.js";
+
+export * from "./form-requirement-summary.js";
+
+export * from "./member-directory.js";
+
+export * from "./direct-booking-funding.js";
+
+export * from "./member-booking-authority.js";
+export { cancelMemberClassBooking, joinMemberClassWaitlist, leaveMemberClassWaitlist, moveMemberClassBooking } from "./class-access.js";
+
+export * from "./coaching-booking-policy.js";
+export * from "./coaching-booking-settings.js";
+export * from "./coaching-availability.js";
+export * from "./coaching-checkout-disclosure.js";
+
+export { processMembershipGraceDisposition } from "./membership-grace-disposition.js";
+export { projectMembershipGraceReceipt, membershipGraceReleaseMessage } from "./membership-grace-projection.js";
+
+export * from "./class-booking-notifications.js";
+export * from "./class-reminder-settings.js";

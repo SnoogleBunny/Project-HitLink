@@ -1,3 +1,4 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { getCoachingWorkspace, getCoachingReviewInbox } from "@flowstate/db";
@@ -7,9 +8,9 @@ import { requireOperationsWorkspaceContext } from "../../../lib/operations-works
 import {
   CoachingField as Field,
   ProgramFields,
-  coachingDay,
+  coachingDayLabel as knownCoachingDayLabel,
   coachingLabel,
-  coachingTime,
+  coachingTime as knownCoachingTime,
 } from "../../../lib/coaching-fields";
 import { CoachingForm } from "./form";
 
@@ -19,6 +20,11 @@ export default async function CoachingPage({
   searchParams: Promise<{ error?: string; saved?: string }>;
 }) {
   const context = await requireOperationsWorkspaceContext();
+  const locale = resolveDisplayLocale(context.workspace.settings?.locale);
+  const coachingDayLabel = (value: Date) =>
+    knownCoachingDayLabel(value, locale);
+  const coachingTime = (value: Date, timezone: string) =>
+    knownCoachingTime(value, timezone, locale);
   const data = await getCoachingWorkspace({
     workspaceId: context.workspace.id,
     userId: context.session.userId,
@@ -32,7 +38,7 @@ export default async function CoachingPage({
     <AdminShell
       session={context.session}
       workspaceName={context.workspace.name}
-      title="Coaching"
+      title="Clients"
       description="Adult one-to-one programs, client notes and appointments."
     >
       {feedback.error ? (
@@ -70,7 +76,8 @@ export default async function CoachingPage({
                     {e.programName} · {e.coachName}
                   </p>
                   <p>
-                    {coachingDay(e.startsOn)} – {coachingDay(e.endsOn)}
+                    {coachingDayLabel(e.startsOn)} –{" "}
+                    {coachingDayLabel(e.endsOn)}
                   </p>
                 </div>
                 <Badge>{coachingLabel(e.status)}</Badge>
@@ -201,8 +208,13 @@ export default async function CoachingPage({
             </CoachingForm>
           </div>
         ))}
+        {data.bookingRules ? <div>
+          <p>Confirmed appointment rules · version {data.bookingRules.version}: book between {data.bookingRules.policy.appointments.maxAdvanceMinutes} and {data.bookingRules.policy.appointments.minimumLeadMinutes} minutes before the start. Minimum buffer: {data.bookingRules.policy.appointments.minimumBufferMinutes} minutes before and after.</p>
+          <details><summary>Appointment service hours</summary><ul>{data.bookingRules.policy.appointments.weeklyHours.map(day=><li key={day.weekday}>{coachingLabel(day.weekday)}: {day.intervals.length?day.intervals.map(interval=>`${Math.floor(interval.startMinute/60).toString().padStart(2,'0')}:${(interval.startMinute%60).toString().padStart(2,'0')}–${Math.floor(interval.endMinute/60).toString().padStart(2,'0')}:${(interval.endMinute%60).toString().padStart(2,'0')}`).join(', '):'Closed'}</li>)}</ul><p>Hours follow the gym timezone effective on the appointment date.</p></details>
+        </div> : <Notice tone="warning">The owner must confirm appointment booking rules before you can publish new times. Existing appointments remain unchanged.</Notice>}
         <details>
           <summary>Add an appointment time</summary>
+          <p>New times use the owner’s confirmed appointment service hours, booking window and minimum buffer. Buffers protect the coach and any recorded room outside the service interval. {data.isOwner?<Link href="/dashboard/settings/coaching-booking">Review appointment booking rules</Link>:'Ask the owner to review these rules when needed.'}</p>
           <CoachingForm
             kind="createAvailability"
             operationId={randomUUID()}

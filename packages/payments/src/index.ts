@@ -63,3 +63,5 @@ export { startPublicMembershipCheckout, resumePublicMembershipCheckout, handlePu
 
 export * from "./legacy-checkout.js";
 export * from "./workspace-offboarding.js";
+
+export * from "./disputes.js";

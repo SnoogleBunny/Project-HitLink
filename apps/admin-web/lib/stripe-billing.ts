@@ -1,3 +1,4 @@
+import { createStripeWebhookFailure, type StripeWebhookFailure } from "./stripe-webhook-failures";
 import {
   prisma,
   type BillingRecordStatus,
@@ -6,7 +7,7 @@ import {
   type StripeWebhookProcessingStatus,
 } from "@flowstate/db";
 import Stripe from "stripe";
-import { reconcileLegacyCheckout, reconcileCheckoutWebhook, handleCoachingCheckoutWebhook, reconcileMembershipWebhook, reconcileAdjustmentWebhook, handlePublicMembershipCheckoutWebhook, handlePublicMembershipSubscriptionWebhook } from "@flowstate/payments";
+import { reconcileDisputeWebhook, reconcileLegacyCheckout, reconcileCheckoutWebhook, handleCoachingCheckoutWebhook, reconcileMembershipWebhook, reconcileAdjustmentWebhook, handlePublicMembershipCheckoutWebhook, handlePublicMembershipSubscriptionWebhook } from "@flowstate/payments";
 
 export interface StripeAccountSummary {
   stripeAccountId: string;
@@ -154,8 +155,7 @@ export type StripeWebhookProcessingResult =
     }
   | {
       status: "error";
-      message: string;
-    };
+    } & StripeWebhookFailure;
 
 const stripeWebhookDatabase = prisma as unknown as StripeWebhookDatabase;
 
@@ -754,9 +754,17 @@ async function processClaimedStripeWebhookEvent(args: {
   settings: WorkspaceStripeSettingsRecord | null;
   reconcileMembershipEvent: typeof reconcileMembershipWebhook;
   reconcileAdjustmentEvent: typeof reconcileAdjustmentWebhook;
+  reconcileDisputeEvent: typeof reconcileDisputeWebhook;
   recoverPublicMembershipEvent: typeof handlePublicMembershipSubscriptionWebhook;
 }): Promise<void> {
   switch (args.event.type) {
+    case "charge.dispute.created":
+    case "charge.dispute.updated":
+    case "charge.dispute.closed":
+    case "charge.dispute.funds_withdrawn":
+    case "charge.dispute.funds_reinstated":
+      await args.reconcileDisputeEvent(args.event);
+      return;
     case "refund.created":
     case "refund.updated":
     case "refund.failed":
@@ -799,6 +807,7 @@ export async function processStripeWebhookEvent(args: {
   now?: Date;
   reconcileMembershipEvent?: typeof reconcileMembershipWebhook;
   reconcileAdjustmentEvent?: typeof reconcileAdjustmentWebhook;
+  reconcileDisputeEvent?: typeof reconcileDisputeWebhook;
   recoverPublicMembershipEvent?: typeof handlePublicMembershipSubscriptionWebhook;
 }): Promise<StripeWebhookProcessingResult> {
   const db = args.db ?? stripeWebhookDatabase;
@@ -835,6 +844,7 @@ export async function processStripeWebhookEvent(args: {
       settings,
       reconcileMembershipEvent: args.reconcileMembershipEvent ?? reconcileMembershipWebhook,
       reconcileAdjustmentEvent: args.reconcileAdjustmentEvent ?? reconcileAdjustmentWebhook,
+      reconcileDisputeEvent: args.reconcileDisputeEvent ?? reconcileDisputeWebhook,
       recoverPublicMembershipEvent: args.recoverPublicMembershipEvent ?? handlePublicMembershipSubscriptionWebhook,
     });
     await markStripeWebhookEvent({
@@ -846,18 +856,23 @@ export async function processStripeWebhookEvent(args: {
     return {
       status: "processed",
     };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+  } catch {
+    const failure = createStripeWebhookFailure({
+      eventType: args.event.type,
+      stripeEventId: args.event.id,
+      stripeAccountId,
+      livemode: args.event.livemode,
+    });
     await markStripeWebhookEvent({
       stripeEventId: args.event.id,
       status: "ERROR",
       db,
-      errorMessage: message,
+      errorMessage: `${failure.code}:${failure.diagnosticId}`,
     });
 
     return {
       status: "error",
-      message,
+      ...failure,
     };
   }
 }

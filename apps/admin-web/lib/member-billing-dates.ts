@@ -2,9 +2,10 @@
 export function formatMemberBillingDate(
   value: Date | null,
   timeZone = "UTC",
+  locale = "en-CA",
 ): string {
   return value
-    ? new Intl.DateTimeFormat("en-CA", {
+    ? new Intl.DateTimeFormat(locale, {
         dateStyle: "medium",
         timeZone,
       }).format(value)

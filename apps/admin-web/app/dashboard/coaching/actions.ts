@@ -1,29 +1,27 @@
 "use server";
 import {
   CoachingError,
-  getZonedDateTimeAsUtc,
-  isUnambiguousClassTime,
   runCoachingCommand,
   type CoachingCommand,
 } from "@flowstate/db";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireOperationsWorkspaceContext } from "../../../lib/operations-workspace";
+import {
+  coachingFeedback,
+  coachingHref,
+  coachingReturnPath,
+} from "./navigation";
 
 export async function coachingAction(formData: FormData): Promise<void> {
   const context = await requireOperationsWorkspaceContext();
   const enrollmentId = String(formData.get("enrollmentId") ?? "");
-  let destination = enrollmentId
-    ? `/dashboard/coaching/${encodeURIComponent(enrollmentId)}`
-    : "/dashboard/coaching";
-  const returnReviewId = String(formData.get("returnReviewId") ?? "");
-  if (
-    returnReviewId &&
-    ["approveRecordReview", "revokeRecordReview"].includes(
-      String(formData.get("kind")),
-    )
-  )
-    destination = `/dashboard/coaching/reviews/${encodeURIComponent(returnReviewId)}`;
+  let destination = coachingReturnPath({
+    enrollmentId,
+    kind: String(formData.get("kind")),
+    returnView: formData.get("returnView"),
+    returnReviewId: String(formData.get("returnReviewId") ?? ""),
+  });
   try {
     const input: Record<string, unknown> = Object.fromEntries(
       formData.entries(),
@@ -35,30 +33,6 @@ export async function coachingAction(formData: FormData): Promise<void> {
       "waiveLatePenalty",
     ])
       input[key] = formData.get(key) === "on";
-    if (formData.get("kind") === "createAvailability") {
-      for (const key of ["startsAt", "endsAt"]) {
-        const local = String(formData.get(key) ?? "");
-        const [dateString = "", time = ""] = local.split("T");
-        const [hours = 0, minutes = 0] = time.split(":").map(Number);
-        if (
-          !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(local) ||
-          !isUnambiguousClassTime(
-            dateString,
-            hours * 60 + minutes,
-            context.location.timezone,
-          )
-        ) {
-          throw new CoachingError(
-            "Choose an unambiguous appointment time in the gym's timezone.",
-          );
-        }
-        input[key] = getZonedDateTimeAsUtc({
-          dateString,
-          minutes: hours * 60 + minutes,
-          timezone: context.location.timezone,
-        }).toISOString();
-      }
-    }
     const result = await runCoachingCommand(
       { workspaceId: context.workspace.id, userId: context.session.userId },
       {
@@ -70,10 +44,16 @@ export async function coachingAction(formData: FormData): Promise<void> {
       },
     );
     if (formData.get("kind") === "enroll")
-      destination = `/dashboard/coaching/${result.id}`;
-    destination += "?saved=1";
+      destination = coachingHref(result.id);
+    destination = coachingFeedback(destination, "saved", "1");
   } catch (error) {
-    destination += `?error=${encodeURIComponent(error instanceof CoachingError ? error.message : "The change could not be saved. Reload the page and try again.")}`;
+    destination = coachingFeedback(
+      destination,
+      "error",
+      error instanceof CoachingError
+        ? error.message
+        : "The change could not be saved. Reload the page and try again.",
+    );
   }
   revalidatePath("/dashboard/coaching", "layout");
   redirect(destination);

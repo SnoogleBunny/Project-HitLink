@@ -21,7 +21,7 @@ export interface MemberFormsPageData {
 }
 
 export function formatRequiredFormState(value: string): string {
-  return value.charAt(0) + value.slice(1).toLowerCase();
+  return (value.charAt(0) + value.slice(1).toLowerCase()).replaceAll("_", " ");
 }
 
 export function formatTargetLabel(value: string): string {
@@ -52,6 +52,7 @@ export async function getMemberFormsPageData(args: {
   const result = await resolveRequiredFormStatusesForMember({
     workspaceId: args.workspaceId,
     memberId: args.memberId,
+    includeUpcoming: true,
   });
 
   return {

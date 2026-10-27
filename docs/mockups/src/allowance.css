@@ -15,7 +15,7 @@
 #hitlink-prototype .hl-allowance-period:only-child .hl-allowance-value{grid-column:2;grid-row:1/4;align-self:center;margin:0}
 #hitlink-prototype .hl-allowance-period:only-child .hl-allowance-detail{grid-column:1;grid-row:2;margin-top:var(--hl-space-tight)}
 #hitlink-prototype .hl-allowance-period:only-child .hl-allowance-reset{grid-column:1;grid-row:3}
-@media(max-width:640px){
+@media(max-width:767px){
  #hitlink-prototype .hl-allowance-grid{grid-template-columns:minmax(0,1fr);gap:var(--hl-space-related)}
  #hitlink-prototype .hl-allowance-period{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--hl-space-related);align-items:start}
  #hitlink-prototype .hl-allowance-period+.hl-allowance-period{border-left:0;border-top:1px solid var(--hl-line);padding:var(--hl-space-related) 0 0}

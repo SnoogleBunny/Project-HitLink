@@ -1,15 +1,14 @@
 "use client";
-import { formatMoney as formatKnownMoney } from "@flowstate/ui/money";
+import {
+  formatMoney as formatKnownMoney,
+  useWorkspaceLocale,
+} from "@flowstate/ui";
 
 import { useActionState, useState } from "react";
 import { SubmitButton } from "../../../../_components/submit-button";
 import type { PunchCardProductSummary } from "../../../../../lib/access-products";
 import { emptyFormState } from "../../../../../lib/route-decisions";
 import { grantPunchCardAction } from "./actions";
-
-function formatMoney(amountCents: number, currency: string): string {
-  return formatKnownMoney(amountCents, currency);
-}
 
 export function OwnerPunchCardGrantForm({
   memberId,
@@ -18,6 +17,9 @@ export function OwnerPunchCardGrantForm({
   memberId: string;
   products: PunchCardProductSummary[];
 }) {
+  const locale = useWorkspaceLocale();
+  const formatMoney = (amount: number, currency: string) =>
+    formatKnownMoney(amount, currency, locale);
   const [state, formAction] = useActionState(
     grantPunchCardAction,
     emptyFormState,

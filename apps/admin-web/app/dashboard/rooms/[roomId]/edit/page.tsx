@@ -1,17 +1,13 @@
+import { randomUUID } from "node:crypto";
+import { resolveDisplayLocale } from "@flowstate/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma } from "@flowstate/db";
+import { prisma, getRoomCapacitySettings } from "@flowstate/db";
 import { AdminShell } from "../../../../_components/admin-shell";
 import { requireOwnerWorkspaceContext } from "../../../../../lib/owner-workspace";
 import { archiveRoomAction } from "../../actions";
 import { RoomEditForm } from "../../room-edit-form";
-
-function formatDate(value: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
-}
+import { RoomCapacityForm } from "../../room-capacity-form";
 
 export default async function EditRoomPage({
   params,
@@ -22,6 +18,14 @@ export default async function EditRoomPage({
 }) {
   const { roomId } = await params;
   const { session, workspace, location } = await requireOwnerWorkspaceContext();
+  const locale = resolveDisplayLocale(workspace.settings?.locale);
+  function formatDate(value: Date): string {
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(value);
+  }
+
   const room = await prisma.room.findFirst({
     where: {
       id: roomId,
@@ -33,13 +37,18 @@ export default async function EditRoomPage({
     notFound();
   }
 
+  const capacitySettings = await getRoomCapacitySettings(
+    { workspaceId: workspace.id, userId: session.userId },
+    roomId,
+  );
+
   return (
     <AdminShell
       session={session}
       workspaceName={workspace.name}
       eyebrow="Rooms"
       title={`Edit ${room.name}`}
-      description="Adjust room capacity or active state before class templates start using room assignments."
+      description="Maintain room details and review the effect of a default-capacity change on future classes."
       actions={
         <Link className="button button-secondary" href="/dashboard/rooms">
           Back to rooms
@@ -64,7 +73,13 @@ export default async function EditRoomPage({
           <dl className="detail-list">
             <div>
               <dt>Status</dt>
-              <dd>{room.archivedAt ? "Archived" : room.isActive ? "Active" : "Inactive"}</dd>
+              <dd>
+                {room.archivedAt
+                  ? "Archived"
+                  : room.isActive
+                    ? "Active"
+                    : "Inactive"}
+              </dd>
             </div>
             <div>
               <dt>Created</dt>
@@ -72,7 +87,9 @@ export default async function EditRoomPage({
             </div>
             <div>
               <dt>Archived at</dt>
-              <dd>{room.archivedAt ? formatDate(room.archivedAt) : "Not archived"}</dd>
+              <dd>
+                {room.archivedAt ? formatDate(room.archivedAt) : "Not archived"}
+              </dd>
             </div>
           </dl>
 
@@ -90,6 +107,50 @@ export default async function EditRoomPage({
           )}
         </section>
       </div>
+      <section className="management-card">
+        <RoomCapacityForm
+          key={room.id}
+          initial={capacitySettings}
+          operationId={randomUUID()}
+          locale={locale}
+        />
+      </section>
+      <section className="management-card">
+        <h3>Room default history</h3>
+        {capacitySettings.history.length ? (
+          <ol>
+            {capacitySettings.history.map((row) => (
+              <li key={row.revision}>
+                <strong>
+                  Review {row.revision}:{" "}
+                  {row.previousCapacity ?? "No room default limit"} →{" "}
+                  {row.capacity ?? "No room default limit"}
+                </strong>
+                <p>
+                  {row.actorName} ·{" "}
+                  {new Intl.DateTimeFormat(locale, {
+                    timeZone: workspace.location.timezone,
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  }).format(new Date(row.at))}
+                </p>
+                <p>{row.reason}</p>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p>
+            No default-capacity changes have been reviewed. The initial room
+            value has no fabricated review history.
+          </p>
+        )}
+        {capacitySettings.history.length === 10 ? (
+          <p>
+            Showing the latest 10 reviews. Preserved business records include
+            the full history.
+          </p>
+        ) : null}
+      </section>
     </AdminShell>
   );
 }

@@ -1,8 +1,15 @@
 "use server";
+import {
+  consumePublicAuthAttempt,
+  clearSuccessfulPublicAuthLogin,
+  getPublicAuthNetworkIdentity,
+  PublicAuthThrottleError,
+  PUBLIC_AUTH_UNAVAILABLE_MESSAGE,
+} from "@flowstate/auth";
 
 import { createSession, verifyPassword } from "@flowstate/auth";
-import { isWorkspaceMigrationReady, prisma } from "@flowstate/db";
-import { cookies } from "next/headers";
+import { isWorkspaceOperationallyReady, prisma } from "@flowstate/db";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   getHomeRouteDestination,
@@ -25,6 +32,23 @@ export async function loginAction(
     };
   }
 
+  let admission: Awaited<ReturnType<typeof consumePublicAuthAttempt>>;
+  try {
+    admission = await consumePublicAuthAttempt({
+      email,
+      action: "login",
+      portal: "admin",
+      networkIdentity: getPublicAuthNetworkIdentity(await headers()),
+    });
+  } catch (error) {
+    return {
+      error:
+        error instanceof PublicAuthThrottleError
+          ? error.message
+          : PUBLIC_AUTH_UNAVAILABLE_MESSAGE,
+    };
+  }
+
   const user = await prisma.user.findUnique({
     where: {
       email,
@@ -43,6 +67,8 @@ export async function loginAction(
           workspace: {
             select: {
               status: true,
+              setup: { select: { id: true } },
+              setupActivation: true,
               migration: {
                 select: {
                   stage: true,
@@ -69,8 +95,9 @@ export async function loginAction(
 
   const membership = user.workspaceUsers[0];
   const workspaceIsReady = membership
-    ? isWorkspaceMigrationReady({
+    ? isWorkspaceOperationallyReady({
         workspaceStatus: membership.workspace.status,
+        setupActivation: membership.workspace.setupActivation,
         migrationStage: membership.workspace.migration?.stage,
         ownerReviewAcknowledgedAt:
           membership.workspace.migration?.ownerReviewAcknowledgedAt,
@@ -91,13 +118,27 @@ export async function loginAction(
 
   const cookieStore = await cookies();
 
-  await createSession({
-    userId: user.id,
-    cookieStore,
-  });
+  try {
+    await createSession({
+      userId: user.id,
+      cookieStore,
+      expectedPasswordHash: user.passwordHash,
+    });
+  } catch {
+    return {
+      error:
+        "Your sign-in could not be confirmed. Try again with your current password.",
+    };
+  }
+
+  // A successful password/session boundary resets only the account quota.
+  // Network admission remains bounded even for successful automation.
+  await clearSuccessfulPublicAuthLogin(admission).catch(() => {});
 
   if (membership?.role === "OWNER" && !workspaceIsReady) {
-    redirect("/dashboard/migration");
+    redirect(
+      membership.workspace.setup ? "/dashboard/setup" : "/dashboard/migration",
+    );
   }
 
   redirect(

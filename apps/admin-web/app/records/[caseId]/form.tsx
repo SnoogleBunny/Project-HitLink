@@ -34,8 +34,16 @@ export function RetentionForm({
           {pending ? "Recording…" : label}
         </Button>
       </div>
-      {state.error ? <Notice tone="danger">{state.error}</Notice> : null}
-      {state.success ? <Notice tone="success">{state.success}</Notice> : null}
+      {state.error ? (
+        <Notice tone="danger" role="alert">
+          {state.error}
+        </Notice>
+      ) : null}
+      {state.success ? (
+        <Notice tone="success" role="status">
+          {state.success}
+        </Notice>
+      ) : null}
     </form>
   );
 }

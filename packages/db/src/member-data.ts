@@ -3,6 +3,14 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "./client.js";
 import { lockClassSchedule } from "./class-occurrences.js";
 import {
+  lockStaffAuthorityTx,
+  normalizeAuthoritySerializationError,
+} from "./staff-access.js";
+import {
+  authorizeMemberEmergencyContactsTx,
+  MemberProfileError,
+} from "./member-profiles.js";
+import {
   buildMemberDataArtifact,
   MemberDataError,
   type MemberDataScope,
@@ -39,6 +47,7 @@ async function lock(db: Tx, workspaceId: string) {
   );
 }
 async function activeActor(db: Tx, actor: MemberDataActor) {
+  await lockStaffAuthorityTx(db, actor);
   const access = await db.workspaceUser.findFirst({
     where: {
       workspaceId: actor.workspaceId,
@@ -70,6 +79,37 @@ async function authorize(
   now: Date,
 ) {
   const access = await activeActor(db, actor);
+  // The actor can remain active while a child grant/link or payer identity is
+  // revoked during an advisory wait. Lock those identities before state filters.
+  try {
+    if (target.scope === "MEMBER") {
+      await db.$queryRaw`
+        SELECT id FROM members WHERE "workspaceId" = ${actor.workspaceId} AND id = ${target.targetId} FOR SHARE
+      `;
+      await db.$queryRaw`
+        SELECT id FROM member_portal_grants
+        WHERE "workspaceId" = ${actor.workspaceId} AND "userId" = ${actor.userId} AND "memberId" = ${target.targetId}
+        ORDER BY id FOR SHARE
+      `;
+      await db.$queryRaw`
+        SELECT link.id FROM family_links link JOIN guardians guardian ON guardian.id = link."guardianId"
+        WHERE link."workspaceId" = ${actor.workspaceId} AND link."childMemberId" = ${target.targetId}
+          AND guardian."workspaceId" = ${actor.workspaceId}
+          AND EXISTS (SELECT 1 FROM member_portal_grants grant_row
+            WHERE grant_row."workspaceId" = ${actor.workspaceId} AND grant_row."userId" = ${actor.userId}
+              AND grant_row."memberId" = ${target.targetId} AND grant_row."guardianId" = guardian.id)
+        ORDER BY link.id FOR SHARE OF link, guardian
+      `;
+    } else if (target.scope === "PAYER") {
+      await db.$queryRaw`
+        SELECT account.id FROM financial_accounts account JOIN members member ON member.id = account."memberId"
+        WHERE account."workspaceId" = ${actor.workspaceId} AND account.id = ${target.targetId}
+        FOR SHARE OF account, member
+      `;
+    }
+  } catch (error) {
+    throw normalizeAuthoritySerializationError(error);
+  }
   if (target.scope === "PAYER") {
     const payer = await db.financialAccount.findFirst({
       where: { id: target.targetId, workspaceId: actor.workspaceId },
@@ -130,6 +170,24 @@ async function audit(
       metadata: json(metadata),
     },
   });
+}
+async function emergencyExportAccess(
+  db: Tx,
+  actor: MemberDataActor,
+  target: MemberDataTarget,
+  now: Date,
+) {
+  if (target.scope !== "MEMBER") return false;
+  try {
+    await authorizeMemberEmergencyContactsTx(db, actor, target.targetId, {
+      intent: "READ",
+      now,
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof MemberProfileError) return false;
+    throw error;
+  }
 }
 async function transaction<T>(db: PrismaClient, work: (tx: Tx) => Promise<T>) {
   for (let attempt = 0; ; attempt++) {
@@ -320,6 +378,12 @@ export async function createMemberDataExport(
         workspaceId: actor.workspaceId,
         ...target,
         exportedAt: now,
+        includeEmergencyContacts: await emergencyExportAccess(
+          tx,
+          actor,
+          target,
+          now,
+        ),
       });
       const saved = await tx.memberDataExport.update({
         where: { id: requestId },
@@ -382,6 +446,22 @@ async function accessibleJob(
     throw new MemberDataError(
       "This archive is unavailable or expired. Prepare a new archive.",
     );
+  const manifest =
+    job.manifest &&
+    typeof job.manifest === "object" &&
+    !Array.isArray(job.manifest)
+      ? job.manifest
+      : {};
+  if (
+    manifest.requiresEmergencyContactAccess === true &&
+    !(await emergencyExportAccess(
+      db,
+      actor,
+      { scope: job.scope, targetId: job.targetId },
+      now,
+    ))
+  )
+    fail();
   if (hash(job.artifact) !== job.sha256)
     throw new MemberDataError(
       "This archive failed its checksum check. Ask the records contact to resolve it before retrying.",

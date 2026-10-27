@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Button } from "../src/button";
 import { Card } from "../src/card";
-import { Money, PageSkeleton } from "../src/primitives";
+import { Money, Notice, PageSkeleton } from "../src/primitives";
 import { formatMoney } from "../src/money";
 
 describe("money representation", () => {
@@ -24,9 +24,57 @@ describe("money representation", () => {
       renderToStaticMarkup(<Money amountMinor={2510} currency="usd" />),
     ).toBe('<span class="hl-money ">USD\u202f25.10</span>');
   });
+  it.each([
+    [1234, "JPY", "en-CA", "JPY\u202f1,234"],
+    [1234, "KRW", "en-CA", "KRW\u202f1,234"],
+    [1234, "KWD", "en-CA", "KWD\u202f1.234"],
+    [123456, "EUR", "de-DE", "EUR\u202f1.234,56"],
+  ])(
+    "uses %s minor units with %s currency and %s locale",
+    (amount, currency, locale, expected) => {
+      expect(formatMoney(amount, currency, locale)).toBe(expected);
+    },
+  );
 });
 
 describe("shared semantics", () => {
+  it("forwards explicit feedback semantics and native attributes without losing notice styling", () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const html = renderToStaticMarkup(
+      <Notice
+        tone="success"
+        className="saved-feedback"
+        id="save-result"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        tabIndex={-1}
+        actions={<a href="/records">Review records</a>}
+      >
+        Saved.
+      </Notice>,
+    );
+    expect(html).toContain(
+      'class="hl-notice hl-notice-success saved-feedback"',
+    );
+    expect(html).toContain('id="save-result"');
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('aria-atomic="true"');
+    expect(html).toContain('tabindex="-1"');
+    expect(html).toContain('href="/records"');
+    expect(html).toContain("Saved.");
+  });
+  it.each(["info", "warning", "danger", "success"] as const)(
+    "keeps a persistent %s notice quiet unless its caller opts in",
+    (tone) => {
+      (globalThis as typeof globalThis & { React: typeof React }).React = React;
+      const html = renderToStaticMarkup(
+        <Notice tone={tone}>Existing record.</Notice>,
+      );
+      expect(html).not.toMatch(/role=|aria-live=|tabindex=/);
+    },
+  );
   it("preserves native action properties without a starter alert", () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const html = renderToStaticMarkup(

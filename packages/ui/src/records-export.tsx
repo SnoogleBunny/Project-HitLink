@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { Badge } from "./primitives";
+import { useWorkspaceLocale } from "./workspace-locale";
 
 export interface RecordsExportState {
   error: string | null;
@@ -92,9 +93,10 @@ export function RecordsExportPanel({
   timezone,
   action,
 }: RecordsExportPanelProps) {
+  const locale = useWorkspaceLocale();
   const [state, submit, pending] = useActionState(action, { error: null });
   const dateTime = (value: string) =>
-    new Intl.DateTimeFormat("en-CA", {
+    new Intl.DateTimeFormat(locale, {
       dateStyle: "medium",
       timeStyle: "short",
       timeZone: timezone,

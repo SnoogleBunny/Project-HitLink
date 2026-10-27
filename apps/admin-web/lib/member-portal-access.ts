@@ -1,7 +1,5 @@
-import { hashPassword } from "@flowstate/auth";
+import { hashPassword, validateNewPassword } from "@flowstate/auth";
 import { prisma } from "@flowstate/db";
-
-const minPasswordLength = 8;
 
 interface MemberPortalAccessRecord {
   id: string;
@@ -52,21 +50,16 @@ type MemberPortalAccessMutationResult =
 const memberPortalAccessDatabase =
   prisma as unknown as MemberPortalAccessDatabase;
 
-function cleanNullable(value: string | undefined): string | null {
-  const trimmed = value?.trim();
-
-  return trimmed ? trimmed : null;
-}
-
 function validatePassword(
   value: string | undefined,
 ): { status: "ok"; value: string } | { status: "error"; message: string } {
-  const password = cleanNullable(value) ?? "";
+  const password = value ?? "";
+  const message = validateNewPassword(password);
 
-  if (password.length < minPasswordLength) {
+  if (message) {
     return {
       status: "error",
-      message: `Password must be at least ${minPasswordLength} characters.`,
+      message,
     };
   }
 

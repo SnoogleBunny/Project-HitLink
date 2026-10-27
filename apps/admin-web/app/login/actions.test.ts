@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PublicAuthThrottleError } from "@flowstate/auth";
 
 const {
+  consumeMock,
+  clearThrottleMock,
   cookiesMock,
   createSessionMock,
   prismaUserFindUniqueMock,
   redirectMock,
   verifyPasswordMock,
 } = vi.hoisted(() => ({
+  consumeMock: vi.fn(),
+  clearThrottleMock: vi.fn(),
   cookiesMock: vi.fn(),
   createSessionMock: vi.fn(),
   prismaUserFindUniqueMock: vi.fn(),
@@ -17,14 +22,19 @@ const {
 }));
 
 vi.mock("@flowstate/auth", () => ({
+  consumePublicAuthAttempt: consumeMock,
+  clearSuccessfulPublicAuthLogin: clearThrottleMock,
+  getPublicAuthNetworkIdentity: () => "unverified-network",
+  PublicAuthThrottleError: class extends Error {},
+  PUBLIC_AUTH_UNAVAILABLE_MESSAGE:
+    "Account access is temporarily unavailable. Try again shortly.",
   createSession: createSessionMock,
   verifyPassword: verifyPasswordMock,
 }));
 
 vi.mock("@flowstate/db", async () => {
-  const actual = await vi.importActual<typeof import("@flowstate/db")>(
-    "@flowstate/db",
-  );
+  const actual =
+    await vi.importActual<typeof import("@flowstate/db")>("@flowstate/db");
 
   return {
     ...actual,
@@ -37,6 +47,7 @@ vi.mock("@flowstate/db", async () => {
 });
 
 vi.mock("next/headers", () => ({
+  headers: vi.fn().mockResolvedValue(new Headers()),
   cookies: cookiesMock,
 }));
 
@@ -96,6 +107,11 @@ function buildAdminUser(args: {
 describe("admin login action", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    createSessionMock.mockReset().mockResolvedValue(undefined);
+    consumeMock
+      .mockReset()
+      .mockResolvedValue({ accountKeyHash: "account-admission" });
+    clearThrottleMock.mockReset().mockResolvedValue(undefined);
     cookiesMock.mockResolvedValue({
       get: vi.fn(),
       set: vi.fn(),
@@ -103,7 +119,9 @@ describe("admin login action", () => {
   });
 
   it("keeps the ready coach destination and creates the admin session", async () => {
-    prismaUserFindUniqueMock.mockResolvedValue(buildAdminUser({ role: "COACH" }));
+    prismaUserFindUniqueMock.mockResolvedValue(
+      buildAdminUser({ role: "COACH" }),
+    );
     verifyPasswordMock.mockResolvedValue(true);
 
     await expect(loginAction(emptyFormState, buildFormData())).rejects.toThrow(
@@ -128,6 +146,8 @@ describe("admin login action", () => {
             workspace: {
               select: {
                 status: true,
+                setup: { select: { id: true } },
+                setupActivation: true,
                 migration: {
                   select: {
                     stage: true,
@@ -146,6 +166,7 @@ describe("admin login action", () => {
     expect(createSessionMock).toHaveBeenCalledWith({
       userId: "coach_1",
       cookieStore: expect.any(Object),
+      expectedPasswordHash: "hash",
     });
   });
 
@@ -171,6 +192,7 @@ describe("admin login action", () => {
     expect(createSessionMock).toHaveBeenCalledWith({
       userId: "owner_1",
       cookieStore: expect.any(Object),
+      expectedPasswordHash: "hash",
     });
   });
 
@@ -184,9 +206,11 @@ describe("admin login action", () => {
     );
     verifyPasswordMock.mockResolvedValue(true);
 
-    await expect(loginAction(emptyFormState, buildFormData())).resolves.toEqual({
-      error: "This workspace is not ready for operations yet.",
-    });
+    await expect(loginAction(emptyFormState, buildFormData())).resolves.toEqual(
+      {
+        error: "This workspace is not ready for operations yet.",
+      },
+    );
 
     expect(cookiesMock).not.toHaveBeenCalled();
     expect(createSessionMock).not.toHaveBeenCalled();
@@ -203,9 +227,11 @@ describe("admin login action", () => {
     );
     verifyPasswordMock.mockResolvedValue(false);
 
-    await expect(loginAction(emptyFormState, buildFormData())).resolves.toEqual({
-      error: "Invalid email or password.",
-    });
+    await expect(loginAction(emptyFormState, buildFormData())).resolves.toEqual(
+      {
+        error: "Invalid email or password.",
+      },
+    );
 
     expect(cookiesMock).not.toHaveBeenCalled();
     expect(createSessionMock).not.toHaveBeenCalled();
@@ -228,6 +254,67 @@ describe("admin login action", () => {
     expect(createSessionMock).toHaveBeenCalledWith({
       userId: "owner_without_workspace",
       cookieStore: expect.any(Object),
+      expectedPasswordHash: "hash",
+    });
+  });
+  it("fails closed if a password reset wins before session creation", async () => {
+    prismaUserFindUniqueMock.mockResolvedValue(
+      buildAdminUser({ role: "OWNER" }),
+    );
+    verifyPasswordMock.mockResolvedValue(true);
+    createSessionMock.mockRejectedValueOnce(new Error("Password changed"));
+    expect(await loginAction(emptyFormState, buildFormData())).toEqual({
+      error: expect.stringContaining("current password"),
+    });
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+  it("denies persistent cooldown before account lookup, bcrypt or session creation", async () => {
+    consumeMock.mockRejectedValue(
+      new PublicAuthThrottleError(
+        "Too many attempts. Wait a little and try again.",
+      ),
+    );
+    expect(await loginAction(emptyFormState, buildFormData())).toEqual({
+      error: "Too many attempts. Wait a little and try again.",
+    });
+    expect(consumeMock).toHaveBeenCalledWith({
+      email: "admin@example.com",
+      action: "login",
+      portal: "admin",
+      networkIdentity: "unverified-network",
+    });
+    expect(prismaUserFindUniqueMock).not.toHaveBeenCalled();
+    expect(verifyPasswordMock).not.toHaveBeenCalled();
+    expect(createSessionMock).not.toHaveBeenCalled();
+    expect(clearThrottleMock).not.toHaveBeenCalled();
+  });
+  it("accepts a clean setup activation receipt without inventing a migration", async () => {
+    const receipt = {
+      ownerUserId: "owner",
+      snapshotHash: "a".repeat(64),
+      ownerVerifiedAt: new Date("2026-10-26T10:00:00Z"),
+      activatedAt: new Date("2026-10-26T10:01:00Z"),
+    };
+    const user = buildAdminUser({ role: "COACH", migration: null });
+    prismaUserFindUniqueMock.mockResolvedValue({
+      ...user,
+      workspaceUsers: [
+        {
+          ...user.workspaceUsers[0]!,
+          workspace: {
+            status: "ACTIVE",
+            migration: null,
+            setupActivation: receipt,
+          },
+        },
+      ],
+    });
+    verifyPasswordMock.mockResolvedValue(true);
+    await expect(loginAction(emptyFormState, buildFormData())).rejects.toThrow(
+      "NEXT_REDIRECT:/dashboard/coach/today",
+    );
+    expect(clearThrottleMock).toHaveBeenCalledWith({
+      accountKeyHash: "account-admission",
     });
   });
 });

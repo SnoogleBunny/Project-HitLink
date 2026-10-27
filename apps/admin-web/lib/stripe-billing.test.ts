@@ -164,17 +164,37 @@ describe("Stripe billing webhook processing", () => {
       }),
     ).resolves.toEqual({
       status: "error",
-      message: "db down",
+      code: "MEMBERSHIP_RECONCILIATION_PENDING",
+      diagnosticId: expect.any(String),
+      message: expect.stringMatching(/retry/i),
     });
 
     expect(db.stripeWebhookEvent.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           status: "ERROR",
-          lastError: "db down",
+          lastError: expect.stringMatching(/^MEMBERSHIP_RECONCILIATION_PENDING:[0-9a-f-]{36}$/),
         }),
       }),
     );
   });
 });
 
+
+
+describe("processor dispute webhook dispatch", () => {
+  it.each(["created", "updated", "closed", "funds_withdrawn", "funds_reinstated"])("dispatches charge.dispute.%s before marking its durable receipt complete", async (suffix) => {
+    const db = createMockDb();
+    const handler = vi.fn().mockResolvedValue(undefined);
+    const event = buildWebhookEvent({ type: `charge.dispute.${suffix}`, data: { object: { id: "du_1", object: "dispute" } } });
+    expect(await processStripeWebhookEvent({ event, db, reconcileDisputeEvent: handler })).toEqual({ status: "processed" });
+    expect(handler).toHaveBeenCalledWith(event);
+    expect(db.stripeWebhookEvent.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "PROCESSED" }) }));
+  });
+  it("leaves provider uncertainty retryable and stores only a normalized error code", async () => {
+    const db = createMockDb();
+    const result = await processStripeWebhookEvent({ event: buildWebhookEvent({ type: "charge.dispute.closed" }), db, reconcileDisputeEvent: vi.fn().mockRejectedValue(new Error("private provider body")) });
+    expect(result).toEqual({ status: "error", code: "DISPUTE_RECONCILIATION_PENDING", diagnosticId: expect.any(String), message: expect.stringMatching(/retry/i) });
+    expect(db.stripeWebhookEvent.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "ERROR", lastError: expect.stringMatching(/^DISPUTE_RECONCILIATION_PENDING:[0-9a-f-]{36}$/) }) }));
+  });
+});

@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { FormRequirementError } from "@flowstate/db";
+import { consumedErrorFixtures } from "./test-support/consumed-error-fixtures";
 import {
   createFormDocumentWithInitialVersion,
   createFormVersion,
@@ -31,7 +33,11 @@ function createMockDb() {
   };
 
   const tx = {
+    $queryRaw: vi.fn().mockResolvedValue([]),
+    $queryRawUnsafe: vi.fn().mockResolvedValue([]),
+    workspaceUser: { findFirst: vi.fn().mockResolvedValue({ id: "workspace_user_1", userId: "owner_1", role: "OWNER" }) },
     formDocument: {
+      findFirst: vi.fn().mockImplementation(async () => ({ id: "document_1", currentVersionId: "version_1", versions: [{ versionNumber: state.latestVersionNumber }] })),
       create: vi.fn().mockResolvedValue({
         id: "document_1",
       }),
@@ -40,9 +46,7 @@ function createMockDb() {
       }),
     },
     formVersion: {
-      create: vi.fn().mockResolvedValue({
-        id: "version_1",
-      }),
+      create: vi.fn().mockImplementation(async ({ data }) => { state.latestVersionNumber = data.versionNumber; return { id: `version_${data.versionNumber}` }; }),
     },
   };
 
@@ -138,6 +142,7 @@ function createMockDb() {
     },
   };
 
+  db.formVersion.create = tx.formVersion.create;
   return {
     state,
     tx,
@@ -202,7 +207,7 @@ describe("admin forms helpers", () => {
     });
   });
 
-  it("creates a new current version and cancels stale open requests", async () => {
+  it("uploads a draft version without switching the requirement or cancelling accepted requests", async () => {
     const { db, state } = createMockDb();
 
     await expect(
@@ -232,48 +237,50 @@ describe("admin forms helpers", () => {
         }),
       }),
     );
-    expect(db.formDocument.update).toHaveBeenCalledWith({
-      where: {
-        id: "document_1",
-      },
-      data: {
-        currentVersionId: "version_2",
-      },
-    });
+    expect(db.formDocument.update).not.toHaveBeenCalled();
     expect(state.openRequests).toEqual([
       {
         id: "request_old",
         formVersionId: "version_1",
-        status: "CANCELLED",
+        status: "OPEN",
       },
     ]);
   });
 
-  it("deactivates an assignment and cancels old open requests when nothing remains active", async () => {
+  it("requires previewed publication before changing requirement contexts", async () => {
     const { db, state } = createMockDb();
-
-    await setRequiredFormAssignment({
-      workspaceId: "workspace_1",
-      formDocumentId: "document_1",
-      requirementTarget: "TRIAL",
-      isActive: false,
-      db,
-    });
-
-    expect(db.requiredFormAssignment.update).toHaveBeenCalledWith({
-      where: {
-        id: "assignment_1",
-      },
-      data: {
-        isActive: false,
-      },
-    });
-    expect(state.openRequests).toEqual([
-      {
-        id: "request_old",
-        formVersionId: "version_1",
-        status: "CANCELLED",
-      },
-    ]);
+    await expect(setRequiredFormAssignment({ workspaceId: "workspace_1", formDocumentId: "document_1", requirementTarget: "TRIAL", isActive: false, db })).rejects.toThrow("Preview and publish");
+    expect(state.assignments[0]?.isActive).toBe(true);
+    expect(state.openRequests[0]?.status).toBe("OPEN");
+    expect(db.requiredFormAssignment.update).not.toHaveBeenCalled();
   });
+});
+
+describe("form actual-consumer error projection", () => {
+  const input = { fileName: "waiver.pdf", mimeType: "application/pdf", fileSizeBytes: 8, fileData: new Uint8Array(Buffer.from("%PDF-1.7")) };
+  const commands = [
+    ["document", (db: AdminFormsTestDb) => createFormDocumentWithInitialVersion({ workspaceId: "workspace_1", uploadedByWorkspaceUserId: "workspace_user_1", input: { ...input, name: "Waiver", formType: "WAIVER" }, db })],
+    ["version", (db: AdminFormsTestDb) => createFormVersion({ workspaceId: "workspace_1", uploadedByWorkspaceUserId: "workspace_user_1", input: { ...input, formDocumentId: "document_1" }, db })],
+  ] as const;
+
+  for (const [commandName, command] of commands) {
+    it.each(consumedErrorFixtures(new FormRequirementError("Owned policy failure")))(`${commandName} rethrows $label unchanged without evaluating getters or proxy traps`, async (fixture) => {
+      const { db, tx } = createMockDb();
+      tx.workspaceUser.findFirst.mockRejectedValueOnce(fixture.error);
+      let caught: unknown;
+      try { await command(db); } catch (error) { caught = error; }
+      expect(caught === fixture.error).toBe(true);
+      expect(fixture.reads()).toBe(0);
+      expect(tx.formDocument.create).not.toHaveBeenCalled();
+      expect(tx.formVersion.create).not.toHaveBeenCalled();
+    });
+
+    it(`${commandName} retains the actual missing-owner domain message`, async () => {
+      const { db, tx } = createMockDb();
+      tx.workspaceUser.findFirst.mockResolvedValueOnce(null);
+      await expect(command(db)).resolves.toEqual({ status: "error", message: "Active owner membership not found." });
+      expect(tx.formDocument.create).not.toHaveBeenCalled();
+      expect(tx.formVersion.create).not.toHaveBeenCalled();
+    });
+  }
 });

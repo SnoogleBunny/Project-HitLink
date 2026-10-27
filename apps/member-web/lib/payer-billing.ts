@@ -59,6 +59,7 @@ export async function getPayerBillingData(args: {
       select: {
         id: true,
         status: true,
+        confirmation: { select: { id: true } },
         amountCents: true,
         refundedAmountCents: true,
         currency: true,

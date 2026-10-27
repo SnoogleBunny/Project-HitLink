@@ -4,8 +4,10 @@ import { getCoachingRecordReview, type CoachingActor } from "@flowstate/db";
 import {
   CoachingField as Field,
   coachingDay,
+  coachingDayLabel as knownCoachingDayLabel,
 } from "../../../../lib/coaching-fields";
 import { CoachingForm } from "../form";
+import type { CoachingView } from "../navigation";
 
 export async function CoachingRecordsPanel({
   actor,
@@ -13,21 +15,27 @@ export async function CoachingRecordsPanel({
   version,
   owner,
   coaches,
+  returnView,
+  locale = "en-CA",
 }: {
   actor: CoachingActor;
   enrollmentId: string;
   version: number;
   owner: boolean;
   coaches: { id: string; user: { fullName: string | null; email: string } }[];
+  returnView?: CoachingView;
+  locale?: string;
 }) {
+  const coachingDayLabel = (value: Date) =>
+    knownCoachingDayLabel(value, locale);
   const data = await getCoachingRecordReview(actor, enrollmentId);
-  const form = { enrollmentId, version };
+  const form = { enrollmentId, version, returnView };
   return (
     <section className="management-card">
       <h2>Record corrections and review</h2>
       {data.withdrawals.map((note) => (
         <p key={note.id}>
-          The publication for {coachingDay(note.localDate)} was withdrawn.
+          The publication for {coachingDayLabel(note.localDate)} was withdrawn.
           Previous copies cannot be recalled.
         </p>
       ))}
@@ -40,7 +48,7 @@ export async function CoachingRecordsPanel({
           {data.publications.map((note) => (
             <details key={note.id}>
               <summary>
-                Withdraw publication for {coachingDay(note.localDate)}
+                Withdraw publication for {coachingDayLabel(note.localDate)}
               </summary>
               <CoachingForm
                 {...form}
@@ -96,7 +104,7 @@ export async function CoachingRecordsPanel({
               <ul>
                 {data.privateMetadata.map((note) => (
                   <li key={note.id}>
-                    {coachingDay(note.localDate)} · {note.id} · author{" "}
+                    {coachingDayLabel(note.localDate)} · {note.id} · author{" "}
                     {coaches.find(
                       (person) => person.id === note.authorWorkspaceUserId,
                     )?.user.fullName ?? "Former coach"}

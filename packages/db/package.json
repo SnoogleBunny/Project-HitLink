@@ -10,11 +10,11 @@
   "scripts": {
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit",
-    "test": "pnpm run test:workspace-readiness && pnpm run test:demo-safety && pnpm run test:demo-waiver-pdf && pnpm run test:migration-schema && pnpm run db:validate",
+    "test": "pnpm run test:database-failure && pnpm run test:workspace-readiness && pnpm run test:scheduling-policy && pnpm run test:coaching-booking-policy && pnpm run test:form-requirements && pnpm run test:demo-safety && pnpm run test:demo-waiver-pdf && pnpm run test:migration-schema && pnpm run db:validate",
     "test:workspace-readiness": "vitest run src/workspace-readiness.test.ts",
     "test:demo-safety": "node --test prisma/demo-database-safety.test.mjs",
     "test:demo-waiver-pdf": "node --test prisma/demo-waiver-pdf.test.mjs",
-    "test:migration-schema": "node --test prisma/migration-operations-schema.test.mjs",
+    "test:migration-schema": "node --test prisma/migration-operations-schema.test.mjs tests/migration-imported-record-index.test.mjs",
     "db:generate": "prisma generate --schema prisma/schema.prisma",
     "db:migrate": "dotenv -e ../../.env -- prisma migrate dev --schema prisma/schema.prisma",
     "db:migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy --schema prisma/schema.prisma",
@@ -22,7 +22,11 @@
     "db:seed": "dotenv -e ../../.env -- node prisma/seed-demo.mjs",
     "db:verify:demo-seed": "dotenv -e ../../.env -- node prisma/seed-demo.mjs && dotenv -e ../../.env -- node prisma/verify-demo-seed.mjs && dotenv -e ../../.env -- node prisma/seed-demo.mjs && dotenv -e ../../.env -- node prisma/verify-demo-seed.mjs",
     "db:studio": "dotenv -e ../../.env -- prisma studio --schema prisma/schema.prisma",
-    "db:validate": "dotenv -v DATABASE_URL=postgresql://localhost/flowstate_dev?schema=public -- prisma validate --schema prisma/schema.prisma"
+    "db:validate": "dotenv -v DATABASE_URL=postgresql://localhost/flowstate_dev?schema=public -- prisma validate --schema prisma/schema.prisma",
+    "test:scheduling-policy": "vitest run src/scheduling-policy.test.ts",
+    "test:form-requirements": "node --experimental-strip-types --test tests/form-requirements-policy.test.mjs && vitest run src/form-requirement-summary.test.ts",
+    "test:coaching-booking-policy": "node --experimental-strip-types --test tests/coaching-booking-policy.test.mjs",
+    "test:database-failure": "vitest run src/database-failure.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0"

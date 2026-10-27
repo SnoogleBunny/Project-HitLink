@@ -1,4 +1,5 @@
-import { formatMemberBillingDate as formatDate } from "../../../../../lib/member-billing-dates";
+import { resolveDisplayLocale } from "@flowstate/ui";
+import { formatMemberBillingDate } from "../../../../../lib/member-billing-dates";
 import { randomUUID } from "node:crypto";
 import { getSourceBillingRenewalReview } from "../../../../../lib/source-billing-renewals";
 import { SourceRenewalForm } from "./source-renewal-form";
@@ -29,21 +30,7 @@ import {
   OwnerPunchCardGrantForm,
 } from "./billing-forms";
 
-function formatDateTime(value: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone,
-  }).format(value);
-}
 
-function formatMoney(amountCents: number | null, currency: string | null): string {
-  if (amountCents === null || !currency) {
-    return "Not set";
-  }
-
-  return formatKnownMoney(amountCents, currency);
-}
 
 export default async function MemberBillingPage({
   params,
@@ -54,6 +41,24 @@ export default async function MemberBillingPage({
 }) {
   const { memberId } = await params;
   const { session, workspace, workspaceUserId } = await requireOwnerWorkspaceContext();
+  const locale = resolveDisplayLocale(workspace.settings?.locale);
+  const formatDate = (value: Date | null, timezone = "UTC") => formatMemberBillingDate(value, timezone, locale);
+function formatMoney(amountCents: number | null, currency: string | null): string {
+  if (amountCents === null || !currency) {
+    return "Not set";
+  }
+
+  return formatKnownMoney(amountCents, currency, locale);
+}
+
+function formatDateTime(value: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone,
+  }).format(value);
+}
+
   const [profile, punchCardBalances, punchCardProducts, activationForms] = await Promise.all([
     getMemberBillingProfile({
       workspaceId: workspace.id,

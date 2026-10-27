@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   financialEntitlementHoldReason,
   lockClassSchedule,
+  lockStaffAuthorityTx,
   prisma,
   type Prisma,
   type PrismaClient,
@@ -14,6 +15,7 @@ async function reviewTx(
   caseId: string,
   db: Prisma.TransactionClient | PrismaClient,
 ) {
+  await lockStaffAuthorityTx(db, actor);
   if (
     !(await db.workspaceUser.findFirst({
       where: {
@@ -22,6 +24,7 @@ async function reviewTx(
         userId: actor.userId,
         role: "OWNER",
         isActive: true,
+        workspace: { status: { not: "DISABLED" } },
       },
     }))
   )

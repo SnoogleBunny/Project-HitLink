@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 import { archiveProgram, createProgram, updateProgram } from "./programs";
 
@@ -12,6 +13,14 @@ function buildInput() {
 }
 
 describe("program helpers", () => {
+  it("preserves an unknown failure without executing its SDK-shaped getters", async () => {
+    let reads = 0;
+    const error = { get code() { reads++; throw new Error("must not execute"); } };
+    const db = { program: { create: vi.fn().mockRejectedValue(error) } };
+    await expect(createProgram({ workspaceId: "scope", input: buildInput(), db: db as unknown as NonNullable<Parameters<typeof createProgram>[0]["db"]> })).rejects.toBe(error);
+    expect(reads).toBe(0);
+  });
+
   it("creates a program with sanitized nullable fields with rank tracking off until configured", async () => {
     const created = {
       data: null as Record<string, unknown> | null,
@@ -57,12 +66,12 @@ describe("program helpers", () => {
     const db = {
       program: {
         create: vi.fn(async () => {
-          throw {
+          throw new Prisma.PrismaClientKnownRequestError("Duplicate fixture", { clientVersion: "6.19.3",
             code: "P2002",
             meta: {
               target: ["workspaceId", "name"],
             },
-          };
+          });
         }),
         updateMany: vi.fn(),
       },

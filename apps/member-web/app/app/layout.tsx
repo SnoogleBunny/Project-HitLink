@@ -11,11 +11,18 @@ export default async function MemberLayout({
 }) {
   const context = await requireMemberPortalContext();
   const [coachingEnrollments, coachingPayerGrants] = await Promise.all([
-    prisma.coachingEnrollment.count({
+    prisma.coachingEnrollment.findMany({
       where: {
         workspaceId: context.workspace.id,
         memberId: (context.accountMember ?? context.member).id,
+        member: { userId: context.session.userId },
+        OR: [{ closedAt: null }, { retrievalUntil: { gt: new Date() } }],
       },
+      select: {
+        id: true,
+        programVersion: { select: { appointmentUnits: true } },
+      },
+      take: 2,
     }),
     prisma.coachingPayerGrant.count({
       where: {
@@ -27,7 +34,15 @@ export default async function MemberLayout({
       },
     }),
   ]);
-  const hasCoaching = coachingEnrollments > 0 || coachingPayerGrants > 0;
+  const hasCoaching = coachingEnrollments.length > 0 || coachingPayerGrants > 0;
+  const coachingNavigation =
+    coachingEnrollments.length === 1
+      ? {
+          enrollmentId: coachingEnrollments[0]!.id,
+          hasAppointments:
+            coachingEnrollments[0]!.programVersion.appointmentUnits > 0,
+        }
+      : undefined;
   const members = context.authorizedMembers ?? [
     { id: context.member.id, fullName: context.member.fullName },
   ];
@@ -35,6 +50,7 @@ export default async function MemberLayout({
     <MemberWorkspace
       context={context}
       hasCoaching={hasCoaching}
+      coachingNavigation={coachingNavigation}
       memberControl={
         members.length > 1 ? (
           <MemberSelector

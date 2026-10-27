@@ -1,16 +1,19 @@
+import { fixtureSchedulingRevision } from "../../../packages/db/tests/scheduling-policy-fixture.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  getMembershipAllowanceSummaryMock,
   cleanupExpiredPendingBookingsMock,
   resolveBookingAccessForProgramMock,
-  createAccessBackedBookingMock,
+  createReviewedDirectClassBookingMock,
   cancelAccessBackedBookingMock,
   joinWaitlistMock,
   leaveWaitlistMock,
 } = vi.hoisted(() => ({
+  getMembershipAllowanceSummaryMock: vi.fn(),
   cleanupExpiredPendingBookingsMock: vi.fn(),
   resolveBookingAccessForProgramMock: vi.fn(),
-  createAccessBackedBookingMock: vi.fn(),
+  createReviewedDirectClassBookingMock: vi.fn(),
   cancelAccessBackedBookingMock: vi.fn(),
   joinWaitlistMock: vi.fn(),
   leaveWaitlistMock: vi.fn(),
@@ -22,13 +25,22 @@ vi.mock("@flowstate/db", async () => {
 
   return {
     ...actual,
+    getMembershipAllowanceSummary: getMembershipAllowanceSummaryMock,
     cleanupExpiredPendingBookings: cleanupExpiredPendingBookingsMock,
     resolveBookingAccessForProgram: resolveBookingAccessForProgramMock,
-    createAccessBackedBooking: createAccessBackedBookingMock,
-    cancelAccessBackedBooking: cancelAccessBackedBookingMock,
-    joinWaitlist: joinWaitlistMock,
-    leaveWaitlist: leaveWaitlistMock,
+    createReviewedDirectClassBooking: createReviewedDirectClassBookingMock,
+    cancelMemberClassBooking: cancelAccessBackedBookingMock,
+    joinMemberClassWaitlist: joinWaitlistMock,
+    leaveMemberClassWaitlist: leaveWaitlistMock,
   };
+});
+
+import { buildDirectBookingFundingReview } from "@flowstate/db";
+
+const reviewedFunding = buildDirectBookingFundingReview({
+  workspaceId: "workspace_1", memberId: "member_1", classTemplateId: "template_1", scheduledForDate: "2026-04-14",
+  occurrence: { programId: "program_1", startsAt: "2026-04-14T18:00:00.000Z", endsAt: "2026-04-14T19:00:00.000Z", timezone: "UTC", cancellationCutoffMinutes: 120 },
+  funding: { kind: "MEMBERSHIP", id: "membership_1", version: "a".repeat(64), classReservations: 1 },
 });
 
 import {
@@ -91,6 +103,7 @@ function buildExistingBooking() {
 
 function createMockDb(): SelfServiceBookingTestDb {
   return {
+    workspaceSchedulingPolicyRevision: { findFirst: vi.fn().mockResolvedValue(fixtureSchedulingRevision()) },
     classTemplate: {
       findMany: vi.fn().mockResolvedValue([buildTemplate()]),
     },
@@ -115,9 +128,10 @@ function createMockDb(): SelfServiceBookingTestDb {
 
 describe("self-service booking helpers", () => {
   beforeEach(() => {
+    getMembershipAllowanceSummaryMock.mockReset();
     cleanupExpiredPendingBookingsMock.mockReset();
     resolveBookingAccessForProgramMock.mockReset();
-    createAccessBackedBookingMock.mockReset();
+    createReviewedDirectClassBookingMock.mockReset();
     cancelAccessBackedBookingMock.mockReset();
     joinWaitlistMock.mockReset();
     leaveWaitlistMock.mockReset();
@@ -125,7 +139,16 @@ describe("self-service booking helpers", () => {
     resolveBookingAccessForProgramMock.mockResolvedValue({
       type: "membership",
       membershipId: "membership_1",
+      directBookingFunding: { sourceName: "Accepted membership", funding: reviewedFunding.funding },
     });
+  });
+
+  it("withholds new claims without configured rules while retaining existing booking discovery", async () => {
+    const db = createMockDb(); db.workspaceSchedulingPolicyRevision!.findFirst = vi.fn().mockResolvedValue(null);
+    const args = { workspaceId: "workspace_1", memberId: "member_1", timezone: "UTC", fromDate: "2026-04-14", toDate: "2026-04-14", now: new Date("2026-04-08T12:00:00Z"), db };
+    expect((await listEligibleSelfServiceOccurrences(args)).occurrences).toEqual([]);
+    db.classBooking.findMany = vi.fn().mockResolvedValue([buildExistingBooking()]);
+    expect((await listEligibleSelfServiceOccurrences(args)).occurrences).toEqual([expect.objectContaining({ bookingState: "BOOKED", action: "none" })]);
   });
 
   it("uses the exact date's title, room, time, capacity and coach in discovery and booking details", async () => {
@@ -142,11 +165,43 @@ describe("self-service booking helpers", () => {
     expect(bookings.upcoming).toEqual([expect.objectContaining({ displayTitle: "Evening padwork", roomName: "Upstairs mat", timeLabel: "8:00 PM", coachName: "Coach Alex", canCancel: true })]);
   });
 
+  it("discloses the actual accepted-calendar allowance period for a class after a business timezone change", async () => {
+    const db = createMockDb();
+    db.memberMembership.findFirst = vi.fn().mockResolvedValue({ allowanceTimezone: "UTC" });
+    getMembershipAllowanceSummaryMock.mockResolvedValue({ windows: [{ kind: "WEEK", startsOn: "2026-04-15", endsOn: "2026-04-22", limit: 2, remaining: 1 }] });
+    const result = await listEligibleSelfServiceOccurrences({ workspaceId: "workspace_1", memberId: "member_1", timezone: "America/Los_Angeles", fromDate: "2026-04-14", toDate: "2026-04-14", now: new Date("2026-04-08T12:00:00Z"), db });
+    expect(result.occurrences[0]?.fundingNote).toContain("Apr 15, 2026");
+    expect(result.occurrences[0]?.fundingNote).toContain("accepted timezone (UTC)");
+    expect(result.occurrences[0]?.fundingNote).toContain("1 of 2 classes remaining");
+    expect(getMembershipAllowanceSummaryMock).toHaveBeenCalledWith(expect.objectContaining({ occurrenceStartsAt: new Date("2026-04-15T01:00:00Z"), scheduledForDate: "2026-04-14" }));
+  });
+
+  it("does not show an unrelated contract-period warning when the class keeps its accepted calendar day", async () => {
+    const db = createMockDb();
+    db.memberMembership.findFirst = vi.fn().mockResolvedValue({ allowanceTimezone: "UTC" });
+    const result = await listEligibleSelfServiceOccurrences({ workspaceId: "workspace_1", memberId: "member_1", timezone: "UTC", fromDate: "2026-04-14", toDate: "2026-04-14", now: new Date("2026-04-08T12:00:00Z"), db });
+    expect(result.occurrences[0]?.fundingNote).toBeUndefined();
+    expect(getMembershipAllowanceSummaryMock).not.toHaveBeenCalled();
+  });
+
+  it("localizes class date and time labels while retaining the same occurrence and eligibility", async () => {
+    const db = createMockDb();
+    const args = { workspaceId: "workspace_1", memberId: "member_1", timezone: "UTC", fromDate: "2026-04-14", toDate: "2026-04-14", now: new Date("2026-04-14T15:00:00Z"), db };
+    const canadian = (await listEligibleSelfServiceOccurrences({ ...args, locale: "en-CA" })).occurrences[0]!;
+    const german = (await listEligibleSelfServiceOccurrences({ ...args, locale: "de-DE" })).occurrences[0]!;
+    expect(canadian.dateLabel).toContain("Apr");
+    expect(german.dateLabel).toBe("14.04.2026");
+    expect(german.timeLabel).toBe("18:00");
+    expect(german.timeLabel).not.toBe(canadian.timeLabel);
+    for (const key of ["classTemplateId", "scheduledForDate", "action", "capacityLabel"] as const)
+      expect(german[key]).toBe(canadian[key]);
+    expect(german.scheduledForDate).toBe("2026-04-14");
+  });
   it("disables drop-in allocation when the actor cannot pay, even if a crafted form asks to book", async () => {
     const db = createMockDb();
-    createAccessBackedBookingMock.mockResolvedValue({ status: "created", bookingId: "new" });
-    await createSelfBooking({ workspaceId: "workspace_1", memberId: "member_1", classTemplateId: "template_1", scheduledForDate: "2026-04-14", timezone: "UTC", allowDropIn: false, db });
-    expect(createAccessBackedBookingMock).toHaveBeenCalledWith(expect.objectContaining({ allowDropIn: false, memberId: "member_1" }));
+    createReviewedDirectClassBookingMock.mockResolvedValue({ status: "created", bookingId: "new" });
+    await createSelfBooking({ actor: { userId: "account-user", sessionId: "server-session" }, workspaceId: "workspace_1", memberId: "member_1", classTemplateId: "template_1", scheduledForDate: "2026-04-14", timezone: "UTC", reviewedFunding, allowDropIn: false, db });
+    expect(createReviewedDirectClassBookingMock).toHaveBeenCalledWith(expect.objectContaining({ allowDropIn: false, memberId: "member_1" }));
   });
 
   it("lists membership-backed availability and cleans stale pending bookings first", async () => {
@@ -174,8 +229,10 @@ describe("self-service booking helpers", () => {
       memberId: "member_1",
       programId: "program_1",
       scheduledForDate: "2026-04-14",
+      occurrenceStartsAt: new Date("2026-04-14T18:00:00.000Z"),
       now: new Date("2026-04-08T12:00:00.000Z"),
       allowDropIn: true,
+      includeDirectBookingFunding: true,
       db,
     });
     expect(result.occurrences[0]).toMatchObject({
@@ -359,7 +416,7 @@ describe("self-service booking helpers", () => {
 
   it("passes through payment-required bookings for drop-ins", async () => {
     const db = createMockDb();
-    createAccessBackedBookingMock.mockResolvedValue({
+    createReviewedDirectClassBookingMock.mockResolvedValue({
       status: "payment_required",
       bookingId: "booking_pending",
       dropInProductId: "drop_in_1",
@@ -368,12 +425,13 @@ describe("self-service booking helpers", () => {
     });
 
     await expect(
-      createSelfBooking({
+      createSelfBooking({ actor: { userId: "account-user", sessionId: "server-session" },
         workspaceId: "workspace_1",
         memberId: "member_1",
         classTemplateId: "template_1",
         scheduledForDate: "2026-04-14",
         timezone: "UTC",
+        reviewedFunding,
         now: new Date("2026-04-08T12:00:00.000Z"),
         db,
       }),
@@ -384,13 +442,14 @@ describe("self-service booking helpers", () => {
       priceCents: 3500,
       currency: "usd",
     });
-    expect(createAccessBackedBookingMock).toHaveBeenCalledWith({
+    expect(createReviewedDirectClassBookingMock).toHaveBeenCalledWith({
+      actor: { userId: "account-user", sessionId: "server-session" },
       workspaceId: "workspace_1",
       memberId: "member_1",
       classTemplateId: "template_1",
       scheduledForDate: "2026-04-14",
       timezone: "UTC",
-      source: "MEMBER_PORTAL",
+      reviewedFunding,
       allowDropIn: true,
       db,
       now: new Date("2026-04-08T12:00:00.000Z"),
@@ -415,7 +474,7 @@ describe("self-service booking helpers", () => {
     });
 
     await expect(
-      cancelSelfBooking({
+      cancelSelfBooking({ actor: { userId: "account-user", sessionId: "server-session" },
         workspaceId: "workspace_1",
         memberId: "member_1",
         bookingId: "booking_1",
@@ -429,7 +488,8 @@ describe("self-service booking helpers", () => {
     });
 
     await expect(
-      joinSelfWaitlist({
+      joinSelfWaitlist({ actor: { userId: "account-user", sessionId: "server-session" },
+        autoPromotionOptIn: true, allowPunchCardFunding: false,
         workspaceId: "workspace_1",
         memberId: "member_1",
         classTemplateId: "template_1",
@@ -443,6 +503,8 @@ describe("self-service booking helpers", () => {
       waitlistEntryId: "waitlist_1",
     });
     expect(joinWaitlistMock).toHaveBeenCalledWith({
+      actor: { userId: "account-user", sessionId: "server-session" },
+      autoPromotionOptIn: true, allowPunchCardFunding: false,
       workspaceId: "workspace_1",
       memberId: "member_1",
       classTemplateId: "template_1",
@@ -454,7 +516,7 @@ describe("self-service booking helpers", () => {
     });
 
     await expect(
-      leaveSelfWaitlist({
+      leaveSelfWaitlist({ actor: { userId: "account-user", sessionId: "server-session" },
         workspaceId: "workspace_1",
         memberId: "member_1",
         waitlistEntryId: "waitlist_1",

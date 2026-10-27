@@ -1,5 +1,7 @@
 # Approved workflow implementation
 
+Current continuation: see [the October 25 completion audit](web-app-completion.md) and [critical-flow test audit](approved-flow-test-audit.md). The dated results below describe the October 16 implementation; the new audit identifies gaps in reproducible startup, design alignment and maintained browser proof. These historical results do not certify the current working tree.
+
 The target is the complete approved HitLink experience in `approved-workflows.md`, with the replacement Word specification, working persistent application workflows, verification, and a push to the existing GitHub repository. This checklist records progress; it does not reduce that target or certify unfinished features.
 
 Starting revision: `d8f6ab9` on `origin/main`. Implementation branch: `codex/approved-workflows`. Existing uncommitted changes in the original checkout are preserved. Development and migration testing use a separate local PostgreSQL database, `hitlink_implementation_test`; no live database is used.

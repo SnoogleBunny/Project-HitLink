@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { HitLinkBrand, ThemeToggle } from "@flowstate/ui";
 
-type EntryShellIntent = "member-login" | "restricted";
+type EntryShellIntent = "member-login" | "restricted" | "account-recovery";
 
 interface EntryShellProps {
   children: ReactNode;
@@ -15,6 +15,11 @@ const identityCopy: Record<
   EntryShellIntent,
   { heading: string; description: string; footer: string }
 > = {
+  "account-recovery": {
+    heading: "Your account access",
+    description: "Recover your account with a single-use link. Your membership, bookings and records stay with your account.",
+    footer: "Need help with your account email? Contact your gym team.",
+  },
   "member-login": {
     heading: "Your member portal",
     description:

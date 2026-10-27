@@ -13,6 +13,32 @@
  --hl-section-gap:var(--hl-space-section);
 }
 #hitlink-prototype[data-density=compact]{--hl-pad:20px;--hl-card-pad:16px;--hl-card-gap:12px;--hl-section-gap:20px}
+
+/* Full-row targets sit inside balanced sidebar gutters. */
+#hitlink-prototype #hl-nav>.hl-nav-button{
+ justify-content:flex-start;
+ text-align:left;
+ gap:var(--hl-space-related);
+ padding-inline:var(--hl-space-related);
+ min-width:0;
+ --hl-button-shadow:none;
+ box-shadow:none;
+}
+#hitlink-prototype #hl-nav>.hl-nav-button>span{min-width:0}
+@media(min-width:768px){
+ #hitlink-prototype:not([data-navigation=top]) .hl-sidebar{
+  padding-inline:var(--hl-space-content);
+  scrollbar-gutter:auto;
+ }
+}
+@media(min-width:768px) and (max-width:1023px){
+ #hitlink-prototype:not([data-navigation=top]) .hl-sidebar{padding-inline:var(--hl-space-related)}
+}
+@media(max-width:767px){
+ #hitlink-prototype .hl-sidebar,
+ #hitlink-prototype[data-navigation=top] .hl-sidebar{padding-inline:var(--hl-space-content)}
+}
+
 #hitlink-prototype .hl-screen-content,
 #hitlink-prototype .hl-screen-content>.hl-stack{gap:var(--hl-section-gap)}
 #hitlink-prototype .hl-pagehead{gap:var(--hl-space-content);margin-bottom:var(--hl-section-gap)}
@@ -76,12 +102,12 @@
 #hitlink-prototype .hl-dialog-foot{gap:var(--hl-space-label);margin-top:var(--hl-space-section);padding-top:var(--hl-space-content)}
 
 /* At the narrow desktop breakpoint, keep the rail but give forms a full row. */
-@media(min-width:641px) and (max-width:850px){
+@media(min-width:768px) and (max-width:1023px){
  #hitlink-prototype{--hl-pad:20px;--hl-section-gap:20px}
  #hitlink-prototype .hl-grid,
  #hitlink-prototype .hl-grid-3{grid-template-columns:minmax(0,1fr)}
 }
-@media(max-width:850px){
+@media(max-width:1023px){
  #hitlink-prototype .hl-grid-3:has(>.hl-metric){gap:var(--hl-space-related)}
  #hitlink-prototype .hl-metric,
  #hitlink-prototype[data-density=compact] .hl-metric{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:var(--hl-space-related);min-height:0;padding:12px var(--hl-card-pad)}
@@ -93,7 +119,7 @@
  #hitlink-prototype .hl-metric-detail{grid-column:1/-1;min-height:0;margin:var(--hl-space-label) 0 0;padding:var(--hl-space-label) 0 0;background:transparent;border-radius:0}
 }
 
-@media(max-width:640px){
+@media(max-width:767px){
  #hitlink-prototype,
  #hitlink-prototype[data-density=compact]{--hl-pad:16px;--hl-card-pad:16px;--hl-card-gap:16px;--hl-section-gap:20px}
  #hitlink-prototype #hl-main{padding:20px var(--hl-pad) 24px}
@@ -126,7 +152,7 @@
  #hitlink-prototype .hl-dialog-foot{margin:0;padding:12px 16px}
 }
 /* Let the seven-day picker use the card's edge space without moving its text. */
-@media(min-width:390px) and (max-width:640px){
+@media(min-width:390px) and (max-width:767px){
  #hitlink-prototype .hl-panel .hl-days{margin-inline:-8px}
 }
 
@@ -148,10 +174,10 @@
 #hitlink-prototype .hl-empty>svg{margin:0 auto var(--hl-space-related)}
 #hitlink-prototype .hl-panel:has(>.hl-empty){display:flex;flex-direction:column}
 #hitlink-prototype .hl-panel>.hl-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
-@media(min-width:641px){
+@media(min-width:768px){
  #hitlink-prototype .hl-table-pairs :is(th,td):first-child{width:34%;min-width:112px;overflow-wrap:normal;word-break:normal}
 }
-@media(min-width:851px){
+@media(min-width:1024px){
  #hitlink-prototype .hl-panel-writing>.hl-field:has(>.hl-textarea){flex:1}
  #hitlink-prototype .hl-panel-writing>.hl-field>.hl-textarea{flex:1}
 }

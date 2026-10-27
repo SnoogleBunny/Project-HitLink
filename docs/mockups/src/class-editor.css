@@ -11,4 +11,4 @@
 #hitlink-prototype .ce-editor input[type=date],#hitlink-prototype .ce-editor input[type=time]{min-width:0;max-width:100%;box-sizing:border-box}
 #hitlink-prototype .ce-day-control{max-width:280px;margin-bottom:18px}
 #hitlink-prototype .hl-class-coach{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
-@media(max-width:640px){#hitlink-prototype .ce-editor .hl-grid{grid-template-columns:minmax(0,1fr)}#hitlink-prototype .ce-scope>.hl-row{align-items:flex-start;flex-direction:column;gap:0}#hitlink-prototype .ce-weekdays .hl-check{min-width:118px}}
+@media(max-width:767px){#hitlink-prototype .ce-editor .hl-grid{grid-template-columns:minmax(0,1fr)}#hitlink-prototype .ce-scope>.hl-row{align-items:flex-start;flex-direction:column;gap:0}#hitlink-prototype .ce-weekdays .hl-check{min-width:118px}}

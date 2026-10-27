@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import {
+import { readDatabaseFailure,
   Prisma,
   prisma,
   readAcceptedMembershipTerms,
@@ -698,12 +698,7 @@ export async function recordMigrationCutoverEvidence(args: {
       );
     } catch (error) {
       if (
-        !(
-          error &&
-          typeof error === "object" &&
-          "code" in error &&
-          error.code === "P2034"
-        ) ||
+        readDatabaseFailure(error)?.code !== "P2034" ||
         attempt === 6
       )
         throw error;

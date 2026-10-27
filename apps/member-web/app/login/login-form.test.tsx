@@ -65,6 +65,7 @@ describe("LoginForm", () => {
     expect(html).toContain('role="alert"');
     expect(html).toContain("Invalid email or password.");
     expect(html).toContain("Member access is provided by your gym");
+    expect(html).toContain('href="/forgot-password"');
     expect(html).not.toMatch(/sign up|create (?:an |your )?account/i);
   });
 });

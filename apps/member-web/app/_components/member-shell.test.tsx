@@ -2,10 +2,14 @@ import React, { type PropsWithChildren } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MemberPortalContext } from "../../lib/member-auth";
-const { pathnameMock } = vi.hoisted(() => ({
+const { pathnameMock, searchMock } = vi.hoisted(() => ({
   pathnameMock: vi.fn(() => "/app/schedule"),
+  searchMock: vi.fn(() => new URLSearchParams()),
 }));
-vi.mock("next/navigation", () => ({ usePathname: pathnameMock }));
+vi.mock("next/navigation", () => ({
+  usePathname: pathnameMock,
+  useSearchParams: searchMock,
+}));
 vi.mock("next/link", () => ({
   default: ({
     children,
@@ -46,9 +50,55 @@ const context = {
 beforeEach(() => {
   (globalThis as typeof globalThis & { React: typeof React }).React = React;
   pathnameMock.mockReturnValue("/app/schedule");
+  searchMock.mockReturnValue(new URLSearchParams());
 });
 
 describe("member route ownership", () => {
+  it("gives a single coaching client direct day and program destinations without unsold appointments", () => {
+    pathnameMock.mockReturnValue("/app/coaching/enrollment");
+    searchMock.mockReturnValue(new URLSearchParams("view=program"));
+    const html = renderToStaticMarkup(
+      <MemberNav
+        hasCoaching
+        coachingNavigation={{
+          enrollmentId: "enrollment",
+          hasAppointments: false,
+        }}
+      />,
+    );
+    expect(html).toContain('href="/app/coaching/enrollment?view=notes"');
+    expect(html).toContain('href="/app/coaching/enrollment?view=program"');
+    expect(html).toContain(">My day</span>");
+    expect(html).toContain(">My program</span>");
+    expect(html).not.toContain("My appointment");
+    expect(html).toContain(
+      'href="/app/coaching/enrollment?view=program" class="hl-nav-link" aria-current="page"',
+    );
+  });
+  it("offers appointment navigation only for an appointment-enabled program", () => {
+    pathnameMock.mockReturnValue("/app/coaching/enrollment");
+    searchMock.mockReturnValue(new URLSearchParams("view=appointments"));
+    const html = renderToStaticMarkup(
+      <MemberNav
+        compact
+        hasCoaching
+        coachingNavigation={{
+          enrollmentId: "enrollment",
+          hasAppointments: true,
+        }}
+      />,
+    );
+    expect(html).toContain(">My appointment</span>");
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+    expect(html).not.toContain("/app/schedule");
+  });
+  it("keeps multiple-program and payer-only navigation as a named selection page", () => {
+    pathnameMock.mockReturnValue("/app/coaching");
+    const html = renderToStaticMarkup(<MemberNav hasCoaching />);
+    expect(html).toContain(">My coaching</span>");
+    expect(html).toContain('href="/app/coaching"');
+    expect(html).not.toContain(">My day</span>");
+  });
   it("consolidates navigation into Classes, Membership, Payments and Account", () => {
     const html = renderToStaticMarkup(<MemberNav />);
     expect(html.match(/<a /g)).toHaveLength(4);

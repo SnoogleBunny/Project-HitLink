@@ -1,5 +1,5 @@
 import type { HTMLAttributes, ReactNode } from "react";
-import { formatMoney } from "./money";
+export { Money } from "./workspace-locale";
 
 export function HitLinkBrand({ compact = false }: { compact?: boolean }) {
   return (
@@ -26,33 +26,22 @@ export function Badge({
   );
 }
 
-export function Money({
-  amountMinor,
-  currency = "CAD",
-  className = "",
-}: {
-  amountMinor: number;
-  currency?: string;
-  className?: string;
-}) {
-  return (
-    <span className={`hl-money ${className}`}>
-      {formatMoney(amountMinor, currency)}
-    </span>
-  );
-}
-
 export function Notice({
   children,
   actions,
   tone = "info",
-}: {
+  className = "",
+  ...props
+}: HTMLAttributes<HTMLDivElement> & {
   children: ReactNode;
   actions?: ReactNode;
   tone?: "info" | "warning" | "danger" | "success";
 }) {
   return (
-    <div className={`hl-notice hl-notice-${tone}`}>
+    <div
+      {...props}
+      className={`hl-notice hl-notice-${tone}${className ? ` ${className}` : ""}`}
+    >
       <div>{children}</div>
       {actions ? <div className="hl-notice-actions">{actions}</div> : null}
     </div>

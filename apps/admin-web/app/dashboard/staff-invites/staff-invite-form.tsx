@@ -20,12 +20,18 @@ export function StaffInviteForm() {
           name="email"
           placeholder="coach@example.com"
           type="email"
+          required
+          maxLength={320}
         />
       </label>
 
-      {state.error ? <p className="form-error">{state.error}</p> : null}
+      {state.error ? (
+        <p className="form-error" role="alert">
+          {state.error}
+        </p>
+      ) : null}
 
-      <SubmitButton pendingLabel="Saving invite...">
+      <SubmitButton pendingLabel="Queuing invitation…">
         Invite coach
       </SubmitButton>
     </form>

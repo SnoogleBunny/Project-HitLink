@@ -44,9 +44,17 @@ export function WorkspaceShell({
   const [recordLoading, setRecordLoading] = useState(false);
   const menuId = useId();
   useEffect(() => {
-    const desktop = matchMedia("(min-width: 641px)");
+    const desktop = matchMedia("(min-width: 1024px)");
     const closeOnDesktop = () => {
-      if (desktop.matches) menu.current?.close();
+      if (desktop.matches && menu.current?.open) {
+        menu.current.close();
+        // The drawer trigger is hidden on desktop. Restore focus to the
+        // corresponding visible destination instead of that hidden control.
+        const destination = document.querySelector<HTMLElement>(
+          '.hl-workspace-sidebar a[aria-current="page"]',
+        );
+        (destination ?? document.getElementById("workspace-content"))?.focus();
+      }
     };
     desktop.addEventListener("change", closeOnDesktop);
     const updateVisibility = () => {

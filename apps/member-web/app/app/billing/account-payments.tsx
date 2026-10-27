@@ -1,6 +1,6 @@
 import { Badge, Money } from "@flowstate/ui";
 import Link from "next/link";
-import { formatGymDateTime } from "../../../lib/billing-display";
+import { formatGymDateTime as knownFormatGymDateTime } from "../../../lib/billing-display";
 import type { PayerBillingData } from "../../../lib/payer-billing";
 const operationLabels: Record<string, string> = {
   CHECKOUT: "Purchase",
@@ -28,11 +28,18 @@ export function AccountPayments({
   data,
   timezone,
   history,
+  locale = "en-CA",
 }: {
   data: PayerBillingData;
   timezone: string;
   history: boolean;
+  locale?: string;
 }) {
+  const formatGymDateTime = (
+    value: Date | null,
+    timezone: string,
+    nullLabel?: string,
+  ) => knownFormatGymDateTime(value, timezone, nullLabel, locale);
   return (
     <>
       <nav className="hl-payment-tabs" aria-label="Payment views">
@@ -177,7 +184,11 @@ export function AccountPayments({
           {data.credits.length ? (
             <section className="member-card">
               <h2>Available credits</h2>
-              <p className="member-copy">Account credit can be applied to a membership invoice in the same currency. Ask the gym to apply it. Class packs and drop-in purchases cannot use it yet.</p>
+              <p className="member-copy">
+                Account credit can be applied to a membership invoice in the
+                same currency. Ask the gym to apply it. Class packs and drop-in
+                purchases cannot use it yet.
+              </p>
               <div className="hl-payment-records">
                 {data.credits.map((item) => (
                   <article key={item.id}>
@@ -196,7 +207,15 @@ export function AccountPayments({
                         ? `Expires ${formatGymDateTime(item.expiresAt, timezone)}`
                         : "No expiry"}
                     </p>
-                    {item.reservedCents > 0 ? <p className="member-copy"><Money amountMinor={item.reservedCents} currency={item.currency} /> reserved for a pending transfer.</p> : null}
+                    {item.reservedCents > 0 ? (
+                      <p className="member-copy">
+                        <Money
+                          amountMinor={item.reservedCents}
+                          currency={item.currency}
+                        />{" "}
+                        reserved for a pending transfer.
+                      </p>
+                    ) : null}
                   </article>
                 ))}
               </div>
@@ -265,6 +284,7 @@ export function AccountPayments({
                       </div>
                     ) : null}
                   </dl>
+                  {item.confirmation ? <Link className="hl-text-link" href={`/app/billing/receipts/${encodeURIComponent(item.confirmation.id)}`}>View payment confirmation</Link> : null}
                   {item.refunds.map((refund) => (
                     <div className="hl-refund-line" key={refund.id}>
                       <span>
@@ -291,7 +311,42 @@ export function AccountPayments({
               No payments recorded for your account yet.
             </p>
           )}
-          {data.creditHistory?.length ? <><h3>Credit history</h3><div className="hl-payment-records">{data.creditHistory.map(item => <article key={item.id}><div className="hl-payment-record-heading"><h4>{item.kind === "ISSUE_CREDIT" ? "Account credit issued" : "Credit transferred to membership billing"}</h4>{item.amountCents !== null && item.currency ? <Money amountMinor={item.amountCents} currency={item.currency} /> : null}</div><p>{formatGymDateTime(item.settledAt ?? item.createdAt, timezone)}</p>{item.kind === "APPLY_CREDIT" ? <p className="member-copy">Transferred to your processor balance. Invoice settlement is recorded separately.</p> : null}</article>)}</div></> : null}
+          {data.creditHistory?.length ? (
+            <>
+              <h3>Credit history</h3>
+              <div className="hl-payment-records">
+                {data.creditHistory.map((item) => (
+                  <article key={item.id}>
+                    <div className="hl-payment-record-heading">
+                      <h4>
+                        {item.kind === "ISSUE_CREDIT"
+                          ? "Account credit issued"
+                          : "Credit transferred to membership billing"}
+                      </h4>
+                      {item.amountCents !== null && item.currency ? (
+                        <Money
+                          amountMinor={item.amountCents}
+                          currency={item.currency}
+                        />
+                      ) : null}
+                    </div>
+                    <p>
+                      {formatGymDateTime(
+                        item.settledAt ?? item.createdAt,
+                        timezone,
+                      )}
+                    </p>
+                    {item.kind === "APPLY_CREDIT" ? (
+                      <p className="member-copy">
+                        Transferred to your processor balance. Invoice
+                        settlement is recorded separately.
+                      </p>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            </>
+          ) : null}
         </section>
       )}
     </>

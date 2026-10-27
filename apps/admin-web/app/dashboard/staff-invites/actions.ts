@@ -1,60 +1,72 @@
 "use server";
-
 import { redirect } from "next/navigation";
-import {
-  emptyFormState,
-  type BasicFormState,
-} from "../../../lib/admin-access";
+import { StaffAccessError } from "@flowstate/db";
+import { type BasicFormState } from "../../../lib/admin-access";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
 import {
   inviteCoachToWorkspace,
   resendPendingCoachInvite,
   revokePendingCoachInvite,
+  StaffInviteError,
 } from "../../../lib/staff-invites";
-
+const origin = () =>
+  process.env.NEXT_PUBLIC_APP_URL ??
+  process.env.NEXT_PUBLIC_FLOWSTATE_APP_URL ??
+  "";
+const message = (error: unknown) =>
+  error instanceof StaffInviteError || error instanceof StaffAccessError
+    ? error.message
+    : "The invitation could not be updated. Try again.";
 export async function createStaffInviteAction(
   _previousState: BasicFormState,
-  formData: FormData,
+  form: FormData,
 ): Promise<BasicFormState> {
   const { session, workspace } = await requireOwnerWorkspaceContext();
-  const result = await inviteCoachToWorkspace({
-    workspaceId: workspace.id,
-    invitedByUserId: session.userId,
-    email: String(formData.get("email") ?? ""),
-  });
-
-  if (result.status === "error") {
-    return {
-      error: result.message,
-    };
+  try {
+    const result = await inviteCoachToWorkspace({
+      workspaceId: workspace.id,
+      invitedByUserId: session.userId,
+      email: String(form.get("email") ?? ""),
+      inviteOrigin: origin(),
+    });
+    if (result.status === "error") return { error: result.message };
+  } catch (error) {
+    return { error: message(error) };
   }
-
   redirect("/dashboard/staff-invites");
-
-  return emptyFormState;
 }
-
-export async function resendStaffInviteAction(formData: FormData): Promise<void> {
+export async function resendStaffInviteAction(form: FormData): Promise<void> {
   const { session, workspace } = await requireOwnerWorkspaceContext();
-  const inviteId = String(formData.get("inviteId") ?? "");
-
-  await resendPendingCoachInvite({
-    inviteId,
-    workspaceId: workspace.id,
-    invitedByUserId: session.userId,
-  });
-
-  redirect("/dashboard/staff-invites");
+  let error: string | undefined;
+  try {
+    const result = await resendPendingCoachInvite({
+      inviteId: String(form.get("inviteId") ?? ""),
+      workspaceId: workspace.id,
+      invitedByUserId: session.userId,
+      inviteOrigin: origin(),
+    });
+    if (result.status === "error") error = result.message;
+  } catch (failure) {
+    error = message(failure);
+  }
+  redirect(
+    `/dashboard/staff-invites${error ? `?error=${encodeURIComponent(error)}` : ""}`,
+  );
 }
-
-export async function revokeStaffInviteAction(formData: FormData): Promise<void> {
-  const { workspace } = await requireOwnerWorkspaceContext();
-  const inviteId = String(formData.get("inviteId") ?? "");
-
-  await revokePendingCoachInvite({
-    inviteId,
-    workspaceId: workspace.id,
-  });
-
-  redirect("/dashboard/staff-invites");
+export async function revokeStaffInviteAction(form: FormData): Promise<void> {
+  const { session, workspace } = await requireOwnerWorkspaceContext();
+  let error: string | undefined;
+  try {
+    const result = await revokePendingCoachInvite({
+      inviteId: String(form.get("inviteId") ?? ""),
+      workspaceId: workspace.id,
+      invitedByUserId: session.userId,
+    });
+    if (result.status === "error") error = result.message;
+  } catch (failure) {
+    error = message(failure);
+  }
+  redirect(
+    `/dashboard/staff-invites${error ? `?error=${encodeURIComponent(error)}` : ""}`,
+  );
 }

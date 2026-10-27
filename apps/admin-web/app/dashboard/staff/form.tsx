@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useActionState, useEffect, useRef, type ReactNode } from "react";
-import { Button, Notice } from "@flowstate/ui";
+import { Button, Notice, useWorkspaceLocale } from "@flowstate/ui";
 import { staffLeaveAction } from "./actions";
 export function StaffLeaveForm({
   children,
@@ -12,6 +12,7 @@ export function StaffLeaveForm({
   label: string;
   timezone: string;
 }) {
+  const locale = useWorkspaceLocale();
   const [state, action, pending] = useActionState(staffLeaveAction, {
     error: null,
     success: null,
@@ -32,7 +33,7 @@ export function StaffLeaveForm({
     }
   }, [state]);
   const format = (value: string) =>
-    new Intl.DateTimeFormat("en-CA", {
+    new Intl.DateTimeFormat(locale, {
       dateStyle: "medium",
       timeStyle: "short",
       timeZone: timezone,
@@ -56,7 +57,11 @@ export function StaffLeaveForm({
           {pending ? "Checking schedule…" : label}
         </Button>
       </div>
-      {state.error ? <Notice tone="danger">{state.error}</Notice> : null}
+      {state.error ? (
+        <Notice tone="danger" role="alert">
+          {state.error}
+        </Notice>
+      ) : null}
       {state.conflicts.length ? (
         <ul className="form-stack" aria-label="Leave conflicts">
           {state.conflicts.map((item, index) => (
@@ -71,7 +76,11 @@ export function StaffLeaveForm({
           ))}
         </ul>
       ) : null}
-      {state.success ? <Notice tone="success">{state.success}</Notice> : null}
+      {state.success ? (
+        <Notice tone="success" role="status">
+          {state.success}
+        </Notice>
+      ) : null}
     </form>
   );
 }

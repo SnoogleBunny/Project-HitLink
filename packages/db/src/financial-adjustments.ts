@@ -5,6 +5,7 @@ import {
   type PrismaClient,
 } from "@prisma/client";
 import { prisma } from "./client.js";
+import { lockStaffAuthorityTx } from "./staff-access.js";
 import {
   lockClassSchedule,
   classOccurrenceInclude,
@@ -15,6 +16,7 @@ import { getOccurrenceStartsAt } from "./class-access.js";
 import { adjustPunchCardUnits } from "./punch-card-ledger.js";
 import { settleMembershipAllowance } from "./membership-allowances.js";
 import { applyCoachingRefundDisposition } from "./coaching.js";
+import { paymentDisputeRefundGuard } from "./payment-disputes.js";
 import {
   FinancialError,
   financialRequestHash,
@@ -101,12 +103,14 @@ function assertRequest(id: string) {
     );
 }
 async function requireOwner(tx: Tx, args: OwnerArgs) {
+  await lockStaffAuthorityTx(tx, { workspaceId: args.workspaceId, userId: args.actorUserId });
   const owner = await tx.workspaceUser.findFirst({
     where: {
       workspaceId: args.workspaceId,
       userId: args.actorUserId,
       role: "OWNER",
       isActive: true,
+      workspace: { status: { not: "DISABLED" } },
     },
     select: { id: true },
   });
@@ -212,7 +216,7 @@ async function refundReview(tx: Tx, args: OwnerArgs & { paymentId: string }) {
           scheduledForDate: toDateOnlyString(b.scheduledForDate),
           startTimeMinutes:
             effective?.startTimeMinutes ?? b.classTemplate.startTimeMinutes,
-          timezone,
+          timezone: effective?.timezone ?? timezone,
         }) > new Date()
       );
     })
@@ -244,6 +248,7 @@ async function refundReview(tx: Tx, args: OwnerArgs & { paymentId: string }) {
     checkout?.providerAccountId ??
     payment.payerAccount?.stripeAccountId ??
     null;
+  const disputeGuard = await paymentDisputeRefundGuard(tx, { workspaceId: args.workspaceId, paymentId: payment.id, paymentIntentId: payment.stripePaymentIntentId, accountId });
   const verifiedStop = payment.memberMembership?.stripeSubscriptionId
     ? await tx.financialOperation.findFirst({
         where: {
@@ -262,6 +267,7 @@ async function refundReview(tx: Tx, args: OwnerArgs & { paymentId: string }) {
       payment.memberMembership.endedAt! <= new Date() &&
       Boolean(verifiedStop));
   const snapshot = {
+    disputeFingerprint: disputeGuard.fingerprint,
     paymentId: payment.id,
     version: payment.updatedAt.toISOString(),
     amountCents: payment.amountCents,
@@ -282,7 +288,7 @@ async function refundReview(tx: Tx, args: OwnerArgs & { paymentId: string }) {
   return {
     ...snapshot,
     reviewHash: financialRequestHash(snapshot),
-    refundableCents: Math.max(0, payment.amountCents - succeeded - pending),
+    refundableCents: disputeGuard.blocked ? 0 : Math.max(0, Math.min(payment.amountCents - succeeded - pending, disputeGuard.providerRemainingCents === null ? payment.amountCents : disputeGuard.providerRemainingCents - pending)),
     payer: payment.payerAccount?.member.fullName ?? "Payer not recorded",
     beneficiary: payment.member?.fullName ?? "Account service",
     payerAccountId: payment.payerAccountId,
@@ -1223,6 +1229,11 @@ export async function resumeOwnerAdjustment(
       },
     });
     if (!op) throw new FinancialError("Financial request not found.");
+    if (op.kind === "REFUND" && !op.providerReference && op.paymentId) {
+      const payment = await tx.payment.findFirst({ where: { id: op.paymentId, workspaceId: args.workspaceId }, select: { stripePaymentIntentId: true } });
+      const guard = await paymentDisputeRefundGuard(tx, { workspaceId: args.workspaceId, paymentId: op.paymentId, paymentIntentId: payment?.stripePaymentIntentId ?? null, accountId: op.providerAccountId });
+      if (guard.blocked) throw new FinancialError("A processor dispute now holds this payment. Review its verified outcome before submitting the reserved refund.");
+    }
     return op;
   });
   if (operation.status === "SUCCEEDED" || operation.status === "FAILED")
@@ -1336,7 +1347,7 @@ export async function recordExternalRefundEvidence(args: {
   const db = args.db ?? prisma,
     e = args.evidence;
   if (!e.paymentIntentId) return;
-  const payment = await db.payment.findFirst({
+  const candidates = await db.payment.findMany({
     where: {
       stripePaymentIntentId: e.paymentIntentId,
       OR: [
@@ -1355,7 +1366,22 @@ export async function recordExternalRefundEvidence(args: {
       ],
     },
   });
-  if (!payment) return;
+  const matches = [];
+  for (const candidate of candidates) {
+    const [owned, payer] = await Promise.all([
+      db.financialOperation.findFirst({ where: { workspaceId: candidate.workspaceId, paymentId: candidate.id, providerAccountId: args.accountId }, select: { id: true } }),
+      candidate.payerAccountId ? db.financialAccount.findUnique({ where: { id: candidate.payerAccountId }, select: { stripeAccountId: true } }) : null,
+    ]);
+    if (owned || payer?.stripeAccountId === args.accountId) matches.push(candidate);
+  }
+  if (matches.length !== 1) {
+    for (const workspaceId of new Set(matches.map(p => p.workspaceId))) await db.$transaction(async tx => {
+      await lockFinancialAccount(tx, workspaceId);
+      await queueFinancialReview(tx, { workspaceId, sourceKey: `external-refund-allocation:${e.id}`, reason: "A processor refund covers a shared payment intent. Verify its individual payment allocation before recording money or changing entitlement.", amountCents: e.amountCents, currency: e.currency });
+    });
+    return;
+  }
+  const payment = matches[0]!;
   // A workspace may have historical accounts. Verify this exact payment's stored account before using the event.
   const ownedAccount = await db.financialOperation.findFirst({
     where: {

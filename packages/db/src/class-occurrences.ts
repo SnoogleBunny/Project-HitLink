@@ -1,5 +1,6 @@
 import type { Prisma, Weekday } from "@prisma/client";
 import { prisma } from "./client.js";
+import { timezoneForOccurrenceDate, type TimezoneRevision } from "./workspace-timezones.js";
 import { addDays, getWeekdayForDateString, getZonedDateTimeAsUtc, parseDateOnlyString, toDateOnlyString } from "./occurrences.js";
 
 export type CoachAssignmentMode = "INHERIT" | "ASSIGNED" | "UNASSIGNED";
@@ -44,6 +45,7 @@ export interface ClassInstanceRecord extends ClassScheduleFields {
   updatedAt?: Date;
 }
 export interface ClassOccurrenceTemplate extends ClassScheduleFields {
+  workspace?: { location: { timezone: string } | null; timezoneRevisions: TimezoneRevision[] };
   id: string;
   workspaceId: string;
   weekday: Weekday;
@@ -55,6 +57,7 @@ export interface ClassOccurrenceTemplate extends ClassScheduleFields {
   classInstances?: ClassInstanceRecord[];
 }
 export interface ResolvedClassOccurrence extends ClassScheduleFields {
+  timezone?: string;
   id: string;
   classTemplateId: string;
   classInstanceId: string | null;
@@ -75,6 +78,7 @@ export interface ResolvedClassOccurrence extends ClassScheduleFields {
 const resourceInclude = { program: true, room: true, coachWorkspaceUser: { include: { user: { select: { fullName: true, email: true } } } } } as const;
 export const classOccurrenceInclude = {
   ...resourceInclude,
+  workspace: { select: { location: { select: { timezone: true } }, timezoneRevisions: { select: { version: true, previousTimezone: true, timezone: true, effectiveFromDate: true, effectiveAt: true }, orderBy: { version: "asc" } } } },
   scheduleRevisions: { include: resourceInclude, orderBy: { effectiveFrom: "asc" } },
   classInstances: { include: resourceInclude, orderBy: { scheduledForDate: "asc" } },
 } as const;
@@ -108,6 +112,7 @@ export function resolveClassOccurrence(args: {
   const coachId = mode === "UNASSIGNED" ? null : mode === "ASSIGNED" ? instance?.coachWorkspaceUserId ?? null : definition.coachWorkspaceUserId ?? null;
   return {
     ...schedule,
+    ...(template.workspace?.location ? { timezone: timezoneForOccurrenceDate(template.workspace.location.timezone, template.workspace.timezoneRevisions ?? [], date) } : {}),
     id: template.id,
     classTemplateId: template.id,
     classInstanceId: instance?.id ?? null,

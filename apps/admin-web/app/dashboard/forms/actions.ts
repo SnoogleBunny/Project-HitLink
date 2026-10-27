@@ -1,12 +1,11 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { prisma, type FormType, type RequirementTarget } from "@flowstate/db";
+import { prisma, type FormType } from "@flowstate/db";
 import { emptyFormState, type BasicFormState } from "../../../lib/admin-access";
 import {
   createFormDocumentWithInitialVersion,
   createFormVersion,
-  setRequiredFormAssignment,
 } from "../../../lib/forms";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
 
@@ -17,20 +16,11 @@ const formTypes: FormType[] = [
   "CUSTOM",
 ];
 
-const requirementTargets: RequirementTarget[] = [
-  "TRIAL",
-  "MEMBER",
-  "GUARDIAN",
-  "MEMBERSHIP_ACTIVATION",
-];
 
 function isFormType(value: string): value is FormType {
   return formTypes.includes(value as FormType);
 }
 
-function isRequirementTarget(value: string): value is RequirementTarget {
-  return requirementTargets.includes(value as RequirementTarget);
-}
 
 async function getPdfUpload(formData: FormData) {
   const file = formData.get("pdf");
@@ -164,25 +154,8 @@ export async function uploadFormVersionAction(
   return emptyFormState;
 }
 
-export async function toggleRequiredFormAssignmentAction(
-  formData: FormData,
-): Promise<void> {
-  const { workspace } = await requireOwnerWorkspaceContext();
-  const targetValue = String(formData.get("requirementTarget") ?? "");
-
-  if (!isRequirementTarget(targetValue)) {
-    return;
-  }
-
-  const formDocumentId = String(formData.get("formDocumentId") ?? "");
-  const isActive = String(formData.get("isActive") ?? "false") === "true";
-
-  await setRequiredFormAssignment({
-    workspaceId: workspace.id,
-    formDocumentId,
-    requirementTarget: targetValue,
-    isActive,
-  });
-
-  redirect(`/dashboard/forms/${formDocumentId}`);
+export async function toggleRequiredFormAssignmentAction(formData: FormData): Promise<void> {
+  await requireOwnerWorkspaceContext();
+  const documentId = String(formData.get("formDocumentId") ?? "");
+  redirect(`/dashboard/forms/${encodeURIComponent(documentId)}/publication`);
 }

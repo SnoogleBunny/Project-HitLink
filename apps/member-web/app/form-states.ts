@@ -50,6 +50,7 @@ export const emptyBookingsActionState: BookingsActionState = {
 
 export interface ScheduleActionState {
   error: string | null;
+  reviewRequired?: boolean;
 }
 
 export const emptyScheduleActionState: ScheduleActionState = {

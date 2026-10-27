@@ -1,4 +1,4 @@
-import { formatMoney as formatKnownMoney } from "@flowstate/ui/money";
+import { Money } from "@flowstate/ui";
 import Link from "next/link";
 import { AdminShell } from "../../_components/admin-shell";
 import {
@@ -18,9 +18,6 @@ import {
 import { DropInProductForm } from "./drop-in-product-form";
 import { PunchCardProductForm } from "./punch-card-product-form";
 
-function formatMoney(amountCents: number, currency: string): string {
-  return formatKnownMoney(amountCents, currency);
-}
 
 function formatRestrictions(
   product: PunchCardProductSummary | DropInProductSummary,
@@ -61,7 +58,7 @@ function PunchCardProductCard({
           </div>
           <div>
             <dt>Price</dt>
-            <dd>{formatMoney(product.priceCents, product.currency)}</dd>
+            <dd><Money amountMinor={product.priceCents} currency={product.currency} /></dd>
           </div>
           <div>
             <dt>Programs</dt>
@@ -128,7 +125,7 @@ function DropInProductCard({
         <dl className="inline-meta">
           <div>
             <dt>Price</dt>
-            <dd>{formatMoney(product.priceCents, product.currency)}</dd>
+            <dd><Money amountMinor={product.priceCents} currency={product.currency} /></dd>
           </div>
           <div>
             <dt>Programs</dt>

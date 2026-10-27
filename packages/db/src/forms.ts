@@ -12,6 +12,9 @@ import type {
   SignatureRequestStatus,
 } from "@prisma/client";
 import { prisma } from "./client.js";
+import { parseRequirementTerms } from "./form-requirements-policy.js";
+import { signableFormBinding } from "./form-requirement-bindings.js";
+import { hasPublishedFormRequirements, resolveRevisionFormStatuses, issueRevisionTrialLinks, recordRevisionSignature, membershipEnrollmentSigningIntentTx } from "./form-requirement-signing.js";
 
 export type FormsDatabase = typeof prisma;
 
@@ -24,7 +27,9 @@ type RequiredFormState =
   | "SIGNED"
   | "PENDING"
   | "MISSING"
-  | "SUPERSEDED";
+  | "SUPERSEDED"
+  | "EXPIRED"
+  | "RENEWAL_REQUIRED";
 
 interface MemberContextRecord {
   id: string;
@@ -97,6 +102,9 @@ interface SignedDocumentRecord {
 }
 
 interface SignatureRequestDetailRecord {
+  requirementRevisionId: string | null;
+  acceptanceCycleKey: string;
+  requirementRevision: { terms: unknown; effectiveAt: Date } | null;
   id: string;
   workspaceId: string;
   formVersionId: string;
@@ -144,6 +152,7 @@ interface SignatureRequestDetailRecord {
   signedDocument: {
     id: string;
     signedAt: Date;
+    validUntil: Date | null;
     signerNameSnapshot: string;
     guardianId: string | null;
   } | null;
@@ -177,6 +186,11 @@ export interface ActionableFormRequest {
 }
 
 export interface RequiredFormStatusItem {
+  requirementRevisionId?: string | null;
+  acceptanceCycleKey?: string;
+  consentValidUntil?: Date | null;
+  effectiveAt?: Date | null;
+  upcoming?: boolean;
   assignmentId: string;
   requirementTarget: RequirementTarget;
   formDocumentId: string;
@@ -195,6 +209,11 @@ export interface RequiredFormStatusItem {
 }
 
 export interface SignedFormHistoryItem {
+  requirementRevisionId?: string | null;
+  acceptanceCycleKey?: string;
+  consentValidUntil?: Date | null;
+  effectiveAt?: Date | null;
+  upcoming?: boolean;
   signedDocumentId: string;
   formDocumentId: string;
   formName: string;
@@ -229,6 +248,13 @@ export interface IssuedMagicLinkRequest {
 }
 
 export interface SignatureRequestPageData {
+  canSign?: boolean;
+  signingUnavailableReason?: string;
+  requirementRevisionId?: string | null;
+  acceptanceCycleKey?: string;
+  consentValidUntil?: Date | null;
+  effectiveAt?: Date | null;
+  upcoming?: boolean;
   requestId: string;
   workspaceId: string;
   formDocumentId: string;
@@ -376,7 +402,7 @@ export function validatePdfUpload(
   };
 }
 
-function isRequirementTargetApplicable(args: {
+export function isRequirementTargetApplicable(args: {
   requirementTarget: RequirementTarget;
   memberStatus: MemberStatus;
   guardianCount: number;
@@ -396,7 +422,7 @@ function isRequirementTargetApplicable(args: {
   return true;
 }
 
-function getSignerKindForTarget(
+export function getSignerKindForTarget(
   requirementTarget: RequirementTarget,
   member?: MemberContextRecord,
   now = new Date(),
@@ -986,6 +1012,7 @@ export async function issueTrialMagicLinkRequests(args: {
 }): Promise<IssuedMagicLinkRequest[]> {
   const db = args.db ?? prisma;
   const now = args.now ?? new Date();
+  if (await hasPublishedFormRequirements(db, args.workspaceId)) return issueRevisionTrialLinks({ ...args, db, now });
   const member = await getMemberContext({
     workspaceId: args.workspaceId,
     memberId: args.memberId,
@@ -1144,11 +1171,14 @@ export async function resolveRequiredFormStatusesForMember(args: {
   memberId: string;
   targets?: RequirementTarget[];
   ensureRequests?: boolean;
+  serviceAt?: Date;
+  includeUpcoming?: boolean;
   db?: FormsDatabase;
   now?: Date;
 }): Promise<ResolvedRequiredFormStatusResult> {
   const db = args.db ?? prisma;
   const now = args.now ?? new Date();
+  if (await hasPublishedFormRequirements(db, args.workspaceId)) return resolveRevisionFormStatuses({ ...args, db, now });
   const member = await getMemberContext({
     workspaceId: args.workspaceId,
     memberId: args.memberId,
@@ -1312,6 +1342,9 @@ function getSignatureRequestDetailById(args: {
       id: true,
       workspaceId: true,
       formVersionId: true,
+      requirementRevisionId: true,
+      acceptanceCycleKey: true,
+      requirementRevision: { select: { terms: true, effectiveAt: true } },
       memberId: true,
       guardianId: true,
       signerKind: true,
@@ -1370,6 +1403,7 @@ function getSignatureRequestDetailById(args: {
         select: {
           id: true,
           signedAt: true,
+          validUntil: true,
           signerNameSnapshot: true,
           guardianId: true,
         },
@@ -1399,6 +1433,10 @@ function mapSignatureRequestDetail(
 ): SignatureRequestPageData {
   return {
     requestId: request.id,
+    requirementRevisionId: request.requirementRevisionId,
+    acceptanceCycleKey: request.acceptanceCycleKey,
+    effectiveAt: request.requirementRevision?.effectiveAt ?? null,
+    consentValidUntil: request.signedDocument?.validUntil ?? (request.requirementRevision && parseRequirementTerms(request.requirementRevision.terms).consentValidUntil ? new Date(parseRequirementTerms(request.requirementRevision.terms).consentValidUntil!) : null),
     workspaceId: request.workspaceId,
     formDocumentId: request.formVersion.formDocument.id,
     formName: request.formVersion.formDocument.name,
@@ -1458,7 +1496,8 @@ export async function getPortalSignatureRequestForMember(args: {
     db,
   });
 
-  return mapSignatureRequestDetail(request);
+  const binding = (await signableFormBinding({ db, workspaceId: request.workspaceId, memberId: request.memberId, formVersionId: request.formVersionId, requirementRevisionId: request.requirementRevisionId, acceptanceCycleKey: request.acceptanceCycleKey, now }))[0];
+  return { ...mapSignatureRequestDetail(request), effectiveAt: binding?.effectiveAt ?? null, consentValidUntil: binding?.consentValidUntil ?? request.signedDocument?.validUntil ?? mapSignatureRequestDetail(request).consentValidUntil ?? null, upcoming: binding?.upcoming ?? false, canSign: request.status === "OPEN" && !!binding, ...(request.status === "OPEN" && !binding ? { signingUnavailableReason: "This acceptance cycle is no longer available. Open the current and scheduled forms list." } : {}) };
 }
 
 export async function getMagicLinkSignatureRequest(args: {
@@ -1517,7 +1556,8 @@ export async function getMagicLinkSignatureRequest(args: {
     db,
   });
 
-  return mapSignatureRequestDetail(request);
+  const binding = (await signableFormBinding({ db, workspaceId: request.workspaceId, memberId: request.memberId, formVersionId: request.formVersionId, requirementRevisionId: request.requirementRevisionId, acceptanceCycleKey: request.acceptanceCycleKey, now }))[0];
+  return { ...mapSignatureRequestDetail(request), effectiveAt: binding?.effectiveAt ?? null, consentValidUntil: binding?.consentValidUntil ?? request.signedDocument?.validUntil ?? mapSignatureRequestDetail(request).consentValidUntil ?? null, upcoming: binding?.upcoming ?? false, canSign: request.status === "OPEN" && !!binding, ...(request.status === "OPEN" && !binding ? { signingUnavailableReason: "This acceptance cycle is no longer available. Open the current and scheduled forms list." } : {}) };
 }
 
 function isRequestStillSignable(request: SignatureRequestDetailRecord): boolean {
@@ -1561,6 +1601,13 @@ export async function recordLocalFormSignature(args: {
   // This lookup identifies lock keys only. Identity, request state and document version are checked again under the locks.
   const initial = await getSignatureRequestDetailById({ requestId, db });
   if (!initial) return deny("Signature request not found.");
+  if (initial.requirementRevisionId) return recordRevisionSignature({ ...args, requestId, db, now });
+  // Legacy requests remain usable only while their observed baseline is still a
+  // current requirement; a frozen pointer cannot authorize stale acceptance.
+  if (await hasPublishedFormRequirements(db, initial.workspaceId)) {
+    const bindings = await signableFormBinding({ db, workspaceId: initial.workspaceId, memberId: initial.memberId, formVersionId: initial.formVersionId, requirementRevisionId: null, acceptanceCycleKey: "legacy", now });
+    if (!bindings.length) return deny("This form changed. Open its currently published acceptance cycle.");
+  }
   return db.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`family-access:${initial.workspaceId}`}))`;
     // Publication updates this same document row; it cannot supersede the reviewed version during signature creation.
@@ -1589,9 +1636,11 @@ export async function recordLocalFormSignature(args: {
     }
     if (request.signerKind === "MEMBER" && memberNeedsGuardian(member, now)) return deny("A verified guardian must sign this participant’s forms.");
     const document = await tx.formDocument.findFirst({ where: { id: request.formVersion.formDocument.id, workspaceId: request.workspaceId, archivedAt: null }, select: { currentVersionId: true } });
-    const applicable = request.formVersion.formDocument.assignments.some(assignment => isRequirementTargetApplicable({ requirementTarget: assignment.requirementTarget, memberStatus: member.status, guardianCount: member.familyLinks.length }) && getSignerKindForTarget(assignment.requirementTarget, member, now) === request.signerKind);
+    const membershipIntent = member.status === "TRIAL" && request.formVersion.formDocument.assignments.some(assignment => assignment.requirementTarget === "MEMBER")
+      ? await membershipEnrollmentSigningIntentTx(tx, request, args.actorUserId, now) : false;
+    const applicable = request.formVersion.formDocument.assignments.some(assignment => (isRequirementTargetApplicable({ requirementTarget: assignment.requirementTarget, memberStatus: member.status, guardianCount: member.familyLinks.length }) || (assignment.requirementTarget === "MEMBER" && membershipIntent)) && getSignerKindForTarget(assignment.requirementTarget, member, now) === request.signerKind);
     if (!document || document.currentVersionId !== request.formVersionId || !applicable) return deny("This form changed. Open the current version before signing.");
-    const existing = await tx.signedDocument.findFirst({ where: { workspaceId: request.workspaceId, formVersionId: request.formVersionId, memberId: request.memberId, signerKind: request.signerKind }, select: { id: true } });
+    const existing = await tx.signedDocument.findFirst({ where: { workspaceId: request.workspaceId, formVersionId: request.formVersionId, memberId: request.memberId, signerKind: request.signerKind, requirementRevisionId: null, acceptanceCycleKey: "legacy" }, select: { id: true } });
     if (existing) return { status: "already_signed", signedDocumentId: existing.id };
     if (!isRequestStillSignable(request)) return deny("This signing request is no longer active.");
     if (request.expiresAt && request.expiresAt <= now) {
@@ -1601,7 +1650,7 @@ export async function recordLocalFormSignature(args: {
     const changed = await tx.signatureRequest.updateMany({ where: { id: request.id, workspaceId: request.workspaceId, formVersionId: request.formVersionId, status: "OPEN" }, data: { status: "COMPLETED", completedAt: now } });
     if (changed.count !== 1) return deny("This signing request changed. Refresh before trying again.");
     const signed = await tx.signedDocument.create({ data: { workspaceId: request.workspaceId, formVersionId: request.formVersionId, memberId: request.memberId, guardianId: request.guardianId, signerKind: request.signerKind, signedFromRequestId: request.id, signerNameSnapshot: signerName, signerEmailSnapshot: signerEmail, signatureMethod: "LOCAL_TYPED_NAME", providerReference: null, ipAddress: args.ipAddress?.trim() || null, userAgent: args.userAgent?.trim() || null, signedAt: now }, select: { id: true } });
-    await tx.signatureRequest.updateMany({ where: { workspaceId: request.workspaceId, memberId: request.memberId, formVersionId: request.formVersionId, signerKind: request.signerKind, status: "OPEN", id: { not: request.id } }, data: { status: "CANCELLED" } });
+    await tx.signatureRequest.updateMany({ where: { workspaceId: request.workspaceId, memberId: request.memberId, formVersionId: request.formVersionId, signerKind: request.signerKind, acceptanceCycleKey: "legacy", status: "OPEN", id: { not: request.id } }, data: { status: "CANCELLED" } });
     return { status: "signed", signedDocumentId: signed.id };
   });
 }

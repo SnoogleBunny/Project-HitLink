@@ -4,10 +4,18 @@ import { Prisma } from "@prisma/client";
 // Updated only after reviewing every owned model, relation and file-bearing field.
 // A schema change blocks deletion until this inventory is reviewed again.
 export const REVIEWED_RETENTION_SCHEMA =
-  "c8f7b3f0ea259a2346bc80bcf102a2bac1b55f189f753b3df73291cd03b2d97d";
+  "0dec146ff801e8f448c2e8b275f3e372dea0d7b786d012022c941ed5689ad443";
 const survivors = new Set([
   "User",
   "AuthSession",
+  // Account recovery is global to a sign-in identity, including identities
+  // with another workspace or no workspace yet. Business removal cannot
+  // revoke those accounts or export recovery tokens, email bodies or audits.
+  "PasswordResetChallenge",
+  "AuthRecoveryDelivery",
+  "AccountSecurityEvent",
+  // Global keyed, expiring public-authentication counters are not owned by a gym.
+  "PublicAuthThrottleBucket",
   "WorkspaceRetentionCase",
   "WorkspaceRetentionEvent",
 ]);
@@ -30,6 +38,40 @@ const brokenCycles = new Set([
   "FormDocument.currentVersionId",
   "ImportedFinancialEvidence.parentEvidenceId",
 ]);
+// Each tuple was reviewed against the corresponding tenant-equality SQL FK.
+// Unknown composite relations still fail closed after a schema change.
+const reviewedCompositeRelations: Record<string, [string, string]> = {
+  "CoachingBookingPolicy.currentEvent": ["WorkspaceDataEvent", "currentEventId"],
+  "FormRequirementRevision.formDocument": ["FormDocument", "formDocumentId"],
+  "BookingFormRecovery.booking": ["ClassBooking", "bookingId"],
+  "BookingFormRecovery.requirementRevision": [
+    "FormRequirementRevision",
+    "requirementRevisionId",
+  ],
+  "BookingFormRecovery.assignedTo": [
+    "WorkspaceUser",
+    "assignedToWorkspaceUserId",
+  ],
+  "BookingFormRecovery.replacementBooking": [
+    "ClassBooking",
+    "replacementBookingId",
+  ],
+  "BookingFormRecovery.financialReviewCase": [
+    "FinancialReviewCase",
+    "financialReviewCaseId",
+  ],
+  "AttendanceEvent.operation": ["AttendanceOperation", "operationId"],
+  "PaymentDispute.payment": ["Payment", "paymentId"],
+  "PaymentDispute.reviewer": ["WorkspaceUser", "reviewerWorkspaceUserId"],
+  "PaymentDisputeAllocation.dispute": ["PaymentDispute", "disputeId"],
+  "PaymentDisputeAllocation.payment": ["Payment", "paymentId"],
+  "PaymentDisputeEvent.dispute": ["PaymentDispute", "disputeId"],
+  "FinancialReviewCase.dispute": ["PaymentDispute", "disputeId"],
+  "FinancialEntitlementHold.dispute": ["PaymentDispute", "disputeId"],
+  "MemberEmergencyContact.member": ["Member", "memberId"],
+  "MemberProfileEvent.member": ["Member", "memberId"],
+  "MemberOperationalRevision.member": ["Member", "memberId"],
+};
 export class RetentionInventoryError extends Error {}
 
 type Row = Record<string, unknown> & { id: string };
@@ -53,6 +95,36 @@ function delegate(tx: Prisma.TransactionClient, model: string) {
 }
 export function currentRetentionSchemaFingerprint() {
   return digest(Prisma.dmmf.datamodel);
+}
+function isReviewedOperationalChain(
+  model: { name: string },
+  field: {
+    name: string;
+    type: string;
+    relationName?: string;
+    relationOnDelete?: string;
+    relationOnUpdate?: string;
+    relationFromFields?: readonly string[];
+    relationToFields?: readonly string[];
+  },
+) {
+  return (
+    model.name === "MemberOperationalRevision" &&
+    field.name === "previousRevision" &&
+    field.type === "MemberOperationalRevision" &&
+    field.relationName === "MemberOperationalChain" &&
+    field.relationOnDelete === "NoAction" &&
+    field.relationOnUpdate === "NoAction" &&
+    JSON.stringify(field.relationFromFields) ===
+      JSON.stringify([
+        "workspaceId",
+        "memberId",
+        "recordKey",
+        "previousVersion",
+      ]) &&
+    JSON.stringify(field.relationToFields) ===
+      JSON.stringify(["workspaceId", "memberId", "recordKey", "version"])
+  );
 }
 function reviewedModels() {
   if (currentRetentionSchemaFingerprint() !== REVIEWED_RETENTION_SCHEMA)
@@ -83,8 +155,57 @@ function reviewedModels() {
       (item) => item.relationFromFields?.length,
     ))
       if (
-        field.relationFromFields!.length !== 1 ||
-        field.relationToFields?.[0] !== "id"
+        !isReviewedOperationalChain(model, field) &&
+        !(
+          field.relationFromFields!.length === 1 &&
+          field.relationToFields?.[0] === "id"
+        ) &&
+        !(
+          reviewedCompositeRelations[`${model.name}.${field.name}`]?.[0] ===
+            field.type &&
+          JSON.stringify(field.relationFromFields) ===
+            JSON.stringify([
+              "workspaceId",
+              reviewedCompositeRelations[`${model.name}.${field.name}`]?.[1],
+            ]) &&
+          JSON.stringify(field.relationToFields) ===
+            JSON.stringify(["workspaceId", "id"])
+        ) &&
+        !(
+          model.name === "FormRequirementRevision" &&
+          field.name === "formVersion" &&
+          field.type === "FormVersion" &&
+          JSON.stringify(field.relationFromFields) ===
+            JSON.stringify([
+              "workspaceId",
+              "formDocumentId",
+              "formVersionId",
+            ]) &&
+          JSON.stringify(field.relationToFields) ===
+            JSON.stringify(["workspaceId", "formDocumentId", "id"])
+        ) &&
+        !(
+          ["SignatureRequest", "SignedDocument"].includes(model.name) &&
+          field.name === "requirementRevision" &&
+          field.type === "FormRequirementRevision" &&
+          JSON.stringify(field.relationFromFields) ===
+            JSON.stringify([
+              "workspaceId",
+              "formVersionId",
+              "requirementRevisionId",
+            ]) &&
+          JSON.stringify(field.relationToFields) ===
+            JSON.stringify(["workspaceId", "formVersionId", "id"])
+        ) &&
+        !(
+          model.name === "MemberProfileEvent" &&
+          field.name === "emergencyContact" &&
+          field.type === "MemberEmergencyContact" &&
+          JSON.stringify(field.relationFromFields) ===
+            JSON.stringify(["workspaceId", "memberId", "emergencyContactId"]) &&
+          JSON.stringify(field.relationToFields) ===
+            JSON.stringify(["workspaceId", "memberId", "id"])
+        )
       )
         throw new RetentionInventoryError(
           "A relationship needs a reviewed deletion procedure.",
@@ -228,7 +349,13 @@ export async function inspectRetentionInventory(
     for (const field of model.fields.filter(
       (item) => item.relationFromFields?.length && ids.has(item.type),
     )) {
-      const foreignKey = field.relationFromFields![0]!;
+      // Physical FK validation still covers this exact tenant/person/record
+      // relation. Its generated predecessor belongs to the same scoped chain.
+      if (isReviewedOperationalChain(model, field)) continue;
+      // Reviewed composites enforce equal tenant IDs in PostgreSQL. Their
+      // referenced parent identity is the field mapped to id, not workspaceId.
+      const foreignKey =
+        field.relationFromFields![field.relationToFields!.indexOf("id")]!;
       const parentIds = ids.get(field.type)!;
       // A locally scoped row must not point into another gym.
       for (const row of rows.get(model.name)!) {
@@ -284,6 +411,7 @@ export async function deleteReviewedWorkspaceRecords(
             (field) =>
               field.relationFromFields?.length &&
               names.has(field.type) &&
+              !isReviewedOperationalChain(model, field) &&
               !brokenCycles.has(
                 `${model.name}.${field.relationFromFields![0]}`,
               ),
@@ -305,6 +433,18 @@ export async function deleteReviewedWorkspaceRecords(
     remaining.delete(next);
     order.push(next);
   }
+  // Protected tenant audit rows may only be deleted by this reviewed,
+  // inventory-bound transaction. Restore the previous local setting afterward;
+  // PostgreSQL rolls it back with the transaction if any deletion fails.
+  const previousPurge = await tx.$queryRawUnsafe<
+    Array<{ value: string | null }>
+  >(
+    "SELECT current_setting('hitlink.reviewed_retention_workspace', true) AS value",
+  );
+  await tx.$queryRawUnsafe(
+    "SELECT set_config('hitlink.reviewed_retention_workspace', $1, true)",
+    workspaceId,
+  );
   // Clear only reviewed nullable cycles inside the same atomic removal transaction.
   for (const [model, field] of [
     ["ClassBooking", "fundedByBookingId"],
@@ -329,6 +469,10 @@ export async function deleteReviewedWorkspaceRecords(
         "A deletion count changed. The transaction was rolled back.",
       );
   }
+  await tx.$queryRawUnsafe(
+    "SELECT set_config('hitlink.reviewed_retention_workspace', $1, true)",
+    previousPurge[0]?.value ?? "",
+  );
   return {
     counts: inventory.counts,
     inventoryHash: inventory.fingerprint,

@@ -1,17 +1,19 @@
+import { resolveDisplayLocale } from "@flowstate/ui";
 import Link from "next/link";
 import { prisma, parseProgramRankPolicy } from "@flowstate/db";
 import { AdminShell } from "../../_components/admin-shell";
 import { requireOwnerWorkspaceContext } from "../../../lib/owner-workspace";
 import { ProgramCreateForm } from "./program-create-form";
 
-function formatDate(value: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-  }).format(value);
-}
-
 export default async function ProgramsPage() {
   const { session, workspace } = await requireOwnerWorkspaceContext();
+  const locale = resolveDisplayLocale(workspace.settings?.locale);
+  function formatDate(value: Date): string {
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+    }).format(value);
+  }
+
   const [programs, archivedPrograms] = await Promise.all([
     prisma.program.findMany({
       where: {
@@ -48,7 +50,8 @@ export default async function ProgramsPage() {
           <p className="dashboard-card-label">Create program</p>
           <h3>New program</h3>
           <p className="management-copy">
-            Name the program and add the labels your gym uses. Rank tracking is optional.
+            Name the program and add the labels your gym uses. Rank tracking is
+            optional.
           </p>
           <ProgramCreateForm />
         </section>
@@ -93,13 +96,29 @@ export default async function ProgramsPage() {
                       <div>
                         <dt>Progress</dt>
                         <dd>
-                          {({OFF:"Off",HISTORY:"History only",PREREQUISITES:"Booking requirements"} as const)[parseProgramRankPolicy(program.rankPolicy)?.mode ?? "OFF"]}
+                          {
+                            (
+                              {
+                                OFF: "Off",
+                                HISTORY: "History only",
+                                PREREQUISITES: "Booking requirements",
+                              } as const
+                            )[
+                              parseProgramRankPolicy(program.rankPolicy)
+                                ?.mode ?? "OFF"
+                            ]
+                          }
                         </dd>
                       </div>
                     </dl>
                   </div>
 
-                  <Link className="text-link" href={`/dashboard/programs/${program.id}/progress`}>Ranks and eligibility</Link>
+                  <Link
+                    className="text-link"
+                    href={`/dashboard/programs/${program.id}/progress`}
+                  >
+                    Ranks and eligibility
+                  </Link>
                   <Link
                     className="button button-secondary"
                     href={`/dashboard/programs/${program.id}/edit`}
@@ -119,8 +138,8 @@ export default async function ProgramsPage() {
 
         {archivedPrograms.length === 0 ? (
           <p className="empty-state">
-            No archived programs yet. Archived programs stay reserved by name and
-            out of schedule builders.
+            No archived programs yet. Archived programs stay reserved by name
+            and out of schedule builders.
           </p>
         ) : (
           <div className="stack-list">

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { formatDisplayDate, useWorkspaceLocale } from "@flowstate/ui";
 export function CoachingPauseFields({
   endDate,
   weekdays,
@@ -9,6 +10,7 @@ export function CoachingPauseFields({
   weekdays: number[];
   appointments: Array<{ date: string; label: string }>;
 }) {
+  const locale = useWorkspaceLocale();
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   let count = 0;
@@ -55,7 +57,13 @@ export function CoachingPauseFields({
       </label>
       <div aria-live="polite">
         <p>
-          {count} delivery days paused. New program end: {adjusted}.
+          {count} delivery days paused. New program end:{" "}
+          {formatDisplayDate(
+            `${adjusted}T00:00:00Z`,
+            { dateStyle: "medium" },
+            locale,
+          )}
+          .
         </p>
         <p>
           {affected.length} booked appointment{affected.length === 1 ? "" : "s"}{" "}

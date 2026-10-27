@@ -5,13 +5,15 @@ export function FinancialReviewQueue({
   items,
   timezone,
   history = false,
+  locale = "en-CA",
 }: {
   items: FinancialReviewItem[];
   timezone: string;
   history?: boolean;
+  locale?: string;
 }) {
   const date = (value: Date) =>
-    new Intl.DateTimeFormat("en-CA", {
+    new Intl.DateTimeFormat(locale, {
       dateStyle: "medium",
       timeStyle: "short",
       timeZone: timezone,

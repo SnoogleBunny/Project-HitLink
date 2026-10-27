@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+// This file isolates the preserved legacy branch. Published cycles are exercised
+// against real PostgreSQL in form-requirements.integration.test.ts.
+vi.mock("../../../packages/db/src/form-requirement-signing.js", () => ({ hasPublishedFormRequirements: vi.fn().mockResolvedValue(false) }));
+vi.mock("../../../packages/db/src/form-requirement-bindings.js", () => ({ signableFormBinding: vi.fn().mockResolvedValue([{ effectiveAt: null, consentValidUntil: null, upcoming: false }]) }));
 import {
   FORM_PDF_MAX_SIZE_BYTES,
   getPortalSignatureRequestForMember,

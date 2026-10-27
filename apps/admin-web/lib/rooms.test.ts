@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 import { archiveRoom, createRoom, updateRoom } from "./rooms";
 
@@ -10,6 +11,14 @@ function buildInput() {
 }
 
 describe("room helpers", () => {
+  it("preserves an unknown failure without executing its SDK-shaped getters", async () => {
+    let reads = 0;
+    const error = { get code() { reads++; throw new Error("must not execute"); } };
+    const db = { room: { create: vi.fn().mockRejectedValue(error) } };
+    await expect(createRoom({ locationId: "scope", input: buildInput(), db: db as unknown as NonNullable<Parameters<typeof createRoom>[0]["db"]> })).rejects.toBe(error);
+    expect(reads).toBe(0);
+  });
+
   it("creates a room scoped to the primary location and sanitizes capacity", async () => {
     const created = {
       data: null as Record<string, unknown> | null,
@@ -79,12 +88,12 @@ describe("room helpers", () => {
     const db = {
       room: {
         create: vi.fn(async () => {
-          throw {
+          throw new Prisma.PrismaClientKnownRequestError("Duplicate fixture", { clientVersion: "6.19.3",
             code: "P2002",
             meta: {
               target: ["locationId", "name"],
             },
-          };
+          });
         }),
         updateMany: vi.fn(),
       },
@@ -178,9 +187,30 @@ describe("room helpers", () => {
       },
       data: {
         name: "Secondary Mat",
-        capacity: null,
         isActive: false,
       },
+    });
+  });
+
+  it("does not write a forged capacity through the room details helper", async () => {
+    const db = {
+      room: {
+        create: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      classTemplate: { count: vi.fn().mockResolvedValue(0) },
+    };
+    expect(
+      await updateRoom({
+        roomId: "room_1",
+        locationId: "location_1",
+        input: { name: "Renamed Mat", capacity: "1", isActive: true },
+        db,
+      }),
+    ).toEqual({ status: "updated", roomId: "room_1" });
+    expect(db.room.updateMany).toHaveBeenCalledWith({
+      where: { id: "room_1", locationId: "location_1" },
+      data: { name: "Renamed Mat", isActive: true },
     });
   });
 

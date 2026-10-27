@@ -1,3 +1,4 @@
+import { ensureDemoSchedulingPolicy } from "./support/demo-scheduling-policy";
 import {
   expect,
   test,
@@ -40,6 +41,18 @@ async function expectNoOverflow(page: Page): Promise<void> {
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+}
+
+async function waitForRegistrationFonts(page: Page): Promise<void> {
+  await page.waitForLoadState("load");
+  await page.waitForFunction(
+    async () => {
+      await document.fonts.ready;
+      return document.fonts.status === "loaded";
+    },
+    undefined,
+    { timeout: 10_000 },
+  );
 }
 
 async function captureState(
@@ -132,6 +145,10 @@ test.describe.serial("public trial booking recovery", () => {
       });
       site = await publishGymWebsite(actor, draft.draftVersion, true);
     }
+    if (!site)
+      throw new Error(
+        "The local trial fixture requires a published gym website.",
+      );
     expect(site.publishedAt).not.toBeNull();
     const templates = await prisma.classTemplate.findMany({
       where: { archivedAt: null, workspaceId },
@@ -150,6 +167,7 @@ test.describe.serial("public trial booking recovery", () => {
       });
       // The legacy link must lead to the published, verified registration route.
       await page.goto(`${memberBaseURL}/trial/${workspaceId}`);
+      await waitForRegistrationFonts(page);
       await expect(page).toHaveURL(trialUrl);
       await expect(
         page.getByText(/No trial dates are available\./),
@@ -161,7 +179,9 @@ test.describe.serial("public trial booking recovery", () => {
         where: { id: { in: templateIds } },
         data: { archivedAt: null },
       });
+      await waitForRegistrationFonts(page);
       await page.goto(trialUrl);
+      await waitForRegistrationFonts(page);
       const form = page.locator("form.registration-form");
       const bookingSelect = page.getByLabel("Trial class", { exact: true });
       const submitButton = page.getByRole("button", {
@@ -180,7 +200,9 @@ test.describe.serial("public trial booking recovery", () => {
       await captureState(page, testInfo, "populated");
 
       await page.setViewportSize({ width: 390, height: 844 });
+      await waitForRegistrationFonts(page);
       await page.goto(trialUrl);
+      await waitForRegistrationFonts(page);
       await tabTo(page, submitButton);
       await expect(submitButton).toBeFocused();
       await page.keyboard.press("Enter");
@@ -336,7 +358,7 @@ test.describe.serial("public trial booking recovery", () => {
         .toBe(1);
       await expect(
         page.getByText(
-          "Your trial is booked. Complete any remaining forms before class.",
+          "Your trial is booked. Check your forms again if the gym publishes an update before class.",
           { exact: true },
         ),
       ).toBeVisible({ timeout: 20000 });
@@ -353,10 +375,12 @@ test.describe.serial("public trial booking recovery", () => {
         bookedResponse,
         "Booking confirmation visible and database contains exactly one booked occurrence.",
       );
+      await waitForRegistrationFonts(page);
       await page.reload();
+      await waitForRegistrationFonts(page);
       await expect(
         page.getByText(
-          "Your trial is booked. Complete any remaining forms before class.",
+          "Your trial is booked. Check your forms again if the gym publishes an update before class.",
           { exact: true },
         ),
       ).toBeVisible();
@@ -403,3 +427,5 @@ test.describe.serial("public trial booking recovery", () => {
     }
   });
 });
+
+test.beforeAll(async () => { await ensureDemoSchedulingPolicy(prisma); });

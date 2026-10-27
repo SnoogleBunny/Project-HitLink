@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 import { SubmitButton } from "../_components/submit-button";
 import { emptyMemberLoginFormState } from "../form-states";
 import { loginAction } from "./actions";
@@ -39,6 +40,8 @@ export function LoginForm() {
       ) : null}
 
       <SubmitButton pendingLabel="Logging in...">Log in</SubmitButton>
+
+      <Link className="member-text-link" href="/forgot-password">Forgot your password?</Link>
 
       <p className="member-form-meta">
         Member access is provided by your gym. Ask the gym team if you need help

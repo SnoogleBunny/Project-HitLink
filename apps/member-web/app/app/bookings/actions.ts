@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { moveAccessBackedBooking } from "@flowstate/db";
+import { moveMemberClassBooking } from "@flowstate/db";
 import type { BookingsActionState } from "../../form-states";
-import { requireMemberPortalContext } from "../../../lib/member-auth";
+import { requireMemberCommandContext } from "../../../lib/member-auth";
 import { selectFamilyMember } from "../../_components/member-selector-actions";
 import {
   cancelSelfBooking,
@@ -30,12 +30,13 @@ export async function cancelSelfBookingAction(
   const memberId = String(formData.get("memberId") ?? "");
   if (!memberId)
     return { error: "Choose the participant before changing this booking." };
-  const context = await requireMemberPortalContext({
+  const { context, actor } = await requireMemberCommandContext({
     permission: "book",
     memberId,
   });
   const result = await cancelSelfBooking({
     workspaceId: context.workspace.id,
+    actor,
     memberId: context.member.id,
     timezone: context.location.timezone,
     bookingId: String(formData.get("bookingId") ?? ""),
@@ -51,12 +52,13 @@ export async function leaveSelfWaitlistAction(
   const memberId = String(formData.get("memberId") ?? "");
   if (!memberId)
     return { error: "Choose the participant before changing this waitlist." };
-  const context = await requireMemberPortalContext({
+  const { context, actor } = await requireMemberCommandContext({
     permission: "book",
     memberId,
   });
   const result = await leaveSelfWaitlist({
     workspaceId: context.workspace.id,
+    actor,
     memberId: context.member.id,
     waitlistEntryId: String(formData.get("waitlistEntryId") ?? ""),
   });
@@ -71,13 +73,14 @@ export async function moveSelfBookingAction(
   const memberId = String(formData.get("memberId") ?? "");
   if (!memberId)
     return { error: "Choose the participant before moving this booking." };
-  const context = await requireMemberPortalContext({
+  const { context, actor } = await requireMemberCommandContext({
     permission: "book",
     memberId,
   });
   const targetDate = String(formData.get("targetDate") ?? "");
-  const result = await moveAccessBackedBooking({
+  const result = await moveMemberClassBooking({
     workspaceId: context.workspace.id,
+    actor,
     memberId: context.member.id,
     bookingId: String(formData.get("bookingId") ?? ""),
     targetClassTemplateId: String(formData.get("targetClassTemplateId") ?? ""),

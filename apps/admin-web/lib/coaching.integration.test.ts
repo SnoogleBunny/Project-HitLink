@@ -1,16 +1,32 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type Stripe from "stripe";
+import { installProviderNetworkGuard } from "../../../tests/support/provider-network-guard.mjs";
+import { startCoachingPayment } from "@flowstate/payments";
+
+const provider = vi.hoisted(() => ({ create: vi.fn() }));
+vi.mock("stripe", () => ({
+  default: class {
+    checkout = { sessions: { create: provider.create } };
+  },
+}));
+type CheckoutRequest = NonNullable<
+  Parameters<Stripe["checkout"]["sessions"]["create"]>[0]
+>;
 import type {
   PrismaClient,
   CoachingActor,
   CoachingCommand,
+  Prisma,
 } from "@flowstate/db";
+import { createFixtureCoachingBookingPolicy, deleteFixtureCoachingWorkspace } from "../../../packages/db/tests/coaching-booking-policy-fixture.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const integration = databaseUrl ? describe : describe.skip;
 
 integration("adult coaching permissions and persistent workflows", () => {
   let db: PrismaClient;
+  let providerNetworkGuard: ReturnType<typeof installProviderNetworkGuard> | undefined;
   let api: typeof import("@flowstate/db");
   const prefix = `coaching-${randomUUID()}`;
   const workspaceId = `${prefix}-workspace`;
@@ -80,6 +96,7 @@ integration("adult coaching permissions and persistent workflows", () => {
     });
   }
   beforeAll(async () => {
+    providerNetworkGuard = installProviderNetworkGuard();
     process.env.DATABASE_URL = databaseUrl;
     api = await import("@flowstate/db");
     db = api.prisma;
@@ -112,6 +129,7 @@ integration("adult coaching permissions and persistent workflows", () => {
       await db.workspaceUser.create({
         data: { id, workspaceId, userId: actor.userId, role },
       });
+    await createFixtureCoachingBookingPolicy(db, workspaceId, owner.userId);
     await db.member.create({
       data: {
         id: memberId,
@@ -157,23 +175,249 @@ integration("adult coaching permissions and persistent workflows", () => {
     programVersionId = program.versions[0]!.id;
   });
   afterAll(async () => {
-    if (!db) return;
-    await db.coachingEnrollment.deleteMany({ where: { workspaceId } });
-    await db.coachingProgramVersion.deleteMany({
-      where: { program: { workspaceId } },
+    try {
+      if (db) {
+        await deleteFixtureCoachingWorkspace(db, workspaceId);
+        await db.user.deleteMany({
+          where: {
+            id: {
+              in: [owner, coach, replacement, client, stranger].map(
+                (actor) => actor.userId,
+              ),
+            },
+          },
+        });
+      }
+      if (providerNetworkGuard) {
+        expect(providerNetworkGuard.report.blocked).toHaveLength(0);
+        expect(providerNetworkGuard.report.openedExternalSockets).toBe(0);
+      }
+    } finally {
+      providerNetworkGuard?.restore();
+      vi.unstubAllEnvs();
+    }
+  }, 600000);
+
+  async function waitedMutation<T>(
+    change: (tx: Prisma.TransactionClient) => Promise<unknown>,
+    run: () => Promise<T>,
+  ) {
+    let release!: () => void, acquired!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
     });
-    await db.classTemplate.deleteMany({ where: { workspaceId } });
-    await db.workspace.delete({ where: { id: workspaceId } });
-    await db.user.deleteMany({
-      where: {
-        id: {
-          in: [owner, coach, replacement, client, stranger].map(
-            (actor) => actor.userId,
-          ),
-        },
+    const locked = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+    const holder = db.$transaction(
+      async (tx) => {
+        await api.lockClassSchedule(tx, workspaceId);
+        acquired();
+        await gate;
+        await change(tx);
       },
-    });
-  });
+      { timeout: 15000 },
+    );
+    await locked;
+    const attempted = run().then(
+      (value) => ({ ok: true as const, value }),
+      (error) => ({ ok: false as const, error: error as Error }),
+    );
+    try {
+      await expect
+        .poll(
+          async () => {
+            const rows = await db.$queryRaw<Array<{ waiting: boolean }>>`
+          SELECT EXISTS (SELECT 1 FROM pg_locks
+            WHERE locktype='advisory' AND NOT granted AND objsubid=1
+              AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+              AND objid::bigint=(hashtext(${`class-schedule:${workspaceId}`})::bigint & 4294967295)
+          ) AS waiting`;
+            return rows[0]?.waiting;
+          },
+          { timeout: 5000 },
+        )
+        .toBe(true);
+    } finally {
+      release();
+      await holder;
+    }
+    return attempted;
+  }
+  for (const revoked of ["owner", "business"] as const)
+    it(`denies a waited coaching mutation after ${revoked} authority is revoked`, async () => {
+      const name = `waited-${randomUUID()}`;
+      try {
+        const result = await waitedMutation(
+          (tx) =>
+            revoked === "owner"
+              ? tx.workspaceUser.update({
+                  where: { id: ownerId },
+                  data: { isActive: false },
+                })
+              : tx.workspace.update({
+                  where: { id: workspaceId },
+                  data: { status: "DISABLED" },
+                }),
+          () =>
+            command(owner, "createProgram", {
+              name,
+              durationDays: 28,
+              deliveryWeekdays: "1,3,5",
+              responseHours: 48,
+              goals: "Reviewed goal",
+              milestones: "First step",
+              priceCents: 0,
+              currency: "cad",
+              terms: "Fictional terms",
+            }),
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok)
+          expect(result.error.message).toContain("access to coaching");
+        expect(
+          await db.coachingProgram.count({ where: { workspaceId, name } }),
+        ).toBe(0);
+      } finally {
+        await db.workspace.update({
+          where: { id: workspaceId },
+          data: { status: "ACTIVE" },
+        });
+        await db.workspaceUser.update({
+          where: { id: ownerId },
+          data: { isActive: true },
+        });
+      }
+    }, 20000);
+  it("denies a waited private note after active coach access is revoked", async () => {
+    const enrollment = await activeEnrollment(),
+      body = `waited-private-${randomUUID()}`,
+      operationId = randomUUID();
+    try {
+      const result = await waitedMutation(
+        (tx) =>
+          tx.workspaceUser.update({
+            where: { id: coachId },
+            data: { isActive: false },
+          }),
+        () =>
+          command(
+            coach,
+            "savePrivateNote",
+            { localDate: today, body },
+            enrollment.id,
+            enrollment.version,
+            operationId,
+          ),
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok)
+        expect(result.error.message).toContain("access to coaching");
+      expect(
+        await db.coachingPrivateNote.count({
+          where: { enrollmentId: enrollment.id },
+        }),
+      ).toBe(0);
+      expect(
+        await db.coachingEvent.count({ where: { workspaceId, operationId } }),
+      ).toBe(0);
+    } finally {
+      await db.workspaceUser.update({
+        where: { id: coachId },
+        data: { isActive: true },
+      });
+    }
+  }, 20000);
+  it("denies a waited coach proposal after its prospective coach is deactivated", async () => {
+    const enrollment = await activeEnrollment(),
+      operationId = randomUUID();
+    try {
+      const result = await waitedMutation(
+        (tx) =>
+          tx.workspaceUser.update({
+            where: { id: replacementId },
+            data: { isActive: false },
+          }),
+        () =>
+          command(
+            owner,
+            "proposeCoach",
+            { coachId: replacementId },
+            enrollment.id,
+            enrollment.version,
+            operationId,
+          ),
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toContain("active coach");
+      expect(
+        (
+          await db.coachingEnrollment.findUniqueOrThrow({
+            where: { id: enrollment.id },
+          })
+        ).proposedCoachWorkspaceUserId,
+      ).toBeNull();
+      expect(
+        await db.coachingEvent.count({ where: { workspaceId, operationId } }),
+      ).toBe(0);
+    } finally {
+      await db.workspaceUser.update({
+        where: { id: replacementId },
+        data: { isActive: true },
+      });
+    }
+  }, 20000);
+  it("denies a waited private note after reassignment while its former coach stays active", async () => {
+    const enrollment = await activeEnrollment(),
+      operationId = randomUUID();
+    const result = await waitedMutation(
+      async (tx) => {
+        await tx.coachingAssignment.updateMany({
+          where: { enrollmentId: enrollment.id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+        await tx.coachingAssignment.create({
+          data: {
+            enrollmentId: enrollment.id,
+            coachWorkspaceUserId: replacementId,
+            acceptedAt: new Date(),
+            historyFromDate: new Date(`${today}T00:00:00Z`),
+          },
+        });
+        await tx.coachingEnrollment.update({
+          where: { id: enrollment.id },
+          data: {
+            currentCoachWorkspaceUserId: replacementId,
+            version: { increment: 1 },
+          },
+        });
+      },
+      () =>
+        command(
+          coach,
+          "savePrivateNote",
+          { localDate: today, body: "Former coach must not save this" },
+          enrollment.id,
+          enrollment.version,
+          operationId,
+        ),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error.message).toContain("access to this program");
+    expect(
+      (await db.workspaceUser.findUniqueOrThrow({ where: { id: coachId } }))
+        .isActive,
+    ).toBe(true);
+    expect(
+      await db.coachingPrivateNote.count({
+        where: { enrollmentId: enrollment.id },
+      }),
+    ).toBe(0);
+    expect(
+      await db.coachingEvent.count({ where: { workspaceId, operationId } }),
+    ).toBe(0);
+  }, 20000);
 
   it("requires own adult account, named reviewer, independent verification, intake and plan acceptance", async () => {
     const offer = await command(owner, "enroll", {
@@ -1203,9 +1447,37 @@ integration("adult coaching permissions and persistent workflows", () => {
 
   it("separates adult payer consent, current verified contact and money authority from coaching records", async () => {
     const e = await activeEnrollment();
+    // This case accepts its own paid terms before inviting a payer. Keep the
+    // shared free-plan fixture and every other enrollment unchanged.
+    const paidProgram = await db.coachingProgram.create({
+      data: {
+        workspaceId,
+        name: "Fictional payer-consent paid program",
+        versions: {
+          create: {
+            number: 1,
+            durationDays: 28,
+            deliveryWeekdays: [0, 1, 2, 3, 4, 5, 6],
+            responseHours: 48,
+            goals: "PAYER_PRIVATE_GOAL",
+            milestones: [],
+            priceCents: 12000,
+            currency: "cad",
+            terms: "Exact fictional paid terms accepted by client and payer.",
+            appointmentUnits: 1,
+            appointmentMinutes: 60,
+            cancellationHours: 24,
+          },
+        },
+      },
+      include: { versions: true },
+    });
     await db.coachingEnrollment.update({
       where: { id: e.id },
-      data: { paymentState: "UNPAID" },
+      data: {
+        programVersionId: paidProgram.versions[0]!.id,
+        paymentState: "UNPAID",
+      },
     });
     await db.member.update({
       where: { id: `${prefix}-stranger-member` },
@@ -1231,6 +1503,7 @@ integration("adult coaching permissions and persistent workflows", () => {
     expect(view).not.toHaveProperty("intake");
     expect(view).not.toHaveProperty("goals");
     expect(JSON.stringify(view)).not.toContain("PAYER_PRIVATE_SENTINEL");
+    expect(JSON.stringify(view)).not.toContain("PAYER_PRIVATE_GOAL");
     await expect(api.getCoachingDetail(stranger, e.id)).rejects.toThrow(
       "access",
     );
@@ -1286,22 +1559,80 @@ integration("adult coaching permissions and persistent workflows", () => {
     const approved = await authority();
     expect(approved.payerGrantId).toBe(request.id);
     expect(approved.payerUserId).toBe(stranger.userId);
-    const operation = await db.financialOperation.create({
+    const stripeAccountId = `acct_${prefix}_payer`;
+    await db.workspaceStripeSettings.create({
       data: {
         workspaceId,
-        operationKey: `${prefix}-payer-checkout`,
-        requestHash: "fixture",
-        kind: "CHECKOUT",
-        status: "SUBMITTED",
-        actorUserId: stranger.userId,
-        payerAccountId: approved.payerAccountId,
-        beneficiaryMemberId: memberId,
-        targetId: e.id,
-        providerIdempotencyKey: `${prefix}-payer-key`,
-        providerUrl: "https://checkout.example.test/pending",
-        payload: {},
+        stripeAccountId,
+        connectionStatus: "ACTIVE",
+        chargesEnabled: true,
       },
     });
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fictional_payer_consent");
+    vi.stubEnv("NEXT_PUBLIC_MEMBER_WEB_URL", "https://member.example.test");
+    provider.create.mockReset().mockImplementationOnce(async (payload: CheckoutRequest) => {
+      const line = payload.line_items?.[0];
+      if (!line?.price_data || typeof line.price_data.unit_amount !== "number")
+        throw new Error("The fictional checkout needs exact priced line items.");
+      return {
+        id: `cs_fictional_${e.id}`,
+        object: "checkout.session",
+        mode: "payment",
+        client_reference_id: payload.client_reference_id,
+        metadata: payload.metadata,
+        amount_total: line.price_data.unit_amount * (line.quantity ?? 1),
+        currency: line.price_data.currency,
+        status: "open",
+        payment_status: "unpaid",
+        payment_intent: null,
+        livemode: false,
+        url: "https://checkout.example.test/pending",
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      };
+    });
+    expect(await startCoachingPayment(stranger, e.id)).toBe(
+      "https://checkout.example.test/pending",
+    );
+    const operation = await db.financialOperation.findUniqueOrThrow({
+      where: {
+        workspaceId_operationKey: {
+          workspaceId,
+          operationKey: `coaching-checkout:${e.id}:first`,
+        },
+      },
+    });
+    expect(operation).toMatchObject({
+      status: "SUBMITTED",
+      actorUserId: stranger.userId,
+      payerAccountId: approved.payerAccountId,
+      beneficiaryMemberId: memberId,
+      amountCents: 12000,
+      currency: "cad",
+      providerUrl: "https://checkout.example.test/pending",
+    });
+    expect(provider.create).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        mode: "payment",
+        client_reference_id: e.id,
+        metadata: expect.objectContaining({
+          payerUserId: stranger.userId,
+          payerAccountId: approved.payerAccountId,
+          payerGrantId: request.id,
+          programVersionId: paidProgram.versions[0]!.id,
+          appointmentTimesNotHeld: "true",
+        }),
+      }),
+      { stripeAccount: stripeAccountId, idempotencyKey: operation.providerIdempotencyKey },
+    );
+    expect(await db.workspaceDataEvent.count({
+      where: {
+        workspaceId,
+        kind: "COACHING_CHECKOUT_BOOKING_DISCLOSURE_RECORDED",
+        metadata: { path: ["operationId"], equals: operation.id },
+      },
+    })).toBe(1);
+    expect(providerNetworkGuard?.report.blocked).toHaveLength(0);
+    expect(providerNetworkGuard?.report.openedExternalSockets).toBe(0);
     await mutate(client, e.id, "revokeCoachingPayer", { grantId: request.id });
     await expect(authority()).rejects.toThrow("both consent");
     expect(await api.shouldDeliverNotification(job, db)).toBe(false);

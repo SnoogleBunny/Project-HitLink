@@ -51,7 +51,7 @@
  }
 }
 
-@media(max-width:640px),(pointer:coarse){
+@media(max-width:767px),(pointer:coarse){
  #hitlink-prototype select:not([multiple]){
   min-block-size:44px;padding-block:10px;font-size:16px;line-height:22px;
  }

@@ -356,6 +356,7 @@ integration(
         input,
         memberId: member.id,
         formVersionId: formVersion.id,
+        formDocumentId: form.id,
         sourceFileId: sourceFile.id,
         enrollmentId: enrollment.id,
       };
@@ -510,15 +511,18 @@ integration(
         "changed after preview",
       );
       const other = await otherGym();
-      const foreign = await db.signedDocument.create({
+      await db.formDocument.update({
+        where: { id: f.formDocumentId },
+        data: { currentVersionId: null },
+      });
+      // A mutable legacy draft pointer can deliberately expose a cross-gym FK
+      // without deleting or rewriting immutable signature evidence in cleanup.
+      const foreign = await db.formDocument.create({
         data: {
           workspaceId: other.workspaceId,
-          memberId: other.memberId,
-          formVersionId: f.formVersionId,
-          signerKind: "MEMBER",
-          signerNameSnapshot: "foreign",
-          signatureMethod: "TYPED_NAME",
-          signedAt: due,
+          name: "Foreign draft reference",
+          formType: "WAIVER",
+          currentVersionId: f.formVersionId,
         },
       });
       try {
@@ -537,11 +541,19 @@ integration(
         expect(
           await db.formVersion.count({ where: { id: f.formVersionId } }),
         ).toBe(1);
-        expect(
-          await db.signedDocument.count({ where: { id: foreign.id } }),
-        ).toBe(1);
+        expect(await db.formDocument.count({ where: { id: foreign.id } })).toBe(
+          1,
+        );
       } finally {
-        await db.signedDocument.delete({ where: { id: foreign.id } });
+        await db.formDocument.update({
+          where: { id: foreign.id },
+          data: { currentVersionId: null },
+        });
+        await db.formDocument.delete({ where: { id: foreign.id } });
+        await db.formDocument.update({
+          where: { id: f.formDocumentId },
+          data: { currentVersionId: f.formVersionId },
+        });
       }
     });
     it("fails closed on an unreviewed database table inside a rolled-back transaction", async () => {
@@ -810,6 +822,182 @@ integration(
       const session = await db.authSession.create({
         data: { userId: owner, tokenHash: randomUUID(), expiresAt: later },
       });
+      const recovery = await db.passwordResetChallenge.create({
+        data: {
+          userId: owner,
+          tokenHash: randomUUID(),
+          emailHash: randomUUID(),
+          portal: "admin",
+          expiresAt: later,
+          delivery: {
+            create: {
+              recipientEmail: "recovery@example.test",
+              body: "RECOVERY_PRIVATE_SENTINEL",
+              status: "CANCELLED",
+              expiresAt: later,
+            },
+          },
+        },
+        include: { delivery: true },
+      });
+      const security = await db.accountSecurityEvent.create({
+        data: {
+          userId: owner,
+          kind: "FICTIONAL_RETENTION_PROOF",
+          portal: "admin",
+        },
+      });
+      const authBucket = await db.publicAuthThrottleBucket.create({
+        data: {
+          keyHash: createHash("sha256").update(randomUUID()).digest("hex"),
+          attempts: 1,
+          windowEndsAt: later,
+          expiresAt: later,
+        },
+      });
+      await db.workspaceSetting.create({
+        data: {
+          workspaceId: f.workspaceId,
+          contactEmail: "BUSINESS_PRIVATE_SENTINEL@example.test",
+          currency: "cad",
+          locale: "en-CA",
+          identityVersion: 1,
+        },
+      });
+      await db.workspaceTimezoneRevision.create({
+        data: {
+          workspaceId: f.workspaceId,
+          version: 1,
+          previousTimezone: "UTC",
+          timezone: "America/Vancouver",
+          effectiveFromDate: due,
+          effectiveAt: due,
+          actorUserId: owner,
+          previewHash: createHash("sha256")
+            .update("reviewed timezone fixture")
+            .digest("hex"),
+        },
+      });
+      const operation = await db.attendanceOperation.create({
+        data: {
+          workspaceId: f.workspaceId,
+          requestKey: randomUUID(),
+          payloadHash: createHash("sha256")
+            .update("reviewed attendance fixture")
+            .digest("hex"),
+          action: "RECORD",
+          actorWorkspaceUserId: "historical-staff-id",
+          result: { private: "ROSTER_PRIVATE_SENTINEL" },
+        },
+      });
+      await db.attendanceEvent.create({
+        data: {
+          workspaceId: f.workspaceId,
+          operationId: operation.id,
+          attendanceRecordId: "historical-attendance-id",
+          bookingId: "historical-booking-id",
+          memberId: f.memberId,
+          classTemplateId: "historical-class-id",
+          scheduledForDate: due,
+          actorWorkspaceUserId: "historical-staff-id",
+          actorNameSnapshot: "Historical coach",
+          actorRole: "COACH",
+          previousState: "NO_SHOW",
+          state: "PRESENT",
+          reason: "CORRECTION_PRIVATE_SENTINEL",
+          occurrenceTimezone: "UTC",
+          noShowCutoffAt: due,
+        },
+      });
+      const payment = await db.payment.create({
+        data: {
+          workspaceId: f.workspaceId,
+          memberId: f.memberId,
+          status: "SUCCEEDED",
+          amountCents: 1000,
+          currency: "cad",
+        },
+      });
+      const dispute = await db.paymentDispute.create({
+        data: {
+          workspaceId: f.workspaceId,
+          providerAccountId: `acct-${randomUUID()}`,
+          livemode: false,
+          providerDisputeId: `dp-${randomUUID()}`,
+          chargeId: "ch-fixture",
+          paymentId: payment.id,
+          providerStatus: "won",
+          reason: "fraudulent",
+          amountCents: 1000,
+          currency: "cad",
+          chargeAmountCents: 1000,
+          isChargeRefundable: true,
+          evidence: { private: "DISPUTE_PRIVATE_SENTINEL" },
+          evidenceHash: "a".repeat(64),
+          accessState: "RELEASED",
+          moneyState: "WON",
+          resolvedAt: due,
+        },
+      });
+      await db.paymentDisputeAllocation.create({
+        data: {
+          workspaceId: f.workspaceId,
+          disputeId: dispute.id,
+          paymentId: payment.id,
+          fundedAmountCents: 1000,
+        },
+      });
+      const disputeEvent = await db.paymentDisputeEvent.create({
+        data: {
+          workspaceId: f.workspaceId,
+          disputeId: dispute.id,
+          requestKey: randomUUID(),
+          payloadHash: "b".repeat(64),
+          kind: "PROVIDER_VERIFIED",
+          actorUserId: owner,
+          before: {},
+          after: { status: "won" },
+        },
+      });
+      await db.financialEntitlementHold.create({
+        data: {
+          workspaceId: f.workspaceId,
+          disputeId: dispute.id,
+          targetKind: "PUNCH_CARD",
+          targetId: "historical-pack-id",
+          activeSlot: null,
+          releasedAt: due,
+        },
+      });
+      await expect(
+        db.$executeRaw`DELETE FROM payment_dispute_events WHERE id = ${disputeEvent.id}`,
+      ).rejects.toThrow("immutable");
+      const setup = await db.workspaceSetup.create({
+        data: {
+          workspaceId: f.workspaceId,
+          ownerUserId: owner,
+          serviceMode: "COACHING",
+          version: 2,
+          verificationHash: createHash("sha256")
+            .update(randomUUID())
+            .digest("hex"),
+        },
+      });
+      await db.workspaceSetupActivation.create({
+        data: {
+          workspaceId: f.workspaceId,
+          setupId: setup.id,
+          ownerUserId: owner,
+          setupVersion: 2,
+          serviceMode: "COACHING",
+          verifiedEmailHash: "d".repeat(64),
+          ownerVerifiedAt: due,
+          acceptedAt: due,
+          activatedAt: due,
+          snapshotHash: "e".repeat(64),
+          snapshot: { private: "SETUP_PRIVATE_SENTINEL" },
+        },
+      });
       const preview = await api.getWorkspaceRetentionCase(
         custodian,
         f.caseId,
@@ -824,6 +1012,16 @@ integration(
           ImportedFinancialEvidence: 2,
           StaffTimeOff: 1,
           SourceMembershipLifecycleEvidence: 1,
+          WorkspaceSetting: 1,
+          WorkspaceTimezoneRevision: 1,
+          AttendanceOperation: 1,
+          AttendanceEvent: 1,
+          PaymentDispute: 1,
+          PaymentDisputeAllocation: 1,
+          PaymentDisputeEvent: 1,
+          FinancialEntitlementHold: 1,
+          WorkspaceSetup: 1,
+          WorkspaceSetupActivation: 1,
         },
         schemaHash: REVIEWED_RETENTION_SCHEMA,
       });
@@ -836,6 +1034,36 @@ integration(
       ).toBe(1);
       expect(await db.authSession.count({ where: { id: session.id } })).toBe(1);
       expect(await db.user.count({ where: { id: owner } })).toBe(1);
+      expect(
+        await db.publicAuthThrottleBucket.count({
+          where: { keyHash: authBucket.keyHash },
+        }),
+      ).toBe(1);
+      await db.publicAuthThrottleBucket.delete({
+        where: { keyHash: authBucket.keyHash },
+      });
+      expect(
+        await db.passwordResetChallenge.count({ where: { id: recovery.id } }),
+      ).toBe(1);
+      expect(
+        await db.authRecoveryDelivery.count({
+          where: { id: recovery.delivery!.id },
+        }),
+      ).toBe(1);
+      expect(
+        await db.accountSecurityEvent.count({ where: { id: security.id } }),
+      ).toBe(1);
+      expect(
+        await db.workspaceSetting.count({
+          where: { workspaceId: f.workspaceId },
+        }),
+      ).toBe(0);
+      expect(JSON.stringify(preview.inventory)).not.toContain(
+        "RECOVERY_PRIVATE_SENTINEL",
+      );
+      expect(JSON.stringify(receipt)).not.toContain(
+        "RECOVERY_PRIVATE_SENTINEL",
+      );
       expect(
         await api.executeWorkspaceRetention(
           custodian,
