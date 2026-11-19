@@ -1,0 +1,2772 @@
+{
+  "schemaVersion": 1,
+  "sourceMatrix": {
+    "candidate": "cc522966b136771aa68bdf5309677772943b82dc",
+    "tree": "dcf82d844fddebc3dc1550743e14a72a6e55b952",
+    "sha256": "9b10689d5b84d46020529810c81863e2a12aa6eec85f89a24e26afd9589da448"
+  },
+  "candidateDispositionNote": "VF-226 moved from provisional removal to browser proof because the staged candidate now renders an explicit unverified/verified local checkout-return boundary without inferring payment from GET. The ten internal migration operator controls remain absent; ten provider-dependent controls remain truthfully unavailable.",
+  "counts": {
+    "Browser-proven working": 243,
+    "Removed/not part of demo": 10,
+    "Truthfully unavailable": 10
+  },
+  "scenarios": {
+    "EVF-ADMIN-CONNECTED": {
+      "kind": "browser",
+      "testFile": "tests/e2e/flowstate-demo.spec.ts",
+      "testTitle": "admin, member, public trial, and API flows are connected",
+      "assertions": [
+        "owner-routes",
+        "member-routes",
+        "booking",
+        "trial",
+        "roster",
+        "attendance",
+        "api-readiness"
+      ]
+    },
+    "EVF-CONTROL-CATALOG": {
+      "kind": "browser",
+      "testFile": "tests/e2e/every-visible-feature-certification.spec.ts",
+      "testTitle": "EVF-CONTROL-CATALOG: route controls stay named, contained, and responsive",
+      "assertions": [
+        "390px",
+        "768px",
+        "1440px",
+        "accessible-name",
+        "no-clipping",
+        "no-horizontal-overflow",
+        "screenshot-manifest"
+      ]
+    },
+    "EVF-DIAGNOSTICS": {
+      "kind": "browser",
+      "testFile": "tests/e2e/browser-diagnostics.spec.ts",
+      "testTitle": "fails the case when Chromium emits an unallowlisted diagnostic",
+      "assertions": [
+        "console",
+        "hydration",
+        "pageerror",
+        "requestfailed",
+        "response",
+        "external-request",
+        "fail-closed"
+      ]
+    },
+    "EVF-FORMS-PDF": {
+      "kind": "browser",
+      "testFile": "tests/e2e/every-visible-feature-certification.spec.ts",
+      "testTitle": "EVF-FORMS-PDF: authenticated bytes, fail-closed IDs, and exact Chromium viewer allowance",
+      "assertions": [
+        "authenticated-direct-request",
+        "http-200",
+        "application-pdf",
+        "inline-filename",
+        "nonempty-pdf-bytes",
+        "coherent-xref",
+        "coherent-startxref",
+        "missing-id-fail-closed",
+        "foreign-workspace-fail-closed",
+        "wrong-role-fail-closed",
+        "tampered-cookie-fail-closed",
+        "chromium-document-err-aborted-exact-path-only"
+      ]
+    },
+    "EVF-LANDING-RESPONSIVE": {
+      "kind": "browser",
+      "testFile": "tests/e2e/landing-target-sizes.spec.ts",
+      "testTitle": "landing navigation targets and recovery constraints",
+      "assertions": [
+        "390px",
+        "768px",
+        "1440px",
+        "44px-targets",
+        "keyboard-focus",
+        "fragment-navigation",
+        "reduced-motion",
+        "zero-external-requests",
+        "screenshots"
+      ]
+    },
+    "EVF-MEMBER-SCHEDULE-RECOVERY": {
+      "kind": "browser",
+      "testFile": "tests/e2e/flowstate-demo.spec.ts",
+      "testTitle": "a lower schedule action keeps its pending and failure feedback in context",
+      "assertions": [
+        "pending",
+        "disabled-repeat-suppression",
+        "focused-alert",
+        "value-context"
+      ]
+    },
+    "EVF-MEMBER-SCHEDULE-RESPONSIVE": {
+      "kind": "browser",
+      "testFile": "tests/e2e/flowstate-demo.spec.ts",
+      "testTitle": "member schedule actions remain readable and responsive",
+      "assertions": [
+        "390px",
+        "1024px",
+        "1440px",
+        "focus-contrast",
+        "no-horizontal-overflow",
+        "screenshots"
+      ]
+    },
+    "EVF-MIGRATION-END-TO-END": {
+      "kind": "browser",
+      "testFile": "tests/e2e/migration-first-onboarding.spec.ts",
+      "testTitle": "captures signup, intake, migration operations, gating, and readiness",
+      "assertions": [
+        "signup",
+        "onboarding-validation",
+        "migration-intake",
+        "owner-acknowledgment",
+        "readiness-gate",
+        "responsive-screenshots",
+        "keyboard-focus"
+      ]
+    },
+    "EVF-MIGRATION-IMMUTABLE": {
+      "kind": "browser",
+      "testFile": "tests/e2e/migration-first-onboarding.spec.ts",
+      "testTitle": "keeps the acknowledged migration snapshot immutable",
+      "assertions": ["locked-snapshot", "stale-mutation-rejected"]
+    },
+    "EVF-MIGRATION-PERSISTED": {
+      "kind": "browser",
+      "testFile": "tests/e2e/migration-first-onboarding.spec.ts",
+      "testTitle": "shows the persisted completed handoff to a fresh owner session",
+      "assertions": [
+        "fresh-session",
+        "owner-navigation",
+        "390px",
+        "1024px",
+        "1440px",
+        "keyboard-focus",
+        "no-horizontal-overflow"
+      ]
+    },
+    "EVF-PROVIDER-BOUNDARIES": {
+      "kind": "browser",
+      "testFile": "tests/e2e/every-visible-feature-certification.spec.ts",
+      "testTitle": "EVF-PROVIDER-BOUNDARIES: unavailable controls stay truthful with zero external requests",
+      "assertions": [
+        "visible-boundary",
+        "zero-external-requests",
+        "disabled-provider-actions",
+        "mailto-href-only",
+        "unverified-checkout-state"
+      ]
+    },
+    "EVF-RP16-ABSENCE": {
+      "kind": "browser",
+      "testFile": "tests/e2e/every-visible-feature-certification.spec.ts",
+      "testTitle": "EVF-RP16-ABSENCE: internal migration controls stay absent from the owner demo",
+      "assertions": [
+        "absence-proof",
+        "unmounted-operator-controls",
+        "owner-surface",
+        "zero-external-requests"
+      ]
+    },
+    "EVF-TRIAL-RECOVERY": {
+      "kind": "browser",
+      "testFile": "tests/e2e/trial-booking-recovery.spec.ts",
+      "testTitle": "keeps zero-date, populated, invalid, and server-failure states recoverable",
+      "assertions": [
+        "zero-date",
+        "populated",
+        "client-validation",
+        "server-failure",
+        "keyboard-focus",
+        "390px",
+        "768px",
+        "1440px",
+        "zero-external-requests",
+        "screenshots"
+      ]
+    }
+  },
+  "rows": [
+    {
+      "id": "VF-001",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-002",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-003",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-004",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-005",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-006",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-007",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-008",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-009",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-010",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-011",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-012",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-013",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-014",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-015",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-016",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-017",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-018",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-019",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-020",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-021",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-022",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-023",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-024",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-025",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-026",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-027",
+      "disposition": "Truthfully unavailable",
+      "scenarioIds": ["EVF-PROVIDER-BOUNDARIES"],
+      "evidenceSummary": "The exact demo control exposes a visible unavailable boundary and the browser receipt proves zero external provider requests."
+    },
+    {
+      "id": "VF-028",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-029",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-030",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-031",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-032",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-033",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-034",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-035",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-036",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-037",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-038",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-039",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-040",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-041",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-042",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-043",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-044",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-045",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-046",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-047",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-048",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-049",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-050",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-051",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-052",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-053",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-054",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-055",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-056",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-057",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-058",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-059",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-060",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-061",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-062",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-063",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-064",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-065",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-066",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-067",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-068",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-069",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-070",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-071",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-072",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-073",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-074",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-075",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-076",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-077",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-078",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-079",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-080",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-081",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-082",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-083",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-084",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-085",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-086",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-087",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-088",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-089",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-090",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-091",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-092",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-093",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-094",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-095",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-096",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-097",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-098",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-099",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-100",
+      "disposition": "Removed/not part of demo",
+      "scenarioIds": ["EVF-RP16-ABSENCE"],
+      "evidenceSummary": "Owner migration surface proves the internal operator component fields and actions are not mounted or reachable."
+    },
+    {
+      "id": "VF-101",
+      "disposition": "Removed/not part of demo",
+      "scenarioIds": ["EVF-RP16-ABSENCE"],
+      "evidenceSummary": "Owner migration surface proves the internal operator component fields and actions are not mounted or reachable."
+    },
+    {
+      "id": "VF-102",
+      "disposition": "Removed/not part of demo",
+      "scenarioIds": ["EVF-RP16-ABSENCE"],
+      "evidenceSummary": "Owner migration surface proves the internal operator component fields and actions are not mounted or reachable."
+    },
+    {
+      "id": "VF-103",
+      "disposition": "Removed/not part of demo",
+      "scenarioIds": ["EVF-RP16-ABSENCE"],
+      "evidenceSummary": "Owner migration surface proves the internal operator component fields and actions are not mounted or reachable."
+    },
+    {
+      "id": "VF-104",
+      "disposition": "Removed/not part of demo",
+      "scenarioIds": ["EVF-RP16-ABSENCE"],
+      "evidenceSummary": "Owner migration surface proves the internal operator component fields and actions are not mounted or reachable."
+    },
+    {
+      "id": "VF-105",
+      "disposition": "Removed/not part of demo",
+      "scenarioIds": ["EVF-RP16-ABSENCE"],
+      "evidenceSummary": "Owner migration surface proves the internal operator component fields and actions are not mounted or reachable."
+    },
+    {
+      "id": "VF-106",
+      "disposition": "Removed/not part of demo",
+      "scenarioIds": ["EVF-RP16-ABSENCE"],
+      "evidenceSummary": "Owner migration surface proves the internal operator component fields and actions are not mounted or reachable."
+    },
+    {
+      "id": "VF-107",
+      "disposition": "Removed/not part of demo",
+      "scenarioIds": ["EVF-RP16-ABSENCE"],
+      "evidenceSummary": "Owner migration surface proves the internal operator component fields and actions are not mounted or reachable."
+    },
+    {
+      "id": "VF-108",
+      "disposition": "Removed/not part of demo",
+      "scenarioIds": ["EVF-RP16-ABSENCE"],
+      "evidenceSummary": "Owner migration surface proves the internal operator component fields and actions are not mounted or reachable."
+    },
+    {
+      "id": "VF-109",
+      "disposition": "Removed/not part of demo",
+      "scenarioIds": ["EVF-RP16-ABSENCE"],
+      "evidenceSummary": "Owner migration surface proves the internal operator component fields and actions are not mounted or reachable."
+    },
+    {
+      "id": "VF-110",
+      "disposition": "Truthfully unavailable",
+      "scenarioIds": ["EVF-PROVIDER-BOUNDARIES"],
+      "evidenceSummary": "The exact demo control exposes a visible unavailable boundary and the browser receipt proves zero external provider requests."
+    },
+    {
+      "id": "VF-111",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-112",
+      "disposition": "Truthfully unavailable",
+      "scenarioIds": ["EVF-PROVIDER-BOUNDARIES"],
+      "evidenceSummary": "The exact demo control exposes a visible unavailable boundary and the browser receipt proves zero external provider requests."
+    },
+    {
+      "id": "VF-113",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-114",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-115",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-116",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-117",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-118",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-119",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-120",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-121",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-122",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-123",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-124",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-125",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-126",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-127",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-128",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-129",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-130",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-131",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-132",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-133",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-134",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-135",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-136",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-137",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-138",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-139",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-140",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-141",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-142",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-143",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-144",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-145",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-146",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-147",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-148",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-149",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-150",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-151",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-152",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-153",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-154",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-155",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-156",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-157",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-158",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-159",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-160",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-161",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-162",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-163",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-164",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-165",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-166",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-167",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-168",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-169",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-170",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-171",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-172",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-173",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-174",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-175",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-176",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-177",
+      "disposition": "Truthfully unavailable",
+      "scenarioIds": ["EVF-PROVIDER-BOUNDARIES"],
+      "evidenceSummary": "The exact demo control exposes a visible unavailable boundary and the browser receipt proves zero external provider requests."
+    },
+    {
+      "id": "VF-178",
+      "disposition": "Truthfully unavailable",
+      "scenarioIds": ["EVF-PROVIDER-BOUNDARIES"],
+      "evidenceSummary": "The exact demo control exposes a visible unavailable boundary and the browser receipt proves zero external provider requests."
+    },
+    {
+      "id": "VF-179",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-180",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-181",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-182",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-183",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-184",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-185",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-186",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-187",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-188",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-189",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-190",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-191",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-192",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-193",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-194",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-195",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-196",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-197",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-198",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-199",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-200",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-201",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-202",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-203",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-204",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-205",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-206",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-207",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-208",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-209",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-210",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-211",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-DIAGNOSTICS",
+        "EVF-MIGRATION-END-TO-END",
+        "EVF-MIGRATION-IMMUTABLE",
+        "EVF-MIGRATION-PERSISTED"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-212",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-213",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-214",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-215",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-216",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-217",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-218",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-219",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-220",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-221",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-222",
+      "disposition": "Truthfully unavailable",
+      "scenarioIds": ["EVF-PROVIDER-BOUNDARIES"],
+      "evidenceSummary": "The exact demo control exposes a visible unavailable boundary and the browser receipt proves zero external provider requests."
+    },
+    {
+      "id": "VF-223",
+      "disposition": "Truthfully unavailable",
+      "scenarioIds": ["EVF-PROVIDER-BOUNDARIES"],
+      "evidenceSummary": "The exact demo control exposes a visible unavailable boundary and the browser receipt proves zero external provider requests."
+    },
+    {
+      "id": "VF-224",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-225",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-226",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-PROVIDER-BOUNDARIES"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-227",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-FORMS-PDF"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-228",
+      "disposition": "Truthfully unavailable",
+      "scenarioIds": ["EVF-PROVIDER-BOUNDARIES"],
+      "evidenceSummary": "The exact demo control exposes a visible unavailable boundary and the browser receipt proves zero external provider requests."
+    },
+    {
+      "id": "VF-229",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-230",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-231",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-232",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS",
+        "EVF-MEMBER-SCHEDULE-RECOVERY",
+        "EVF-MEMBER-SCHEDULE-RESPONSIVE"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-233",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-234",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-235",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-236",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-TRIAL-RECOVERY"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-237",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-TRIAL-RECOVERY"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-238",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-TRIAL-RECOVERY"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-239",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-TRIAL-RECOVERY"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-240",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-TRIAL-RECOVERY"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-241",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-TRIAL-RECOVERY"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-242",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-TRIAL-RECOVERY"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-243",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-TRIAL-RECOVERY"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-244",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-TRIAL-RECOVERY"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-245",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-TRIAL-RECOVERY"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-246",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-TRIAL-RECOVERY"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-247",
+      "disposition": "Browser-proven working",
+      "scenarioIds": [
+        "EVF-ADMIN-CONNECTED",
+        "EVF-CONTROL-CATALOG",
+        "EVF-DIAGNOSTICS"
+      ],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-248",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-249",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-250",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-251",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-252",
+      "disposition": "Truthfully unavailable",
+      "scenarioIds": ["EVF-PROVIDER-BOUNDARIES"],
+      "evidenceSummary": "The exact demo control exposes a visible unavailable boundary and the browser receipt proves zero external provider requests."
+    },
+    {
+      "id": "VF-253",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-254",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-255",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-256",
+      "disposition": "Truthfully unavailable",
+      "scenarioIds": ["EVF-PROVIDER-BOUNDARIES"],
+      "evidenceSummary": "The exact demo control exposes a visible unavailable boundary and the browser receipt proves zero external provider requests."
+    },
+    {
+      "id": "VF-257",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-258",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-259",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-260",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-261",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-262",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    },
+    {
+      "id": "VF-263",
+      "disposition": "Browser-proven working",
+      "scenarioIds": ["EVF-DIAGNOSTICS", "EVF-LANDING-RESPONSIVE"],
+      "evidenceSummary": "Named Chromium scenario evidence covers the visible control route/state while the canonical unit, type, lint, and build gates cover its owning action/domain seam."
+    }
+  ]
+}

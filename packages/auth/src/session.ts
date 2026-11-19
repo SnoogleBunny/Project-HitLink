@@ -56,6 +56,11 @@ interface SessionCookieOptions {
   cookieName?: string;
 }
 
+export type DeleteSessionResult =
+  | { status: "revoked" }
+  | { status: "revocation_failed" }
+  | { status: "no_token" };
+
 export const prismaSessionRepository: SessionRepository = {
   async create({ userId, tokenHash, expiresAt }) {
     await prisma.authSession.create({
@@ -247,18 +252,26 @@ export async function deleteSession(args: {
   cookieStore: SessionCookieStore;
   repository?: SessionRepository;
   cookieName?: string;
-}): Promise<void> {
+}): Promise<DeleteSessionResult> {
   const repository = args.repository ?? prismaSessionRepository;
   const token =
     args.cookieStore.get(getCookieName(args.cookieName))?.value?.trim() ?? "";
+  let result: DeleteSessionResult = { status: "no_token" };
 
   if (token) {
-    await repository.deleteByTokenHash(hashSessionToken(token));
+    try {
+      await repository.deleteByTokenHash(hashSessionToken(token));
+      result = { status: "revoked" };
+    } catch {
+      result = { status: "revocation_failed" };
+    }
   }
 
   clearSessionCookie(args.cookieStore, {
     cookieName: args.cookieName,
   });
+
+  return result;
 }
 
 export async function requireUser(args: {

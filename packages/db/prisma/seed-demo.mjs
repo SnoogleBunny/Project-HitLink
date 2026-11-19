@@ -83,25 +83,18 @@ endobj
 << /Type /Pages /Kids [3 0 R] /Count 1 >>
 endobj
 3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 240] /Contents 4 0 R >>
-endobj
-4 0 obj
-<< /Length 46 >>
-stream
-BT /F1 12 Tf 24 120 Td (Flowstate demo waiver) Tj ET
-endstream
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 240] >>
 endobj
 xref
-0 5
+0 4
 0000000000 65535 f 
 0000000009 00000 n 
 0000000058 00000 n 
 0000000115 00000 n 
-0000000204 00000 n 
 trailer
-<< /Root 1 0 R /Size 5 >>
+<< /Root 1 0 R /Size 4 >>
 startxref
-300
+186
 %%EOF
 `);
 

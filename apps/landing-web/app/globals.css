@@ -230,10 +230,14 @@ textarea {
 }
 
 .brand-link {
+  align-items: center;
+  display: inline-flex;
   font-family: var(--font-family-display);
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
   letter-spacing: var(--letter-spacing-tight);
+  min-height: 44px;
+  min-width: 44px;
 }
 
 .site-header nav {
@@ -670,8 +674,12 @@ main {
 }
 
 .site-footer a {
+  align-items: center;
   color: var(--color-text-link);
+  display: inline-flex;
   font-weight: var(--font-weight-bold);
+  min-height: 44px;
+  min-width: 44px;
 }
 
 @keyframes presence-rise {
@@ -721,8 +729,12 @@ main {
   }
 
   .site-header nav a {
+    align-items: center;
+    display: inline-flex;
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-bold);
+    min-height: 44px;
+    min-width: 44px;
   }
 
   .header-cta {

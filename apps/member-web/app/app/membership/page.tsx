@@ -1,29 +1,20 @@
 import { MemberShell } from "../../_components/member-shell";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
+import { getMemberBillingSummary } from "../../../lib/member-billing";
 import { getMemberPunchCardPageData } from "../../../lib/member-commerce";
 import { getMemberMembershipSummary } from "../../../lib/member-portal";
+import {
+  formatCalendarDate,
+  formatGymDateTime,
+  formatMembershipStatus,
+  formatMoney,
+  formatPunchCardStatus,
+} from "../../../lib/billing-display";
 import { PunchCardPurchaseForm } from "./punch-card-purchase-form";
-
-function formatDate(value: Date | null): string {
-  if (!value) {
-    return "Not set";
-  }
-
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-  }).format(value);
-}
-
-function formatMoney(amountCents: number, currency: string): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: currency.toUpperCase(),
-  }).format(amountCents / 100);
-}
 
 export default async function MembershipPage() {
   const context = await requireMemberPortalContext();
-  const [membership, punchCards] = await Promise.all([
+  const [membership, punchCards, billing] = await Promise.all([
     getMemberMembershipSummary({
       workspaceId: context.workspace.id,
       memberId: context.member.id,
@@ -32,8 +23,17 @@ export default async function MembershipPage() {
       workspaceId: context.workspace.id,
       memberId: context.member.id,
     }),
+    getMemberBillingSummary({
+      workspaceId: context.workspace.id,
+      memberId: context.member.id,
+    }),
   ]);
   const currentMembership = membership.currentMembership;
+  const purchaseUnavailableReason =
+    billing.readOnlyReason ===
+    "Online billing is not connected for this gym yet."
+      ? billing.readOnlyReason
+      : null;
 
   return (
     <MemberShell
@@ -48,8 +48,8 @@ export default async function MembershipPage() {
             <h3>{currentMembership.membershipPlan.name}</h3>
             <dl className="member-detail-list">
               <div>
-                <dt>Status</dt>
-                <dd>{currentMembership.status}</dd>
+                <dt>Membership status</dt>
+                <dd>{formatMembershipStatus(currentMembership.status)}</dd>
               </div>
               <div>
                 <dt>Price</dt>
@@ -61,20 +61,31 @@ export default async function MembershipPage() {
                 </dd>
               </div>
               <div>
-                <dt>Next billing date</dt>
-                <dd>{formatDate(currentMembership.nextBillingDate)}</dd>
+                <dt>Next billing (gym time)</dt>
+                <dd>
+                  {formatGymDateTime(
+                    currentMembership.nextBillingDate,
+                    context.location.timezone,
+                  )}
+                </dd>
               </div>
               <div>
-                <dt>Cancel at period end</dt>
-                <dd>{currentMembership.cancelAtPeriodEnd ? "Yes" : "No"}</dd>
+                <dt>End after current billing period</dt>
+                <dd>
+                  {currentMembership.cancelAtPeriodEnd
+                    ? "Scheduled"
+                    : "Not scheduled"}
+                </dd>
               </div>
               <div>
-                <dt>Freeze window</dt>
+                <dt>Scheduled freeze</dt>
                 <dd>
                   {currentMembership.frozenFrom
-                    ? `${formatDate(currentMembership.frozenFrom)} to ${formatDate(
-                        currentMembership.frozenUntil,
-                      )}`
+                    ? `${formatCalendarDate(currentMembership.frozenFrom)} to ${
+                        currentMembership.frozenUntil
+                          ? formatCalendarDate(currentMembership.frozenUntil)
+                          : "No end date"
+                      }`
                     : "No freeze scheduled"}
                 </dd>
               </div>
@@ -115,25 +126,37 @@ export default async function MembershipPage() {
                   <div className="member-stack-copy">
                     <div className="member-stack-heading">
                       <h4>{card.name}</h4>
-                      <span className="member-status-pill">
-                        {card.remainingPunches} / {card.originalPunches}
+                      <span
+                        aria-label={`Punch-card status: ${formatPunchCardStatus(card.status)}`}
+                        className="member-status-pill"
+                      >
+                        {formatPunchCardStatus(card.status)}
                       </span>
                     </div>
-                    <p>{card.description ?? "No description yet."}</p>
                     <dl className="member-inline-meta">
                       <div>
-                        <dt>Status</dt>
-                        <dd>{card.status}</dd>
+                        <dt>Punches remaining</dt>
+                        <dd
+                          aria-label={`Punches remaining: ${card.remainingPunches} of ${card.originalPunches}`}
+                        >
+                          {card.remainingPunches} / {card.originalPunches}
+                        </dd>
                       </div>
                       <div>
                         <dt>Programs</dt>
                         <dd>{card.restrictionSummary}</dd>
                       </div>
                       <div>
-                        <dt>Purchased</dt>
-                        <dd>{formatDate(card.purchasedAt)}</dd>
+                        <dt>Purchased (gym time)</dt>
+                        <dd>
+                          {formatGymDateTime(
+                            card.purchasedAt,
+                            context.location.timezone,
+                          )}
+                        </dd>
                       </div>
                     </dl>
+                    <p>{card.description ?? "No description yet."}</p>
                   </div>
                 </article>
               ))}
@@ -149,10 +172,14 @@ export default async function MembershipPage() {
           </h3>
           {punchCards.availableProducts.length === 0 ? (
             <p className="member-copy">
-              No punch-card products are available for online purchase right now.
+              No punch-card products are available for online purchase right
+              now.
             </p>
           ) : (
-            <PunchCardPurchaseForm products={punchCards.availableProducts} />
+            <PunchCardPurchaseForm
+              products={punchCards.availableProducts}
+              purchaseUnavailableReason={purchaseUnavailableReason}
+            />
           )}
         </section>
       </div>

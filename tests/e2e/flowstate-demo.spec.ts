@@ -1,10 +1,17 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./support/browser-diagnostics";
 import { PrismaClient } from "@prisma/client";
+import { prepareCleanEvidence } from "./support/clean-evidence";
 
 process.env.DATABASE_URL ??=
   "postgresql://postgres:postgres@localhost:5432/flowstate_dev?schema=public";
 
 const prisma = new PrismaClient();
+const adminBaseURL =
+  process.env.FLOWSTATE_ADMIN_E2E_BASE_URL ?? "http://127.0.0.1:3100";
+const memberBaseURL =
+  process.env.FLOWSTATE_MEMBER_E2E_BASE_URL ?? "http://localhost:3101";
+const apiBaseURL =
+  process.env.FLOWSTATE_API_E2E_BASE_URL ?? "http://127.0.0.1:3102";
 
 const demo = {
   ownerEmail: "demo-owner@flowstate.local",
@@ -13,6 +20,46 @@ const demo = {
   memberPassword: "MemberPass123!",
   trialEmail: "demo-trial@flowstate.local",
 };
+
+function dateOnlyKeyInTimeZone(value: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    calendar: "iso8601",
+    day: "2-digit",
+    month: "2-digit",
+    numberingSystem: "latn",
+    timeZone: timezone,
+    year: "numeric",
+  }).formatToParts(value);
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  const year = values.get("year");
+  const month = values.get("month");
+  const day = values.get("day");
+
+  if (!year || !month || !day) {
+    throw new Error(`Could not resolve a date in ${timezone}.`);
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function offsetDateOnly(dateOnly: string, days: number): string {
+  const date = new Date(`${dateOnly}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function latestRecurringDateOnOrBefore(
+  scheduledForDate: string,
+  ceilingDate: string,
+): string {
+  let candidate = scheduledForDate;
+
+  while (candidate > ceilingDate) {
+    candidate = offsetDateOnly(candidate, -7);
+  }
+
+  return candidate;
+}
 
 async function bodyText(page: Page): Promise<string> {
   return (await page.locator("body").innerText()).replace(/\s+/g, " ").trim();
@@ -145,19 +192,23 @@ function contrastRatio(first: string, second: string): number {
 }
 
 async function loginAdmin(page: Page) {
-  await page.goto("http://localhost:3000/login");
-  if (/\/dashboard/.test(page.url())) {
+  await page.goto(`${adminBaseURL}/login`);
+  const emailField = page.getByLabel("Email");
+  const dashboardMarker = page.getByText("Demo Flowstate Gym").first();
+  await expect(emailField.or(dashboardMarker)).toBeVisible();
+  if (!(await emailField.isVisible())) {
+    await expect(page).toHaveURL(/\/dashboard$/);
     return;
   }
 
-  await page.getByLabel("Email").fill(demo.ownerEmail);
+  await emailField.fill(demo.ownerEmail);
   await page.getByLabel("Password").fill(demo.ownerPassword);
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 }
 
 async function loginMember(page: Page) {
-  await page.goto("http://localhost:3001/login");
+  await page.goto(`${memberBaseURL}/login`);
   await page.getByLabel("Email").fill(demo.memberEmail);
   await page.getByLabel("Password").fill(demo.memberPassword);
   await page.getByRole("button", { name: "Log in" }).click();
@@ -195,7 +246,7 @@ test.describe.serial("Flowstate working demo", () => {
     });
 
     await loginMember(page);
-    await page.goto("http://localhost:3001/app/schedule");
+    await page.goto(`${memberBaseURL}/app/schedule`);
 
     const actionButtons = page.locator(
       ".member-stack-item .member-occurrence-action button:not([disabled])",
@@ -268,7 +319,7 @@ test.describe.serial("Flowstate working demo", () => {
   }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await loginMember(page);
-    await page.goto("http://localhost:3001/app/schedule");
+    await page.goto(`${memberBaseURL}/app/schedule`);
 
     const actionButton = page
       .locator(".member-occurrence-action button")
@@ -336,6 +387,7 @@ test.describe.serial("Flowstate working demo", () => {
       const actionBox = await actionButton.boundingBox();
       expect(actionBox).not.toBeNull();
       expect(actionBox!.height).toBeLessThanOrEqual(64);
+      await prepareCleanEvidence(page);
       await page.screenshot({
         path: testInfo.outputPath(`member-schedule-${viewport.name}.png`),
         fullPage: true,
@@ -379,10 +431,13 @@ test.describe.serial("Flowstate working demo", () => {
     expect(workspace.dropInProducts).toHaveLength(1);
     expect(workspace.formDocuments).toHaveLength(1);
     expect(workspace.members).toHaveLength(1);
+    if (!workspace.location) {
+      throw new Error("Demo workspace is missing its primary location.");
+    }
 
-    const health = await request.get("http://localhost:3002/api/v1/health");
+    const health = await request.get(`${apiBaseURL}/api/v1/health`);
     await expect(health).toBeOK();
-    expect(await health.json()).toEqual({ ok: true });
+    expect(await health.json()).toEqual({ status: "ready" });
 
     await loginAdmin(page);
     await expectHealthyPage(page);
@@ -403,7 +458,8 @@ test.describe.serial("Flowstate working demo", () => {
       `/dashboard/members/${workspace.members[0].id}`,
       `/dashboard/members/${workspace.members[0].id}/billing`,
       "/dashboard/forms",
-      `/dashboard/forms/${workspace.formDocuments[0].id}`,
+      // The form-detail embed and exact PDF route are owned by EVF-FORMS-PDF,
+      // which proves the authenticated bytes before its Chromium-only allowance.
       "/dashboard/membership-plans",
       `/dashboard/membership-plans/${workspace.membershipPlans[0].id}/edit`,
       "/dashboard/access-products",
@@ -416,12 +472,14 @@ test.describe.serial("Flowstate working demo", () => {
     ];
 
     for (const route of adminRoutes) {
-      const response = await page.goto(`http://localhost:3000${route}`);
+      const response = await page.goto(`${adminBaseURL}${route}`, {
+        waitUntil: "networkidle",
+      });
       expect(response?.status(), route).toBeLessThan(400);
       await expectHealthyPage(page);
     }
 
-    await page.goto("http://localhost:3000/dashboard/migration");
+    await page.goto(`${adminBaseURL}/dashboard/migration`);
     await expectCompletedMigrationOwnerSummary(page);
     await expect(page.getByText("Handoff complete").first()).toBeVisible();
     await expect(page.locator("body")).not.toContainText(
@@ -447,12 +505,14 @@ test.describe.serial("Flowstate working demo", () => {
     ];
 
     for (const route of memberRoutes) {
-      const response = await page.goto(`http://localhost:3001${route}`);
+      const response = await page.goto(`${memberBaseURL}${route}`, {
+        waitUntil: "networkidle",
+      });
       expect(response?.status(), route).toBeLessThan(400);
       await expectHealthyPage(page);
     }
 
-    await page.goto("http://localhost:3001/app/schedule");
+    await page.goto(`${memberBaseURL}/app/schedule`);
     await expect(
       page.getByRole("button", { name: "Book class" }).first(),
     ).toBeVisible();
@@ -472,12 +532,13 @@ test.describe.serial("Flowstate working demo", () => {
         createdAt: "desc",
       },
     });
+    expect(memberBooking.classInstanceId).toBeNull();
     const rosterDate = memberBooking.scheduledForDate
       .toISOString()
       .slice(0, 10);
     const connectedOccurrenceValue = `${memberBooking.classTemplateId}|${rosterDate}`;
 
-    await page.goto(`http://localhost:3001/trial/${workspace.id}`);
+    await page.goto(`${memberBaseURL}/trial/${workspace.id}`);
     await expectHealthyPage(page);
     await page
       .locator('select[name="bookingOption"]')
@@ -501,15 +562,73 @@ test.describe.serial("Flowstate working demo", () => {
     });
     expect(trialBooking).toMatchObject({
       bookingType: "TRIAL",
+      classInstanceId: null,
       classTemplateId: memberBooking.classTemplateId,
       scheduledForDate: memberBooking.scheduledForDate,
       source: "PUBLIC_TRIAL",
       status: "BOOKED",
     });
 
+    const gymLocalToday = dateOnlyKeyInTimeZone(
+      new Date(),
+      workspace.location.timezone,
+    );
+    const attendanceRosterDate = latestRecurringDateOnOrBefore(
+      rosterDate,
+      gymLocalToday,
+    );
+    const attendanceScheduledForDate = new Date(
+      `${attendanceRosterDate}T00:00:00.000Z`,
+    );
+    const [memberOccurrenceUpdate, trialOccurrenceUpdate] =
+      await prisma.$transaction([
+        prisma.classBooking.updateMany({
+          where: {
+            id: memberBooking.id,
+            classInstanceId: null,
+            classTemplateId: memberBooking.classTemplateId,
+            scheduledForDate: memberBooking.scheduledForDate,
+          },
+          data: { scheduledForDate: attendanceScheduledForDate },
+        }),
+        prisma.classBooking.updateMany({
+          where: {
+            id: trialBooking.id,
+            classInstanceId: null,
+            classTemplateId: memberBooking.classTemplateId,
+            scheduledForDate: memberBooking.scheduledForDate,
+          },
+          data: { scheduledForDate: attendanceScheduledForDate },
+        }),
+      ]);
+    expect(memberOccurrenceUpdate.count).toBe(1);
+    expect(trialOccurrenceUpdate.count).toBe(1);
+
+    const attendanceOccurrenceBookings = await prisma.classBooking.findMany({
+      where: { id: { in: [memberBooking.id, trialBooking.id] } },
+    });
+    expect(attendanceOccurrenceBookings).toHaveLength(2);
+    const attendanceBookingById = new Map(
+      attendanceOccurrenceBookings.map((booking) => [booking.id, booking]),
+    );
+    expect(attendanceBookingById.get(memberBooking.id)).toMatchObject({
+      id: memberBooking.id,
+      classInstanceId: null,
+      memberId: memberBooking.memberId,
+      classTemplateId: memberBooking.classTemplateId,
+      scheduledForDate: attendanceScheduledForDate,
+    });
+    expect(attendanceBookingById.get(trialBooking.id)).toMatchObject({
+      id: trialBooking.id,
+      classInstanceId: null,
+      memberId: trialBooking.memberId,
+      classTemplateId: memberBooking.classTemplateId,
+      scheduledForDate: attendanceScheduledForDate,
+    });
+
     await loginAdmin(page);
     await page.goto(
-      `http://localhost:3000/dashboard/schedule/${memberBooking.classTemplateId}/roster?date=${rosterDate}`,
+      `${adminBaseURL}/dashboard/schedule/${memberBooking.classTemplateId}/roster?date=${attendanceRosterDate}`,
     );
     await expect(
       page.locator("dd").filter({ hasText: /^2 \/ 20 booked$/ }),
@@ -529,5 +648,34 @@ test.describe.serial("Flowstate working demo", () => {
     await expect(
       demoMemberCard.locator("span").filter({ hasText: /^Present$/ }),
     ).toBeVisible();
+
+    const attendanceRecord = await prisma.attendanceRecord.findUniqueOrThrow({
+      where: {
+        workspaceId_memberId_classTemplateId_scheduledForDate: {
+          workspaceId: workspace.id,
+          memberId: memberBooking.memberId,
+          classTemplateId: memberBooking.classTemplateId,
+          scheduledForDate: attendanceScheduledForDate,
+        },
+      },
+    });
+    expect(attendanceRecord).toMatchObject({
+      memberId: memberBooking.memberId,
+      classTemplateId: memberBooking.classTemplateId,
+      scheduledForDate: attendanceScheduledForDate,
+      state: "PRESENT",
+      note: "Playwright attendance check.",
+    });
+    await expect(
+      prisma.classBooking.findUniqueOrThrow({
+        where: { id: memberBooking.id },
+      }),
+    ).resolves.toMatchObject({
+      id: memberBooking.id,
+      memberId: memberBooking.memberId,
+      classTemplateId: memberBooking.classTemplateId,
+      scheduledForDate: attendanceScheduledForDate,
+      status: "ATTENDED",
+    });
   });
 });

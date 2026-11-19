@@ -10,14 +10,61 @@ import {
   retryFailedPaymentNowAction,
 } from "./actions";
 
-function formatDate(value: Date | null): string {
+const failureCodeLabels: Record<string, string> = {
+  card_declined: "Payment was declined.",
+  expired_card: "The card has expired.",
+  incorrect_cvc: "The card security code was incorrect.",
+  insufficient_funds: "The card has insufficient funds.",
+  authentication_required: "Payment authentication is required.",
+};
+
+function createInstantFormatter(timeZone: string): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat("en-CA", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  });
+}
+
+function formatGymDateTime(
+  value: Date | null,
+  gymTimeZone: string,
+  nullLabel: string,
+): string {
   if (!value) {
-    return "Not set";
+    return nullLabel;
   }
 
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-  }).format(value);
+  try {
+    return createInstantFormatter(gymTimeZone).format(value);
+  } catch (error) {
+    if (!(error instanceof RangeError)) {
+      throw error;
+    }
+
+    return `${createInstantFormatter("UTC").format(value)} (gym timezone unavailable)`;
+  }
+}
+
+function formatPaymentIssue(
+  failureMessage: string | null,
+  failureCode: string | null,
+): string {
+  const message = failureMessage?.trim();
+
+  if (message) {
+    return message;
+  }
+
+  if (failureCode) {
+    return failureCodeLabels[failureCode] ?? "Payment could not be completed.";
+  }
+
+  return "Payment issue details are unavailable.";
 }
 
 function formatMoney(amountCents: number, currency: string): string {
@@ -28,7 +75,7 @@ function formatMoney(amountCents: number, currency: string): string {
 }
 
 export default async function BillingPage() {
-  const { session, workspace } = await requireOwnerWorkspaceContext();
+  const { location, session, workspace } = await requireOwnerWorkspaceContext();
   const queue = await listFailedPaymentQueue({
     workspaceId: workspace.id,
   });
@@ -41,7 +88,10 @@ export default async function BillingPage() {
       title="Failed payment queue"
       description="Operational billing items that need owner attention. This is not an accounting ledger."
       actions={
-        <Link className="button button-secondary" href="/dashboard/settings/billing">
+        <Link
+          className="button button-secondary"
+          href="/dashboard/settings/billing"
+        >
           Billing settings
         </Link>
       }
@@ -52,8 +102,8 @@ export default async function BillingPage() {
           {queue.length} billing item{queue.length === 1 ? "" : "s"}
         </h3>
         <p className="management-copy">
-          Retry a latest invoice when available, or mark that a payment update
-          request was sent outside this app.
+          Retry the latest invoice when available, or record that the gym
+          requested a payment-method update.
         </p>
       </section>
 
@@ -62,13 +112,19 @@ export default async function BillingPage() {
           <p className="empty-state">No failed payment items right now.</p>
         ) : (
           <div className="stack-list">
-            {queue.map((item) => (
+            {queue.map((item, index) => (
               <article key={item.id} className="stack-item">
                 <div className="stack-item-copy">
                   <div className="stack-item-heading">
                     <h4>{item.member.fullName}</h4>
-                    <span className="status-pill">
-                      {formatBillingStateStatus(item.status)}
+                    <span
+                      aria-label={`Billing status: ${formatBillingStateStatus(item.status, "failed-payment-queue")}`}
+                      className="status-pill"
+                    >
+                      {formatBillingStateStatus(
+                        item.status,
+                        "failed-payment-queue",
+                      )}
                     </span>
                   </div>
                   <p>
@@ -80,59 +136,99 @@ export default async function BillingPage() {
                   </p>
                   <dl className="inline-meta">
                     <div>
-                      <dt>Failed</dt>
-                      <dd>{formatDate(item.failedAt)}</dd>
+                      <dt>Payment issue</dt>
+                      <dd>
+                        {formatPaymentIssue(
+                          item.failureMessage,
+                          item.failureCode,
+                        )}
+                      </dd>
                     </div>
                     <div>
-                      <dt>Grace ends</dt>
-                      <dd>{formatDate(item.gracePeriodEndsAt)}</dd>
+                      <dt>Failed (gym time)</dt>
+                      <dd>
+                        {formatGymDateTime(
+                          item.failedAt,
+                          location.timezone,
+                          "Time not available",
+                        )}
+                      </dd>
                     </div>
                     <div>
-                      <dt>Invoice</dt>
-                      <dd>{item.latestInvoiceId ?? "Not set"}</dd>
+                      <dt>Grace period ends (gym time)</dt>
+                      <dd>
+                        {formatGymDateTime(
+                          item.gracePeriodEndsAt,
+                          location.timezone,
+                          "No grace-period end recorded",
+                        )}
+                      </dd>
                     </div>
                     <div>
-                      <dt>Last request</dt>
-                      <dd>{formatDate(item.paymentUpdateRequestedAt)}</dd>
+                      <dt>Invoice available for retry</dt>
+                      <dd>
+                        {item.latestInvoiceId ? "Yes" : "No invoice available"}
+                      </dd>
                     </div>
                     <div>
-                      <dt>Failure</dt>
-                      <dd>{item.failureMessage ?? item.failureCode ?? "Not set"}</dd>
+                      <dt>Update request recorded (gym time)</dt>
+                      <dd>
+                        {formatGymDateTime(
+                          item.paymentUpdateRequestedAt,
+                          location.timezone,
+                          "No update request recorded",
+                        )}
+                      </dd>
                     </div>
                   </dl>
-                </div>
-
-                <div className="dashboard-actions">
-                  <Link
-                    className="button button-secondary"
-                    href={`/dashboard/members/${item.member.id}/billing`}
-                  >
-                    Open member
-                  </Link>
-                  <form action={retryFailedPaymentNowAction}>
-                    <input
-                      name="membershipBillingStateId"
-                      type="hidden"
-                      value={item.id}
-                    />
-                    <button
+                  <div className="dashboard-actions">
+                    <Link
+                      aria-label={`Open billing for ${item.member.fullName}`}
                       className="button button-secondary"
-                      disabled={!item.latestInvoiceId}
-                      type="submit"
+                      href={`/dashboard/members/${item.member.id}/billing`}
                     >
-                      Retry now
-                    </button>
-                  </form>
-                  <form action={markPaymentUpdateRequestedAction}>
-                    <input
-                      name="membershipBillingStateId"
-                      type="hidden"
-                      value={item.id}
-                    />
-                    <button className="button button-secondary" type="submit">
-                      Mark update requested
-                    </button>
-                  </form>
+                      Open member
+                    </Link>
+                    <form action={retryFailedPaymentNowAction}>
+                      <input
+                        name="membershipBillingStateId"
+                        type="hidden"
+                        value={item.id}
+                      />
+                      <button
+                        aria-describedby={
+                          item.latestInvoiceId
+                            ? undefined
+                            : `retry-reason-${index}`
+                        }
+                        aria-label={`Retry payment for ${item.member.fullName}`}
+                        className="button button-secondary"
+                        disabled={!item.latestInvoiceId}
+                        type="submit"
+                      >
+                        Retry now
+                      </button>
+                      {!item.latestInvoiceId ? (
+                        <p id={`retry-reason-${index}`}>
+                          No invoice is available to retry.
+                        </p>
+                      ) : null}
+                    </form>
+                    <form action={markPaymentUpdateRequestedAction}>
+                      <input
+                        name="membershipBillingStateId"
+                        type="hidden"
+                        value={item.id}
+                      />
+                      <button
+                        aria-label={`Mark payment update requested for ${item.member.fullName}`}
+                        className="button button-secondary"
+                        type="submit"
+                      >
+                        Mark update requested
+                      </button>
+                    </form>
+                  </div>
                 </div>
               </article>
             ))}
@@ -142,4 +238,3 @@ export default async function BillingPage() {
     </AdminShell>
   );
 }
-

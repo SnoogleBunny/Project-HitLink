@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  ADMIN_SESSION_COOKIE_NAME,
+  clearSessionCookie,
   deleteSession,
   getSession,
   getSessionFromToken,
@@ -81,6 +83,8 @@ describe("session lookup", () => {
         repository,
       }),
     ).resolves.toBeNull();
+
+    expect(repository.deleteByTokenHash).not.toHaveBeenCalled();
   });
 
   it("returns null and deletes the stored session when it has expired", async () => {
@@ -127,15 +131,142 @@ describe("session lookup", () => {
       deleteByTokenHash: vi.fn(),
     };
 
-    await deleteSession({
+    const result = await deleteSession({
       cookieStore,
       repository,
       cookieName: MEMBER_SESSION_COOKIE_NAME,
     });
 
+    expect(result).toEqual({ status: "revoked" });
     expect(cookieStore.get).toHaveBeenCalledWith(MEMBER_SESSION_COOKIE_NAME);
     expect(repository.deleteByTokenHash).toHaveBeenCalledWith(
       hashSessionToken("member-session-token"),
+    );
+    expect(cookieStore.set).toHaveBeenCalledTimes(1);
+    expect(cookieStore.set).toHaveBeenCalledWith(
+      MEMBER_SESSION_COOKIE_NAME,
+      "",
+      {
+        expires: new Date(0),
+        httpOnly: true,
+        path: "/",
+        sameSite: "lax",
+        secure: false,
+      },
+    );
+  });
+
+  it("clears only the default admin cookie with production attributes", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+
+    try {
+      const cookieStore = {
+        get: vi.fn((name: string) =>
+          name === ADMIN_SESSION_COOKIE_NAME
+            ? { value: "admin-session-token" }
+            : undefined,
+        ),
+        set: vi.fn(),
+      };
+      const repository = {
+        create: vi.fn(),
+        findByTokenHash: vi.fn(),
+        deleteByTokenHash: vi.fn(),
+      };
+
+      await expect(
+        deleteSession({ cookieStore, repository }),
+      ).resolves.toEqual({ status: "revoked" });
+
+      expect(repository.deleteByTokenHash).toHaveBeenCalledWith(
+        hashSessionToken("admin-session-token"),
+      );
+      expect(cookieStore.set).toHaveBeenCalledTimes(1);
+      expect(cookieStore.set).toHaveBeenCalledWith(
+        ADMIN_SESSION_COOKIE_NAME,
+        "",
+        {
+          expires: new Date(0),
+          httpOnly: true,
+          path: "/",
+          sameSite: "lax",
+          secure: true,
+        },
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("clears the selected cookie and returns a sanitized result when revocation fails", async () => {
+    const cookieStore = {
+      get: vi.fn(() => ({ value: "member-session-token" })),
+      set: vi.fn(),
+    };
+    const repository = {
+      create: vi.fn(),
+      findByTokenHash: vi.fn(),
+      deleteByTokenHash: vi
+        .fn()
+        .mockRejectedValue(new Error("repository unavailable: internal details")),
+    };
+
+    await expect(
+      deleteSession({
+        cookieStore,
+        repository,
+        cookieName: MEMBER_SESSION_COOKIE_NAME,
+      }),
+    ).resolves.toEqual({ status: "revocation_failed" });
+
+    expect(repository.deleteByTokenHash).toHaveBeenCalledWith(
+      hashSessionToken("member-session-token"),
+    );
+    expect(cookieStore.set).toHaveBeenCalledTimes(1);
+    expect(cookieStore.set).toHaveBeenCalledWith(
+      MEMBER_SESSION_COOKIE_NAME,
+      "",
+      {
+        expires: new Date(0),
+        httpOnly: true,
+        path: "/",
+        sameSite: "lax",
+        secure: false,
+      },
+    );
+  });
+
+  it("clears the selected cookie without repository access when no token exists", async () => {
+    const cookieStore = {
+      get: vi.fn(() => undefined),
+      set: vi.fn(),
+    };
+    const repository = {
+      create: vi.fn(),
+      findByTokenHash: vi.fn(),
+      deleteByTokenHash: vi.fn(),
+    };
+
+    await expect(
+      deleteSession({
+        cookieStore,
+        repository,
+        cookieName: MEMBER_SESSION_COOKIE_NAME,
+      }),
+    ).resolves.toEqual({ status: "no_token" });
+
+    expect(repository.deleteByTokenHash).not.toHaveBeenCalled();
+    expect(cookieStore.set).toHaveBeenCalledTimes(1);
+    expect(cookieStore.set).toHaveBeenCalledWith(
+      MEMBER_SESSION_COOKIE_NAME,
+      "",
+      {
+        expires: new Date(0),
+        httpOnly: true,
+        path: "/",
+        sameSite: "lax",
+        secure: false,
+      },
     );
   });
 
@@ -161,4 +292,24 @@ describe("session lookup", () => {
 
     expect(cookieStore.set).not.toHaveBeenCalled();
   });
+
+  it.each([ADMIN_SESSION_COOKIE_NAME, MEMBER_SESSION_COOKIE_NAME])(
+    "clears the %s cookie with bounded security attributes",
+    (cookieName) => {
+      const cookieStore = {
+        get: vi.fn(),
+        set: vi.fn(),
+      };
+
+      clearSessionCookie(cookieStore, { cookieName });
+
+      expect(cookieStore.set).toHaveBeenCalledWith(cookieName, "", {
+        expires: new Date(0),
+        httpOnly: true,
+        path: "/",
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
+    },
+  );
 });

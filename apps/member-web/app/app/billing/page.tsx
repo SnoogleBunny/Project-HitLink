@@ -2,34 +2,14 @@ import { MemberShell } from "../../_components/member-shell";
 import { requireMemberPortalContext } from "../../../lib/member-auth";
 import { BillingActions } from "./billing-actions";
 import { getMemberBillingSummary } from "../../../lib/member-billing";
-
-function formatDate(value: Date | null): string {
-  if (!value) {
-    return "Not set";
-  }
-
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-  }).format(value);
-}
-
-function formatDateTime(value: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
-}
-
-function formatMoney(amountCents: number | null, currency: string | null): string {
-  if (amountCents === null || !currency) {
-    return "Not set";
-  }
-
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: currency.toUpperCase(),
-  }).format(amountCents / 100);
-}
+import {
+  formatBillingRecordStatus,
+  formatBillingRecordType,
+  formatBillingStateStatus,
+  formatFailureDetail,
+  formatGymDateTime,
+  formatMoney,
+} from "../../../lib/billing-display";
 
 export default async function BillingPage() {
   const context = await requireMemberPortalContext();
@@ -38,6 +18,7 @@ export default async function BillingPage() {
     memberId: context.member.id,
   });
   const billingState = billing.currentMembership?.billingState;
+  const billingStatus = billingState?.status ?? "NOT_READY";
 
   return (
     <MemberShell
@@ -48,23 +29,44 @@ export default async function BillingPage() {
       <div className="member-grid">
         <section className="member-card">
           <p className="member-eyebrow">Current billing state</p>
-          <h3>{billingState?.status ?? "Not ready"}</h3>
+          <h3>{formatBillingStateStatus(billingStatus)}</h3>
           <dl className="member-detail-list">
             <div>
-              <dt>Next billing date</dt>
-              <dd>{formatDate(billingState?.nextBillingDate ?? null)}</dd>
+              <dt>Next billing (gym time)</dt>
+              <dd>
+                {formatGymDateTime(
+                  billingState?.nextBillingDate ?? null,
+                  context.location.timezone,
+                )}
+              </dd>
             </div>
             <div>
               <dt>Last payment status</dt>
-              <dd>{billingState?.lastPaymentStatus ?? "Not set"}</dd>
+              <dd>
+                {formatBillingRecordStatus(
+                  billingState?.lastPaymentStatus ?? "",
+                )}
+              </dd>
             </div>
             <div>
-              <dt>Failure</dt>
-              <dd>{billingState?.failureMessage ?? billingState?.failureCode ?? "None"}</dd>
+              <dt>Payment issue</dt>
+              <dd>
+                {formatFailureDetail({
+                  status: billingStatus,
+                  failureMessage: billingState?.failureMessage ?? null,
+                  failureCode: billingState?.failureCode ?? null,
+                })}
+              </dd>
             </div>
             <div>
-              <dt>Grace period ends</dt>
-              <dd>{formatDate(billingState?.gracePeriodEndsAt ?? null)}</dd>
+              <dt>Grace period ends (gym time)</dt>
+              <dd>
+                {formatGymDateTime(
+                  billingState?.gracePeriodEndsAt ?? null,
+                  context.location.timezone,
+                  "No grace-period end recorded",
+                )}
+              </dd>
             </div>
           </dl>
 
@@ -80,9 +82,8 @@ export default async function BillingPage() {
           <p className="member-eyebrow">Self-service</p>
           <h3>Payment actions</h3>
           <p className="member-copy">
-            Use Stripe’s hosted flow to replace the payment method on file, or
-            retry the latest actionable invoice when the current billing state
-            allows it.
+            Open the secure payment page to update the payment method on file,
+            or retry the latest payment when a retry is available.
           </p>
           <BillingActions
             canRetryPayment={billing.canRetryPayment}
@@ -93,7 +94,10 @@ export default async function BillingPage() {
 
       <section className="member-card">
         <p className="member-eyebrow">Recent billing records</p>
-        <h3>{billing.recentRecords.length} recent update{billing.recentRecords.length === 1 ? "" : "s"}</h3>
+        <h3>
+          {billing.recentRecords.length} recent update
+          {billing.recentRecords.length === 1 ? "" : "s"}
+        </h3>
         {billing.recentRecords.length === 0 ? (
           <p className="member-copy">No billing records are available yet.</p>
         ) : (
@@ -102,22 +106,47 @@ export default async function BillingPage() {
               <article key={record.id} className="member-stack-item">
                 <div className="member-stack-copy">
                   <div className="member-stack-heading">
-                    <h4>{record.type}</h4>
-                    <span className="member-status-pill">{record.status}</span>
+                    <h4>{formatBillingRecordType(record.type)}</h4>
                   </div>
-                  <p>{formatDateTime(record.occurredAt)}</p>
                   <dl className="member-inline-meta">
                     <div>
+                      <dt>Billing record status</dt>
+                      <dd>
+                        <span className="member-status-pill">
+                          {formatBillingRecordStatus(record.status)}
+                        </span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Recorded (gym time)</dt>
+                      <dd>
+                        <time dateTime={record.occurredAt.toISOString()}>
+                          {formatGymDateTime(
+                            record.occurredAt,
+                            context.location.timezone,
+                          )}
+                        </time>
+                      </dd>
+                    </div>
+                    <div>
                       <dt>Amount</dt>
-                      <dd>{formatMoney(record.amountCents, record.currency)}</dd>
+                      <dd>
+                        {formatMoney(record.amountCents, record.currency)}
+                      </dd>
                     </div>
                     <div>
-                      <dt>Invoice</dt>
-                      <dd>{record.stripeInvoiceId ?? "Not set"}</dd>
+                      <dt>Invoice available</dt>
+                      <dd>{record.stripeInvoiceId ? "Yes" : "No"}</dd>
                     </div>
                     <div>
-                      <dt>Failure</dt>
-                      <dd>{record.failureMessage ?? record.failureCode ?? "None"}</dd>
+                      <dt>Payment issue</dt>
+                      <dd>
+                        {formatFailureDetail({
+                          status: record.status,
+                          failureMessage: record.failureMessage,
+                          failureCode: record.failureCode,
+                        })}
+                      </dd>
                     </div>
                   </dl>
                 </div>

@@ -15,8 +15,10 @@ function formatMoney(amountCents: number, currency: string): string {
 
 export function PunchCardPurchaseForm({
   products,
+  purchaseUnavailableReason,
 }: {
   products: PurchasablePunchCardProduct[];
+  purchaseUnavailableReason: string | null;
 }) {
   const [state, formAction] = useActionState(
     startPunchCardCheckoutAction,
@@ -26,6 +28,11 @@ export function PunchCardPurchaseForm({
   return (
     <div className="member-stack-list">
       {state.error ? <p className="member-form-error">{state.error}</p> : null}
+      {purchaseUnavailableReason ? (
+        <p id="punch-card-purchase-unavailable" className="member-copy">
+          {purchaseUnavailableReason}
+        </p>
+      ) : null}
 
       {products.map((product) => (
         <article key={product.id} className="member-stack-item">
@@ -51,9 +58,20 @@ export function PunchCardPurchaseForm({
 
           <form action={formAction} className="member-inline-form">
             <input name="punchCardProductId" type="hidden" value={product.id} />
-            <SubmitButton pendingLabel="Starting checkout...">
-              Buy punch card
-            </SubmitButton>
+            {purchaseUnavailableReason ? (
+              <button
+                aria-describedby="punch-card-purchase-unavailable"
+                className="member-button"
+                disabled
+                type="submit"
+              >
+                Buy punch card
+              </button>
+            ) : (
+              <SubmitButton pendingLabel="Starting checkout...">
+                Buy punch card
+              </SubmitButton>
+            )}
           </form>
         </article>
       ))}
