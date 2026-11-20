@@ -1,9 +1,12 @@
 # Flowstate Pro gated roadmap
 
-**Status:** DRAFT — OWNER_APPROVAL_REQUIRED  
-**Sequence:** documentation and controls → Virginia synthetic validation → Virginia approved pilot → Virginia profile expansion → BC private clinics → competitor-parity waves  
-**Decision baseline:** Q1–Q206, confirmed 2026-08-24  
-**Last updated:** 2026-08-26
+**Status:** SPECIFIED — WP0.2 HUMAN REVIEWS ACCEPTED 2026-09-22; Gate G0 remains `BLOCKED`
+
+**Sequence:** documentation and controls → Virginia synthetic validation → Virginia approved pilot → Virginia profile expansion → BC private clinics → competitor-parity waves
+
+**Decision baseline:** Q1–Q206, confirmed 2026-08-24
+
+**Last updated:** 2026-09-22
 
 ## 1. Purpose
 
@@ -32,7 +35,7 @@ Each milestone and applicable requirement progresses independently:
 
 `DRAFT` → `SPECIFIED` → `IMPLEMENTED` → `TECHNICALLY_VERIFIED` → `OPERATIONALLY_EXERCISED` → `EVIDENCE_COMPLETE` → `LEGALLY_REVIEWED` → `APPROVED_FOR_PROFILE`
 
-`BLOCKED`, `NOT_APPLICABLE`, and `SUPERSEDED` require reason, owner, date, affected profile, and evidence/decision reference. No status is inferred from another.
+`BLOCKED` is the dossier/work-packet/requirement-dependency/release-gate status for unresolved documentation, evidence, approval, or external input. `REVIEW_BLOCKED` is the corresponding runtime activation state for a tenant, profile, or module. Any applicable `BLOCKED` dependency keeps that runtime subject `REVIEW_BLOCKED`; resolving the blocker does not activate it or imply another status. `BLOCKED`, `REVIEW_BLOCKED`, `NOT_APPLICABLE`, and `SUPERSEDED` require reason, owner, date, affected profile, and evidence/decision reference.
 
 ### 3.2 Common exit-gate checklist
 
@@ -90,9 +93,36 @@ Named individuals, delegation rules, and segregation of duties are required befo
 | M8 | Parity Wave 2: clinical networks and interoperability | Per enabled profile | Vendor/network/standards gate |
 | M9 | Parity Wave 3: payer, specialty, and enterprise depth | Per enabled profile | Commercial/profile-specific gate |
 
+### 4.1 Implementation-plan gate and work-packet mapping
+
+This roadmap groups product outcomes; the implementation plan controls packet order and G0–G4 authorization. A roadmap milestone cannot bypass or reorder the mapped packets.
+
+| Roadmap milestone | Implementation-plan authority | Gate relationship |
+|---|---|---|
+| M0 | Milestone 0: WP0.1 → WP0.2 → WP0.3 → WP0.4 → WP0.5 | G0 must be approved by named humans before any Milestone 1 implementation. Current state: `BLOCKED`; WP0.2 does not authorize implementation. |
+| M1 | Milestone 1: WP1.1–WP1.6 | G1 proves isolated Pro application/package/schema and synthetic non-production foundation. |
+| M2 foundation controls | Milestone 2: WP2.1–WP2.8 | G2 proves activation, identity, policy, audit, outbox, files, and human-control foundations before clinical modules. |
+| M2 minimum safe journey | Milestone 3: WP3.1–WP3.11 | G3 proves the complete Pro-US clinical/patient journey in synthetic staging. |
+| M3 | Plan section 15 P1–P7 assurance applied to the exact G3 Virginia candidate | Operational, legal, vendor, human, infrastructure, and evidence gates complete before pilot; no new gate is invented. |
+| M4–M5 | Controlled Virginia profile activation/expansion under plan section 15 | Approval is exact-customer/profile/configuration only and repeats for each expansion. |
+| M6 | Milestone 4: WP4.1–WP4.5 plus plan section 15 | G4 proves Canada-plane/BC-private-clinic readiness; Virginia approval does not transfer. |
+| M7–M9 | Plan section 12 later parity modules plus new bounded packets | May begin only after stable core evidence and module-specific product/legal/vendor/control approval. |
+
+### 4.2 Milestone approving roles
+
+| Milestone | Required approving roles before exit |
+|---|---|
+| M0 | Product owner/CEO, Architecture/Backend, Database, Security/Privacy, Operations, QA/Assurance, and executive risk owner; counsel approves only counsel-owned values. |
+| M1–M2 | Architecture/Backend, Database, Security/Privacy, Operations, QA/Assurance, and Product for exact scope; vendor/legal owners where a dependency is enabled. |
+| M3 | Product, Architecture/Backend, Database, Security/Privacy, Operations, QA/Assurance, qualified Virginia counsel, independent assessor, executive risk owner, and required commercial owners for exact terms/claims. |
+| M4–M5 | M3 roles plus customer record authority and organization activation owners for the exact customer/profile. |
+| M6 | Product, Architecture/Backend, Database, Canadian Security/Privacy/Operations, QA/Assurance, qualified BC counsel, independent assessor, executive risk owner, and customer record authority. |
+| M7–M9 | The relevant M4/M6 roles plus module-specific clinical, vendor/procurement, commercial, and legal approvers. |
+
 ## 5. M0 — Product and control dossier approval
 
-**Target status:** `SPECIFIED`  
+**Target status:** `SPECIFIED`
+
 **Production posture:** prohibited
 
 ### Scope
@@ -132,7 +162,8 @@ Use R0. If documents conflict, stop implementation, mark affected work `BLOCKED`
 
 ## 6. M1 — Isolated Pro foundation and control plane
 
-**Target status:** `TECHNICALLY_VERIFIED`  
+**Target status:** `TECHNICALLY_VERIFIED`
+
 **Production posture:** prohibited; synthetic development/test only
 
 ### Scope
@@ -178,7 +209,8 @@ Use R1–R3. Disable affected foundation capability and stop dependent work. Dat
 
 ## 7. M2 — Minimum clinical and patient journey
 
-**Target status:** `TECHNICALLY_VERIFIED`  
+**Target status:** `TECHNICALLY_VERIFIED`
+
 **Production posture:** prohibited; synthetic data only
 
 ### Scope
@@ -233,7 +265,8 @@ Use R1–R3. Disable a failed module and its routes/jobs/credentials without exp
 
 ## 8. M3 — Pro-US synthetic staging and operational assurance
 
-**Target status:** `EVIDENCE_COMPLETE` for a named Virginia candidate profile  
+**Target status:** `EVIDENCE_COMPLETE` for a named Virginia candidate profile
+
 **Production posture:** no regulated production data
 
 ### Scope
@@ -273,11 +306,12 @@ Use R1–R3. Disable a failed module and its routes/jobs/credentials without exp
 
 ### Rollback/stop
 
-Use R1–R5. Any failed control returns the candidate to `BLOCKED` or the prior status. Synthetic staging can be reset after evidence retention. No production activation occurs to “learn” around a failed exercise.
+Use R1–R5. Any failed control returns the dossier/release gate to `BLOCKED`, keeps or returns runtime activation to `REVIEW_BLOCKED`, or restores the prior stricter state. Synthetic staging can be reset after evidence retention. No production activation occurs to “learn” around a failed exercise.
 
 ## 9. M4 — First approved Virginia pilot
 
-**Target status:** `APPROVED_FOR_PROFILE` for one named customer/profile/configuration  
+**Target status:** `APPROVED_FOR_PROFILE` for one named customer/profile/configuration
+
 **Production posture:** narrowly approved regulated data
 
 ### Scope
@@ -322,7 +356,8 @@ Use R1, R2, R4, or R5 based on impact. A control failure triggers immediate modu
 
 ## 10. M5 — Virginia profile expansion and scale
 
-**Target status:** `APPROVED_FOR_PROFILE` per added profile/customer  
+**Target status:** `APPROVED_FOR_PROFILE` per added profile/customer
+
 **Production posture:** approved Virginia profiles only
 
 ### Scope
@@ -359,7 +394,8 @@ Use R1/R4 per profile. A failed new profile does not automatically suspend unaff
 
 ## 11. M6 — British Columbia private-clinic readiness and pilot
 
-**Target status:** `APPROVED_FOR_PROFILE` for one named BC private-clinic profile  
+**Target status:** `APPROVED_FOR_PROFILE` for one named BC private-clinic profile
+
 **Production posture:** Canadian regulated data only after separate approval
 
 ### Scope
@@ -398,7 +434,8 @@ Use R1–R5 in the Canadian plane. Suspend the BC tenant/profile without shiftin
 
 ## 12. M7 — Competitor parity Wave 1: clinic operations and communications
 
-**Target status:** `APPROVED_FOR_PROFILE` per journey/module  
+**Target status:** `APPROVED_FOR_PROFILE` per journey/module
+
 **Production posture:** optional, separately enabled
 
 ### Candidate journeys
@@ -428,7 +465,8 @@ Retain journey benchmark, usability/accessibility results, provider configuratio
 
 ## 13. M8 — Competitor parity Wave 2: clinical networks and interoperability
 
-**Target status:** `APPROVED_FOR_PROFILE` per integration  
+**Target status:** `APPROVED_FOR_PROFILE` per integration
+
 **Production posture:** optional, separately enabled
 
 ### Candidate journeys
@@ -459,7 +497,8 @@ Retain conformance suites, sandbox/production certification references, patient-
 
 ## 14. M9 — Competitor parity Wave 3: payer, specialty, and enterprise depth
 
-**Target status:** `APPROVED_FOR_PROFILE` per product lane  
+**Target status:** `APPROVED_FOR_PROFILE` per product lane
+
 **Production posture:** optional; highest commercial and operational gate
 
 ### Candidate journeys
@@ -545,7 +584,7 @@ Roadmap reporting must never describe `IMPLEMENTED` as `EVIDENCE_COMPLETE`, or o
 
 ## 18. Owner approvals requested
 
-Before this roadmap advances from `DRAFT`, the product owner must approve:
+Before this roadmap advances beyond `SPECIFIED`, the product owner must approve:
 
 1. no-date, gate-first sequencing;
 2. M0–M4 as the Virginia critical path;

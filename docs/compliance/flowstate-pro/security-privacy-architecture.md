@@ -1,8 +1,10 @@
 # Flowstate Pro security and privacy architecture
 
-**Status:** SPECIFIED PLANNING TARGET — no current compliance, implementation, or production-approval claim  
-**Decision baseline:** Q1–Q206, confirmed 2026-08-24  
-**Scope:** Flowstate Pro-US and Pro-Canada; Standard is outside this control boundary
+**Status:** SPECIFIED PLANNING TARGET — Gate G0 remains `BLOCKED`; no current compliance, implementation, operational-evidence, or production-approval claim
+
+**Decision baseline:** Q1–Q206, confirmed 2026-08-24
+
+**Scope:** Flowstate Pro-US for Virginia first and Pro-Canada for separately gated British Columbia private clinics second; Standard is outside this control boundary. No Standard-to-Pro migration, shared account linking, or automatic conversion exists.
 
 ## 1. Security objective and non-claim
 
@@ -42,6 +44,32 @@ The repository currently implements a separate fitness product with `OWNER`, `CO
 | Pro → Standard | Separate product and prohibition boundary | No identity federation, database connection, migration, shared session, vendor account, key, log, backup or runtime package. |
 | Production → non-production | Developer/test environment and artifacts | Synthetic data only; separate projects/credentials; no production export/import path. |
 | Customer plane → Flowstate operations | Platform support and administrators | Managed workforce identity, approved device/MFA, JIT scope/time, independent approval, full audit and post-access review. |
+
+Every crossing is data-bearing even when it carries only opaque identifiers or security metadata. The crossing contract records source and destination plane, data classes/fields, purpose, actor/service identity, authentication, encryption, policy/profile version, destination/agreement/transfer state, retention, audit correlation, and failure behavior. Unknown or unregistered crossings are denied; diagrams or network adjacency do not grant data authority.
+
+### 2.1 Identity inventory
+
+| Identity class | Authority and boundary |
+|---|---|
+| Customer organization/workforce | Tenant-bound invitation and verified membership; explicit Pro role/grants, care/assignment relationship, MFA/session/step-up; no Standard identity authority. |
+| Patient | Clinic-invited identity limited to own approved profile, appointments, forms, released records, payment, security and rights workflows. |
+| Guardian/proxy/representative | Separate identity plus patient-scoped, evidenced, effective-dated, expiring/revocable authority; relationship alone grants nothing. |
+| Flowstate workforce | Managed identity plane, approved device/MFA, no customer role and no routine patient-data access. |
+| Flowstate support/privileged operator | JIT child privilege of workforce identity with ticket/purpose, independent approval where required, resource/time scope, audit, revocation and review; never clinical break-glass. |
+| Vendor/destination service | Plane- and service-specific workload credential bound to an enabled destination registry entry; no broad tenant/database authority. |
+| CI/CD and deployment | Non-human build/promotion identities separated by environment/plane, unable to read production patient stores, keys, or secrets beyond the minimum promotion action. |
+| Recovery/DR operator and workload | Separate same-plane recovery identities, keys, projects and approval path; restore remains isolated until reconciliation and release approval. |
+
+### 2.2 Data-bearing crossing inventory
+
+| Crossing | Allowed data | Required evidence |
+|---|---|---|
+| Browser ↔ web/API | Minimum current-role projection, opaque session material, approved uploads/downloads. | Browser/network/storage canary, authorization tests, security-header and cache evidence. |
+| API/worker ↔ PostgreSQL/object/KMS/audit | Tenant-scoped structured records, governed objects, ciphertext/key references, PHI-free audit metadata. | Repository/RLS/transaction tests, IAM/configuration read-back, encryption/file/audit evidence. |
+| Outbox/gateway ↔ vendor/recipient | Registry-allowed minimized fields or opaque references only. | Destination/agreement/region/transfer read-back, provider reconciliation, disclosure/audit correlation. |
+| Primary ↔ backup/DR | Encrypted same-plane copies with full inherited classification. | Backup configuration, isolated restore, lag/RPO reconciliation and manual same-country failover exercise. |
+| Production ↔ CI/CD/non-production | No production patient/clinical payload; synthetic artifacts and immutable deployment metadata only. | IAM/network denial tests and artifact/canary scan. |
+| Customer plane ↔ Flowstate support | Metadata first; patient data only under approved JIT minimum scope. | Approval, scope/expiry, access audit, revocation and post-access review. |
 
 ## 3. Identity and session architecture
 
@@ -217,13 +245,13 @@ Missing human roles, policies, training, sanctions, device rules, incident cover
 
 ## Sources
 
-[1] [HIPAA Compliance on Google Cloud](https://cloud.google.com/security/compliance/hipaa)  
-[2] [Google Cloud regions and zones](https://docs.cloud.google.com/compute/docs/regions-zones)  
-[3] [Cloud Run locations](https://docs.cloud.google.com/run/docs/locations)  
-[4] [Cloud SQL for PostgreSQL high availability](https://docs.cloud.google.com/sql/docs/postgres/high-availability)  
-[5] [Cloud SQL disaster recovery](https://docs.cloud.google.com/sql/docs/postgres/intro-to-cloud-sql-disaster-recovery)  
-[6] [Cloud SQL data privacy strategies](https://cloud.google.com/sql/docs/postgres/data-privacy-strategies)  
-[7] [Cloud KMS envelope encryption](https://cloud.google.com/kms/docs/envelope-encryption)  
-[8] [Cloud Storage Bucket Lock](https://docs.cloud.google.com/storage/docs/bucket-lock)  
-[9] [Shared responsibilities and shared fate on Google Cloud](https://docs.cloud.google.com/architecture/framework/security/shared-responsibility-shared-fate)  
+[1] [HIPAA Compliance on Google Cloud](https://cloud.google.com/security/compliance/hipaa)
+[2] [Google Cloud regions and zones](https://docs.cloud.google.com/compute/docs/regions-zones)
+[3] [Cloud Run locations](https://docs.cloud.google.com/run/docs/locations)
+[4] [Cloud SQL for PostgreSQL high availability](https://docs.cloud.google.com/sql/docs/postgres/high-availability)
+[5] [Cloud SQL disaster recovery](https://docs.cloud.google.com/sql/docs/postgres/intro-to-cloud-sql-disaster-recovery)
+[6] [Cloud SQL data privacy strategies](https://cloud.google.com/sql/docs/postgres/data-privacy-strategies)
+[7] [Cloud KMS envelope encryption](https://cloud.google.com/kms/docs/envelope-encryption)
+[8] [Cloud Storage Bucket Lock](https://docs.cloud.google.com/storage/docs/bucket-lock)
+[9] [Shared responsibilities and shared fate on Google Cloud](https://docs.cloud.google.com/architecture/framework/security/shared-responsibility-shared-fate)
 [10] [Google Cloud regulatory compliance and privacy guidance](https://docs.cloud.google.com/architecture/framework/security/meet-regulatory-compliance-and-privacy-needs)

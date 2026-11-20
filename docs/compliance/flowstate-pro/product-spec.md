@@ -1,17 +1,39 @@
 # Flowstate Pro product specification
 
-**Status:** DRAFT — OWNER_APPROVAL_REQUIRED  
-**Product:** Flowstate Pro  
-**Initial launch lane:** Virginia, United States  
-**Canadian fast-follow lane:** British Columbia private clinics  
-**Decision baseline:** Q1–Q206, confirmed 2026-08-24  
-**Last updated:** 2026-08-26
+**Status:** SPECIFIED — WP0.2 HUMAN REVIEWS ACCEPTED 2026-09-22; Gate G0 remains `BLOCKED`
+
+**Product:** Flowstate Pro
+
+**Initial launch lane:** Virginia, United States
+
+**Canadian fast-follow lane:** British Columbia private clinics
+
+**Decision baseline:** Q1–Q206, confirmed 2026-08-24
+
+**Last updated:** 2026-09-22
 
 ## 1. Document purpose
 
 This document defines what Flowstate Pro is, who it serves, its product modules, market position, commercial boundaries, v1 scope, and explicit exclusions. Testable behavior belongs in `product-requirements-document.md`; release sequencing, gates, evidence, and rollback belong in `roadmap.md`.
 
-This is a planning specification, not legal advice, a compliance certification, an executed agreement, or proof of a production-ready service.
+This is a planning specification, not legal advice, a compliance certification, an executed agreement, or proof of a production-ready service. Gate G0 remains `BLOCKED`; this document specifies product direction only.
+
+### 1.1 Normative decision-source map
+
+Every normative product claim in sections 2–12 is controlled by the following approved decision-register entries. Any value not covered by these entries remains unresolved and uses the blocker status stated in section 12.
+
+| Product-spec section | Decision source |
+|---|---|
+| 2. Product identity and Standard boundary | Q1–Q11, Q16, Q20–Q21, Q27–Q28, Q31, Q50, Q131 |
+| 3. Product thesis and differentiation | Q38, Q71–Q75, Q165–Q166 |
+| 4. Target market and activation | Q5–Q8, Q13–Q15, Q24–Q26, Q30, Q37, Q39–Q40, Q49, Q51–Q58, Q157–Q158 |
+| 5. Users and surfaces | Q22, Q35, Q47, Q59–Q60, Q63, Q89–Q93, Q127–Q128, Q144–Q154, Q173–Q177 |
+| 6–7. Modules and Pro-US v1 | Q31, Q41–Q42, Q51–Q54, Q61–Q70, Q94–Q102, Q115–Q132, Q144–Q154, Q174–Q193 |
+| 8. Deferred scope and parity | Q71–Q87, Q189–Q193 |
+| 9. Commercial boundaries | Q28, Q31, Q37, Q40, Q56, Q131, Q155–Q158 |
+| 10. Exclusions and prohibitions | Q1–Q11, Q17–Q19, Q27–Q35, Q41–Q42, Q54, Q63, Q75–Q87, Q108–Q114, Q131–Q143, Q157, Q174–Q188 |
+| 11. Success measures | Q38, Q165–Q166, Q194–Q206; exact targets remain `OWNER_APPROVAL_REQUIRED` |
+| 12. Approval conditions and blockers | Q17–Q19, Q30, Q34, Q38, Q106–Q107, Q133–Q143, Q158, Q165–Q166 |
 
 ## 2. Product identity
 
@@ -287,10 +309,14 @@ Before moving this specification to `APPROVED`, the owner must confirm:
 6. commercial dimensions and controlled suspension/offboarding behavior; and
 7. Jane/Epic journey parity as a staged roadmap rather than a launch-wide promise.
 
+### 12.1 Unresolved product inputs
+
+The following remain `BLOCKED`, `COUNSEL_REVIEW_REQUIRED`, or `OWNER_APPROVAL_REQUIRED` and are not product defaults: first Virginia/BC specialty and customer/entity profiles; legal applicability and policy values; patient CIAM; production vendors and covered configurations; executed agreements; BC public-sector/health-authority/E-Health/insurer/government-contracting applicability; prices, packaging, operating-envelope defaults, support promises, SLA/credit terms, public claims, and insurance limits; and named accountable humans, counsel, assessor, and executive approvals. A missing value keeps the dependent profile, module, destination, or claim disabled.
+
 ## 13. Source alignment
 
-Binding product decisions: `decision-register-and-open-items.md`.  
-Package status and precedence: `README.md`.  
-Detailed testable requirements: `product-requirements-document.md`.  
-Release gates and parity sequencing: `roadmap.md`.  
+Binding product decisions: `decision-register-and-open-items.md`.
+Package status and precedence: `README.md`.
+Detailed testable requirements: `product-requirements-document.md`.
+Release gates and parity sequencing: `roadmap.md`.
 Standard baseline references: `../../product_decisions_ledger.md`, `../../domain_model.md`, repository `README.md`, and `packages/db/prisma/schema.prisma`.

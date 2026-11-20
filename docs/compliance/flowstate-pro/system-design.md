@@ -1,7 +1,9 @@
 # Flowstate Pro system design
 
-**Status:** SPECIFIED PLANNING TARGET — not implemented, deployed, legally reviewed, or approved for production  
-**Decision baseline:** Q1–Q206, confirmed 2026-08-24  
+**Status:** SPECIFIED PLANNING TARGET — Gate G0 remains `BLOCKED`; not implemented, deployed, legally reviewed, or approved for production
+
+**Decision baseline:** Q1–Q206, confirmed 2026-08-24
+
 **Scope:** Flowstate Pro only; Virginia first, British Columbia as a separately gated follow-on
 
 ## 1. Reading rule
@@ -36,6 +38,8 @@ The monorepo may share only reviewed data-free UI/configuration primitives and p
 | **Pro API** | Regional modular-monolith backend and sole online data boundary: authentication/session adapters, REST workflow API, authorization/policy, repositories, RLS transaction context, clinical integrity, object metadata, jobs/outbox, destination gateway, audit, and integration adapters. | Not a general anonymous public data API. Standards traffic uses a separately gated gateway/surface. No cross-plane database connection. |
 
 The provider and patient applications are presentation clients. Server-side rendering does not grant database authority: their server code calls the Pro API over authenticated private service-to-service channels. Only Pro API and narrowly scoped Pro workers use Pro data credentials.
+
+The three applications and their domain modules form one regional **modular monolith**. Module calls remain in-process behind explicit domain/application boundaries; asynchronous work uses the PostgreSQL transactional outbox. No microservice split, event bus, generic framework layer, or separate deployment per domain is authorized. A later split requires a measured isolation/scale requirement and a new approved architecture decision.
 
 ## 4. Logical architecture
 
@@ -110,6 +114,14 @@ The minimum design comprises these domain groups; exact fields remain schema-des
 
 Every regulated aggregate root carries tenant, classification/profile, policy/lifecycle references, created/updated provenance, and version/concurrency state. Destructive cascades across regulated roots are prohibited.
 
+### Aggregate and repository contract
+
+- A command mutates one aggregate root and its owned children inside one trusted database transaction. Cross-aggregate effects become durable intents/outbox work; they are not hidden multi-root cascades.
+- Repositories are the only Prisma boundary. Each repository method receives server-created access context, performs policy evaluation before data access, sets transaction-local tenant/actor/purpose context, uses tenant-composite keys and minimal projections, and records or correlates the required audit outcome.
+- A repository cannot accept a caller-selected tenant, bypass-RLS flag, unrestricted projection, arbitrary model name, or generic cascade/delete option.
+- Background jobs reconstruct trusted context from immutable operation/profile references and reauthorize at execution time; queued authority is not permanent authority.
+- Transaction, RLS, policy, aggregate-version, audit-intent, and outbox writes either commit together where the contract requires atomicity or leave an explicit failed/uncertain state for reconciliation.
+
 ## 7. Identity, patient, and proxy model
 
 Pro roles are `ORGANIZATION_ADMIN`, `PROVIDER`, `CLINICAL_SUPPORT`, `ADMINISTRATIVE_STAFF`, `BILLING_STAFF`, `PRIVACY_OFFICER`, `PATIENT`, and `GUARDIAN_OR_PROXY`. Standard roles are not reused.
@@ -124,13 +136,16 @@ Pro roles are `ORGANIZATION_ADMIN`, `PROVIDER`, `CLINICAL_SUPPORT`, `ADMINISTRAT
 
 ## 8. Clinical-record integrity
 
-- Draft clinical content may be edited by authorized actors.
-- Finalized records are immutable. Corrections are linked amendments or late entries with author, timestamp, reason, prior version, signatures where required, and audit correlation.
-- Patient-reported content remains distinguishable from clinician-verified content throughout display, export, and downstream transmission.
-- Release state is explicit; portal visibility is not inferred from record existence.
-- Optimistic concurrency/version checks prevent silent overwrite. High-risk workflows use idempotency keys and durable operation records.
-- Provenance identifies source system/actor, migration/import batch where applicable, verification state, and transformation history.
-- DICOM/PACS is a separate disabled integration profile, not an ordinary file type.
+The authoritative note state machine is:
+
+| State | Allowed transition | Required contract | Failure behavior |
+|---|---|---|---|
+| `DRAFT` | edit; `FINALIZED` | Authorized author/reviewer, current aggregate version, required signature/policy references. | Stale/unauthorized edit rejects; draft remains unchanged. |
+| `FINALIZED` | `AMENDED` or `LATE_ENTRY_ADDED` only | Immutable content/version, author/time/signature, lifecycle reference, terminal audit outcome. | Update/delete rejects at application and database boundaries. |
+| `AMENDED` | further linked amendment | New immutable content linked to prior/current version with reason, author, time and signature where required. | Missing lineage/reason/signature rejects; prior versions remain authoritative history. |
+| `LATE_ENTRY_ADDED` | further linked late entry/amendment | New attributable entry identifies original record and actual entry time without rewriting the original service time/content. | Missing provenance or attempted overwrite rejects. |
+
+Patient-reported content remains distinguishable from clinician-verified content throughout display, export, and downstream transmission. Portal release is a separate state and is never inferred from note finalization. Optimistic concurrency/version checks prevent silent overwrite. High-risk workflows use idempotency keys and durable operation records. Provenance identifies source system/actor, migration/import batch where applicable, verification state, and transformation history. DICOM/PACS is a separate disabled integration profile, not an ordinary file type.
 
 ## 9. Audit intent and outcome
 
@@ -144,9 +159,30 @@ Denied/failed audit events must survive business-transaction rollback. Runtime c
 
 ## 10. Outbox, jobs, and destinations
 
-### Transactional outbox
+### Transactional outbox and operation state
 
-A business transaction that requires asynchronous work writes the domain change, lifecycle metadata, operation intent, and outbox item atomically. Workers claim with bounded leases, stable idempotency keys, attempt counts, retry schedules, and terminal/dead-letter states. A lease timeout makes work eligible for reconciliation; it does not prove the external action failed.
+A business transaction that requires asynchronous work writes the domain change, lifecycle metadata, operation intent, and outbox item atomically. The minimum state model is:
+
+| State | Meaning | Allowed next state |
+|---|---|---|
+| `PENDING` | Durable intent/outbox exists; no worker owns it. | `LEASED`, `BLOCKED`, `CANCELLED` where cancellation is policy-safe. |
+| `LEASED` | One worker holds a bounded lease and attempt number. | `BLOCKED` when execution-time reauthorization or destination/policy resolution denies or remains unresolved; otherwise `SUBMITTED`, `SUCCEEDED`, `FAILED_RETRYABLE`, `FAILED_TERMINAL`, or `UNCERTAIN`. Lease expiry has the persisted recovery transition defined below. |
+| `SUBMITTED` | Provider accepted an idempotent reference but terminal effect is not proved. | `SUCCEEDED`, `FAILED_TERMINAL`, `UNCERTAIN`. |
+| `FAILED_RETRYABLE` | The attempt failed with a classified transient cause and no ambiguous provider effect. | `PENDING` after backoff only while retry budget remains; otherwise `FAILED_TERMINAL`. |
+| `UNCERTAIN` | Timeout/ambiguous provider or database outcome; no new effectful attempt is allowed yet. | `SUCCEEDED`, `FAILED_TERMINAL`, or `FAILED_RETRYABLE` only after provider/read-back reconciliation proves the prior effect did not occur. |
+| `BLOCKED` | Policy, authority, destination, agreement, region, transfer, scan, or module gate is unresolved. | `PENDING` only after a new approved version is recorded; otherwise remains blocked. |
+| `CANCELLED` | An authorized cancellation stopped work before lease/provider acceptance and before any required effect. | Terminal; correction or renewed work uses a new correlated operation. |
+| `SUCCEEDED` / `FAILED_TERMINAL` | One reconciled terminal outcome. | Terminal; no effectful retry or state reopening. Correction uses a new correlated operation. |
+
+Each operation records an immutable idempotency key, versioned retry policy, maximum attempt count, current attempt, backoff schedule, provider references, lease owner/expiry, and reconciliation checkpoints. An effectful attempt is counted before execution. The lease owner MUST reauthorize the immutable operation/profile reference and resolve current policy, authority, module, destination, agreement, region, transfer, and scan state immediately before provider submission. Unknown, expired, conflicting, revoked, or denied inputs CAS the current `LEASED` version to `BLOCKED`; no provider call is permitted. Submission or any other lease-owned transition requires a compare-and-set matching the current operation version, lease owner, and an unexpired lease, so a stale or replaced owner cannot submit. `FAILED_RETRYABLE` returns to `PENDING` only when the scheduled backoff is due and the next attempt is within budget; exhaustion moves to `FAILED_TERMINAL` and alerts the owning workflow. Reconciliation polling does not consume an effectful attempt, and `UNCERTAIN` never blind-retries.
+
+Only the originating domain owner or an explicitly authorized operator/policy may cancel, with actor, authority, reason, and audit outcome recorded. Cancellation is allowed only from `PENDING` or `BLOCKED`, before an active lease, provider acceptance/reference, externally visible effect, or a legal/clinical/custody obligation that requires completion. In-flight, submitted, or uncertain work must reconcile to a terminal outcome; any compensating action is a new correlated operation rather than a state rewrite.
+
+Uncertain-provider reconciliation queries by the stable idempotency key and provider reference and consumes authenticated webhook/read-back evidence where available. A proven effect records `SUCCEEDED`; a proven terminal rejection records `FAILED_TERMINAL`; proof that no effect occurred may classify `FAILED_RETRYABLE` if budget remains. Inconclusive evidence leaves the operation `UNCERTAIN` and routes it to human/provider review.
+
+Lease expiry itself is a persisted recovery event, not an implicit return to a queue. After `lease_expires_at`, a recovery worker—not the stale lease owner—must CAS the matching `LEASED` version and expired owner to `UNCERTAIN` when any provider reference, dispatch marker, network handoff, or side-effect uncertainty exists; it may CAS to `FAILED_RETRYABLE` only when durable evidence proves submission and external effect were impossible. The transition clears ownership, records the expiry/recovery checkpoint and audit outcome, and rejects later writes from the stale owner. Reclaim occurs only through the persisted `FAILED_RETRYABLE` backoff transition to `PENDING`; an `UNCERTAIN` operation must first complete provider/read-back reconciliation and cannot be leased or submitted again while uncertainty remains.
+
+Terminal transitions are compare-and-set and record one correlated audit outcome. Duplicate deliveries, workers, or callbacks reuse the same idempotency record and cannot create a second effect or terminal outcome. Terminal records, attempt history, provider evidence, cancellation evidence, and intent/outcome audit links are retained under lifecycle policy; correction never edits them and instead creates a new correlated operation.
 
 ### Job classes
 
@@ -168,17 +204,35 @@ Every PI/clinical transmission resolves a registered destination with purpose, a
 
 Initial destination classes are separate Pro Stripe, approved email, secure export recipient, approved monitoring/incident channel, and later standards/clinical integrations. Calendar sync is disabled by default and payload-minimal when approved. PACS/RIS, labs, pharmacies, clearinghouses, telehealth, and clinical migration connectors remain disabled until separately approved.
 
+### Profile and module activation state
+
+`BLOCKED` in the dossier, work packets, requirement dependencies, and release gates means required documentation, evidence, approval, or external input is unresolved; it is not a second runtime activation state. The runtime state is `REVIEW_BLOCKED`. Any applicable dossier/gate `BLOCKED` condition maps the affected tenant, profile, or module to `REVIEW_BLOCKED`; resolving that condition only permits a separately authorized, versioned transition and never activates the subject automatically.
+
+| State | Entry/exit contract |
+|---|---|
+| `DRAFT` | Configuration exists but cannot authorize regulated activity. |
+| `REVIEW_BLOCKED` | Any classification, policy, human owner, vendor, agreement, region, transfer, operating-envelope, evidence, or approval input is missing, expired, conflicting, or revoked. No activation transition is permitted. |
+| `SPECIFIED` | Versioned scope, controls, dependencies, disable path, and acceptance evidence are defined; implementation remains unauthorized until G0 and the mapped packet gate. |
+| `IMPLEMENTED` / `TECHNICALLY_VERIFIED` | Code/configuration and repeatable checks exist for the exact candidate; regulated production remains disabled. |
+| `OPERATIONALLY_EXERCISED` / `EVIDENCE_COMPLETE` / `LEGALLY_REVIEWED` | Separate evidence dimensions; none implies another. |
+| `APPROVED_FOR_PROFILE` | Named humans approve the exact customer/profile/module/plane/configuration/evidence version. Only this state permits bounded activation. |
+| `SUSPENDED` / `DISABLED` | New regulated activity stops at the smallest affected scope while records, audit, custody, rights, holds, export, incident, and required/emergency access remain available as approved. Reactivation repeats expired/failed gates. |
+
+Every transition is compare-and-set on the current version and records actor, approving role, time, reason, source decision, evidence references, effective/expiry dates, and terminal audit outcome. A code deployment, copied profile, Virginia approval, or another tenant's approval cannot advance state automatically.
+
 ## 11. Files and object storage
 
-1. API receives an allowlisted type/size upload into a private quarantine bucket using an opaque object name.
-2. Metadata records claimed type, observed type, size, hash, uploader, tenant, classification, provenance, intended patient/encounter, and lifecycle policy.
-3. A fail-closed scanner validates type and scans for malware/active content. Scanner/provider failure leaves the object quarantined.
-4. Authorized review links the file to the clinical aggregate and creates immutable version metadata; no replacement-in-place is permitted.
-5. Download is authorized and audited on every request, time-limited, non-cacheable as approved, and uses a safe filename/content disposition. Browsers never receive bucket credentials or durable object URLs.
-6. Amendments add versions/links; finalized file history is not overwritten.
-7. DICOM is rejected unless the PACS integration profile is enabled.
+| State | Access and transition contract | Failure / rollback behavior |
+|---|---|---|
+| `RECEIVING` | API authorizes tenant/profile/type/size and writes an opaque object to a private quarantine bucket while computing/verifying integrity metadata. | Abort incomplete upload; no clinical or patient access. |
+| `QUARANTINED` | Record claimed/observed type, size, hash, uploader, tenant, classification, provenance, intended patient/encounter, and lifecycle; scanner/security workflow only. | Scanner/provider failure or inconclusive result remains quarantined. |
+| `REJECTED` | Malware, active content, type/size mismatch, policy failure, or DICOM without the PACS profile. | No release/download; retain only approved evidence and lifecycle handling. |
+| `CLEAN_UNLINKED` | Successful scan but missing validated patient/encounter, provenance, classification, or lifecycle linkage. | Cannot release; return to authorized linkage review. |
+| `ACTIVE_DRAFT` | Clean object linked to the clinical aggregate with immutable version identity; authorized clinical use only. | Revoke draft access or supersede with a new version; never replace body in place. |
+| `FINALIZED` / `AMENDED` | Immutable body/version; amendments add linked versions with author/time/reason/prior link. Portal release remains separate. | Update/delete rejects; bad release is revoked without deleting history. |
+| `ON_HOLD` / `ARCHIVED` / `DISPOSITION_PENDING` / `DISPOSED` | Lifecycle and hold policy controls read, archive, intent, verified deletion/expiry, tombstone, and backup reconciliation. | Unknown policy/hold blocks disposition; failed deletion remains pending and reconciled. |
 
-PostgreSQL stores object metadata, hashes, classification, lifecycle and references—not file bodies.
+Every download reauthorizes and audits actor, authority, purpose, release state, lifecycle, and version; delivery is time-limited, non-cacheable as approved, and uses safe filename/content disposition. Browsers never receive bucket credentials or durable object URLs. PostgreSQL stores object metadata, hashes, classification, lifecycle and references—not file bodies.
 
 ## 12. Encryption and secrets
 
@@ -217,13 +271,17 @@ No global active-active write topology, GKE, HSM, microservices, or automatic cr
 | File scanner unavailable or inconclusive | Object remains quarantined and inaccessible. |
 | Destination/agreement/transfer approval unknown | Outbox item remains blocked; no direct-provider bypass. |
 | Vendor timeout/ambiguous response | Preserve intent as uncertain; reconcile by idempotency/provider reference before retry. |
-| Worker crash/lease expiry | Safe reclaim using stable idempotency key; terminal outcome recorded once. |
+| Worker crash/lease expiry | A recovery worker CAS-transitions the matching expired `LEASED` owner/version to `UNCERTAIN` when submission or effects may have occurred, or to `FAILED_RETRYABLE` only when durable evidence proves they were impossible. Stale-owner writes and direct reclaim are prohibited; reclaim occurs only through persisted retry after backoff or successful reconciliation. |
 | Concurrent clinical edit | Reject stale write; require user reconciliation; never last-write-wins finalized content. |
 | Retention policy missing or legal hold uncertain | Block destruction and route to Privacy/Legal review. |
 | Nonpayment | Controlled suspension/offboarding; no deletion and no denial of legally/emergency-required access. |
 | Primary-zone failure | Cloud SQL HA failover; clients reconnect and retry only idempotent work.[4] |
 | Whole-region failure | Human incident declaration; reconcile replica lag; manually promote approved same-country DR; record loss window and recovery evidence.[5] |
 | Restored backup | Restore into isolated recovery boundary, inventory/reconcile, apply current access/policy before release; never attach an unreviewed copy to production. |
+
+### Rollback and disable contract
+
+Rollback selects the smallest safe boundary: destination credential/queue disable; module disable; application rollback to the last schema-compatible artifact; additive data forward-fix or isolated restore; tenant/profile suspension; or manual same-country regional recovery. Every path preserves finalized history, append-only audit, operation intents/outcomes, rights deadlines, legal holds, custody, export, incident evidence, and required/emergency access. Rollback never enables Standard reuse, cross-country failover, plaintext fallback, direct vendor bypass, permissive policy defaults, deletion of audit/clinical history, or reversal of an applied migration.
 
 ## 15. Build and activation gates
 
@@ -233,12 +291,12 @@ A module or customer profile stays disabled until its legal applicability, appro
 
 ## Sources
 
-[1] [HIPAA Compliance on Google Cloud](https://cloud.google.com/security/compliance/hipaa)  
-[2] [Google Cloud regions and zones](https://docs.cloud.google.com/compute/docs/regions-zones)  
-[3] [Cloud Run locations](https://docs.cloud.google.com/run/docs/locations)  
-[4] [Cloud SQL for PostgreSQL high availability](https://docs.cloud.google.com/sql/docs/postgres/high-availability)  
-[5] [Cloud SQL disaster recovery](https://docs.cloud.google.com/sql/docs/postgres/intro-to-cloud-sql-disaster-recovery)  
-[6] [Cloud SQL data privacy strategies](https://cloud.google.com/sql/docs/postgres/data-privacy-strategies)  
-[7] [Cloud KMS envelope encryption](https://cloud.google.com/kms/docs/envelope-encryption)  
-[8] [Cloud Storage Bucket Lock](https://docs.cloud.google.com/storage/docs/bucket-lock)  
+[1] [HIPAA Compliance on Google Cloud](https://cloud.google.com/security/compliance/hipaa)
+[2] [Google Cloud regions and zones](https://docs.cloud.google.com/compute/docs/regions-zones)
+[3] [Cloud Run locations](https://docs.cloud.google.com/run/docs/locations)
+[4] [Cloud SQL for PostgreSQL high availability](https://docs.cloud.google.com/sql/docs/postgres/high-availability)
+[5] [Cloud SQL disaster recovery](https://docs.cloud.google.com/sql/docs/postgres/intro-to-cloud-sql-disaster-recovery)
+[6] [Cloud SQL data privacy strategies](https://cloud.google.com/sql/docs/postgres/data-privacy-strategies)
+[7] [Cloud KMS envelope encryption](https://cloud.google.com/kms/docs/envelope-encryption)
+[8] [Cloud Storage Bucket Lock](https://docs.cloud.google.com/storage/docs/bucket-lock)
 [10] [Google Cloud regulatory compliance and privacy guidance](https://docs.cloud.google.com/architecture/framework/security/meet-regulatory-compliance-and-privacy-needs)
