@@ -125,10 +125,54 @@ The validator and this ledger are grouped in the WP0.4 technical checkpoint comm
 
 ## Current approval checklist
 
+- [x] Prepare unsigned reviewer forms for WP0.1, WP0.4 and the separate WP0.5 authorization.
 - [ ] Record WP0.1 named baseline reviews and Standard owner disposition of the known tooling failure.
 - [ ] Record project-owner acceptance for the pinned WP0.4 candidate, with an approver name, decision date and the covered functions. The packet calls for Product, Architecture/Backend, Database, Security/Privacy, Operations/QA-Assurance, and Legal/counsel review. The legal scope is limited to the validator's approval-metadata boundary.
 - [ ] Record explicit project-owner authorization to start WP0.5.
 - [ ] Complete G0 review and record named approval of the narrowed Phase 1 scope before the first implementation packet starts.
+
+## Approval forms for reviewer completion
+
+**Unsigned drafts.** Reviewers can copy the applicable form into their approved review channel. Return the completed decisions with the approver’s name, decision date, and evidence reference. Keep credentials, customer data, contracts, and legal advice out of the ledger.
+
+### WP0.1 · Standard baseline review
+
+Review the baseline evidence published in `76f33ea`, including the [original candidate manifest](../compliance/flowstate-pro/evidence/wp0.1-standard-baseline/candidate-manifest.txt) and the [November refresh](../compliance/flowstate-pro/evidence/wp0.1-standard-baseline/2026-11-19-pr3-refresh.md). For each function, record **accept**, **request changes**, or **defer**.
+
+| Review function | Reviewer name | Decision and date | Evidence reference or outstanding issue |
+| --- | --- | --- | --- |
+| Database | ___ | ___ | ___ |
+| Backend | ___ | ___ | ___ |
+| Security/Privacy | ___ | ___ | ___ |
+| QA/Assurance | ___ | ___ | ___ |
+| CEO/Product owner | ___ | ___ | ___ |
+
+**Standard owner disposition of the existing Playwright orchestration failure** — owner name ___ · date ___ · disposition and evidence reference ___.
+
+### WP0.4 · Project-owner acceptance
+
+**Candidate** — published commit `c1fcdddb405c9022115df786021bda07ef6bb51a`, 35-input manifest SHA-256 `b9798e3307214ba4e46eaba42ad9284793208145ec6e0e46481f71566023a541`.
+
+**Project owner** — name ___ · decision date ___ · signed decision reference ___.
+
+Record **accept**, **request changes**, or **defer** for each function within your authority. For reviews supplied by another authorized reviewer, include their name, decision date, and evidence reference. Use the [WP0.4 packet](../compliance/flowstate-pro/work-packets/WP0.4-establish-change-control-and-dossier-validators.md#gate-3--required-human-acceptance) for review scope.
+
+| Review function | Decision | Reviewer, date, and evidence reference |
+| --- | --- | --- |
+| Product | ___ | ___ |
+| Architecture/Backend | ___ | ___ |
+| Database | ___ | ___ |
+| Security/Privacy | ___ | ___ |
+| Operations/QA-Assurance | ___ | ___ |
+| Legal/counsel · approval metadata only | ___ | ___ |
+
+### WP0.5 · Separate owner authorization
+
+Complete after WP0.4 acceptance. This authorization opens the G0 review packet. Phase 1 requires its own G0 scope decision.
+
+**Project owner** — name ___ · decision date ___ · WP0.4 acceptance reference ___.
+
+**Decision** — authorize WP0.5 review / defer ___ · decision reference ___.
 
 ## WP0.4 verification inputs
 
