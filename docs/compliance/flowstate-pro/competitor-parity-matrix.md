@@ -1,10 +1,16 @@
 # Flowstate Pro competitor parity matrix: Jane.app and Epic
 
-**Status:** DRAFT BENCHMARK — roadmap evidence only; not an implementation, procurement, legal, security, or compliance approval  
-**Benchmark date:** 2026-08-24  
-**Document updated:** 2026-08-26  
-**Decision baseline:** Q71–Q87 and Q189–Q193 in `decision-register-and-open-items.md`  
-**Scope:** Public, first-party Jane.app and Epic materials. No account, demo, UserWeb/Galaxy login, private roadmap, customer tenant, sales representation, or non-public feature access was used.
+**Status:** SPECIFIED BENCHMARK — G0 `BLOCKED`; WP1.x unauthorized; benchmark evidence only
+
+**Benchmark date:** 2026-08-24
+
+**Initial benchmark assembled:** 2026-08-26
+
+**WP0.3 reconciliation:** 2026-09-23; no source refresh performed
+
+**Decision baseline:** Q71–Q87 and Q189–Q193 in `decision-register-and-open-items.md`
+
+**Scope:** Public, first-party Jane.app and Epic materials reviewed on the dated benchmark. No account, demo, UserWeb/Galaxy login, private roadmap, customer tenant, sales representation, or non-public feature access was used.
 
 ## 1. How to read this benchmark
 
@@ -26,10 +32,18 @@ A row may carry more than one label. `VERIFIED` means the public documentation i
 
 ### Flowstate treatment
 
-- **V1** — part of the approved Pro-US minimum safe clinical journey in Q189–Q193.
-- **LATER** — approved later roadmap domain in Q76–Q87 or a parity expansion requiring its own evidence and activation gate.
-- **OUT_OF_SCOPE** — not part of the approved clinic product target; integrate with external systems where applicable rather than rebuild their core.
-- **BLOCKED** — direction exists, but vendor, counsel, policy, profile, contracting, or production approval remains unresolved.
+- **V1** — part of the approved Pro-US minimum safe clinical journey in Q189–Q193, but not active until its mapped legal, data, control, operational, evidence, profile, and release dependencies are complete.
+- **LATER** — approved later roadmap domain in Q76–Q87 or a parity expansion requiring its own bounded requirements, controls, evidence, and activation gate.
+- **OUT_OF_SCOPE** — not part of the approved clinic product target; integrate with approved external systems where applicable rather than rebuild their core.
+- **BLOCKED** — direction exists, but one or more legal, vendor, data-flow, control, operational, evidence, customer-profile, commercial, or production dependencies remain unresolved.
+
+### Benchmark-only authority boundary
+
+Jane and Epic remain dated journey benchmarks, not requirements to reproduce either catalog. The 2026-09-23 WP0.3 reconciliation made no web refresh and preserves the source review date of 2026-08-24 and initial benchmark history of 2026-08-26.
+
+A benchmark row, label, source, gap, or Flowstate treatment cannot approve or select a vendor; authorize procurement or contracting; decide a legal/policy value; approve a customer/profile; satisfy or waive a security/privacy control; establish implementation, operational exercise, evidence completeness, production capability, parity, or compliance; authorize a public claim; pass G0–G4 or P1–P7; or authorize WP1.x.
+
+Flowstate treatment is governed by the immutable WP0.2 product/PRD/roadmap/system/security contracts and the WP0.3 canonical control map in `control-and-evidence-matrix.md`. Deferred integrations and modules remain disabled until their own legal, vendor/destination/agreement/transfer, data-flow, control, operational, assessment, evidence, customer-profile, and release-gate dependencies are complete. Any missing or conflicting dependency keeps the affected treatment `BLOCKED`; benchmark evidence never resolves it.
 
 ## 2. Jane.app parity benchmark
 
@@ -111,9 +125,11 @@ Epic's public catalog describes an integrated enterprise health-record ecosystem
 
 | Flowstate release treatment | Required benchmark response |
 |---|---|
-| **V1** | Activation; Pro-specific identity and roles; patient/proxy self-service; scheduling; intake/consent/forms; longitudinal chart; draft/final/amendment semantics; controlled files; medications/allergies/history; direct pay; eligibility; portal release; rights; retention/holds/offboarding; audit/incidents; isolated US GCP operations. Competitor capability never weakens these gates. |
-| **LATER** | Secure messaging, telehealth, e-prescribing/medication safety, lab/referral, DICOM/PACS integration, claims/revenue cycle, standards APIs, external migration, multi-location, native mobile, clinical AI, bounded population-health/analytics, multilingual workflows, and approved specialty profiles. Each remains disabled until its own controls and profile approvals are complete. |
-| **OUT_OF_SCOPE** | Epic-scale inpatient/emergency/bed/perioperative cores, PACS/LIS/pharmacy/payer-core rebuilds, health-plan administration, enterprise life-sciences/research platforms, and Jane-style payroll/HR timekeeping/retail/gift-card/virtual-reception businesses. Integrate with approved external cores where a later profile requires it. |
+| **V1** | Activation; Pro-specific identity and roles; patient/proxy self-service; scheduling; intake/consent/forms; longitudinal chart; draft/final/amendment semantics; controlled files; medications/allergies/history; direct pay; eligibility; portal release; rights; retention/holds/offboarding; audit/incidents; isolated US GCP operations. Competitor capability never weakens these gates. V1 remains profile-bound and `BLOCKED` wherever the applicable `MAP-*`, legal, control, operational, evidence, vendor, or release dependency is unresolved. |
+| **LATER** | Secure messaging, telehealth, e-prescribing/medication safety, lab/referral, DICOM/PACS integration, claims/revenue cycle, standards APIs, external migration, multi-location, native mobile, clinical AI, bounded population-health/analytics, multilingual workflows, and approved specialty profiles. Each remains disabled until its own requirements, legal/vendor/data-flow controls, operational exercises, assessment/evidence, profile approval, and release gate are complete. |
+| **OUT_OF_SCOPE** | Epic-scale inpatient/emergency/bed/perioperative cores, PACS/LIS/pharmacy/payer-core rebuilds, health-plan administration, enterprise life-sciences/research platforms, and Jane-style payroll/HR timekeeping/retail/gift-card/virtual-reception businesses. Integrate only with approved external cores where a later profile requires it; a benchmark cannot reopen excluded scope. |
+
+The primary canonical dependencies are `MAP-CUSTOMER-PROFILE`, `MAP-PURPOSE-AUTHORITY`, `MAP-RECORD-ORIGIN`, `MAP-RIGHTS`, `MAP-RETENTION`, `MAP-LEGAL-HOLD`, `MAP-DISCLOSURE`, `MAP-TRANSFER`, `MAP-INCIDENT`, `MAP-VENDOR`, and `MAP-RESPONSIBILITY`. Their control and release-gate references in `control-and-evidence-matrix.md` govern; this benchmark does not duplicate or amend them.
 
 ## 5. Source dates, limits, and refresh protocol
 
@@ -146,3 +162,4 @@ For each refresh:
 | Date | Change | Owner/reviewer |
 |---|---|---|
 | 2026-08-26 | Initial first-party Jane.app and Epic parity baseline from sources reviewed 2026-08-24. | Product documentation; formal product, clinical, Security/Privacy, counsel, and owner review pending. |
+| 2026-09-23 | WP0.3 reconciliation only: status/gate boundary and WP0.2/control-dependency treatment aligned; no source, claim, classification, price, or availability refresh. | Product owner and required WP0.3 reviewers outstanding. |

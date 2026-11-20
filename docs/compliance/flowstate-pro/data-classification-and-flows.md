@@ -1,8 +1,12 @@
 # Flowstate Pro data classification and flows
 
-**Status:** SPECIFIED PLANNING TARGET — field inventory, legal classification, vendors, agreements, retention values and deployed residency evidence remain incomplete  
-**Decision baseline:** Q1–Q206, confirmed 2026-08-24  
+**Status:** SPECIFIED PLANNING TARGET — WP0.3 reconciled; field inventory, legal values, vendors, agreements, accountable humans and deployed evidence remain `BLOCKED`; G0 remains `BLOCKED`
+
+**Decision baseline:** Q1–Q206, confirmed 2026-08-24
+
 **Scope:** Flowstate Pro only; Virginia and British Columbia customer profiles are separately activated
+
+**Release boundary:** WP1.x is unauthorized. Planned Pro stores and flows are not implemented, deployed, legally reviewed, operationally exercised, evidence complete, or approved for a profile.
 
 ## 1. How to use this document
 
@@ -21,6 +25,8 @@ Google states that customers remain responsible for determining status, BAA need
 ### CURRENT — Standard
 
 The implemented Prisma schema is the Standard gym product. It contains identity/contact data, DOB, member/guardian notes, attendance, forms and signed-document evidence, billing/Stripe references, migration raw/mapped content, messages/notification bodies and sessions. It stores form bytes in PostgreSQL and allows some migration content in PostgreSQL JSON/text. Standard also has a filesystem-backed landing waitlist. None of this is a Pro clinical store, Pro migration source, or evidence of Pro controls.
+
+WP0.1 froze this boundary at Git commit `d4f2098b4940cae61b9f36345cb480bda33d990d`. The reproducible path/store/flow inventory and limitations are in `current-standard-baseline.md`; concise command evidence is under `evidence/wp0.1-standard-baseline/`. The snapshot confirms the following Standard hotspots without copying payloads: member/guardian identity and notes, attendance notes, PostgreSQL PDF bytes and signing evidence, migration access instructions and raw/mapped content, Stripe identifiers/metadata/provider errors, notification recipients/bodies, plaintext staff-invite tokens, session/signature bearer-token surfaces, URL/query and forwarded-host return risks, console/provider error surfaces, and filesystem waitlist JSONL. Deployment regions, encryption, backups, access logs, retention, contracts, and live vendor behavior remain `UNKNOWN`.
 
 ### PLANNED — Pro
 
@@ -53,7 +59,27 @@ Classification uses the highest applicable class until a reviewed field/purpose 
 - Hashes of identifying values remain classified when linkable or susceptible to matching. Encryption changes protection, not classification.
 - Patient-reported and clinician-verified content share the same sensitivity but retain distinct provenance and verification state.
 
-## 4. Profile-enabled data catalog
+## 4. Minimum decision-input inventory contract
+
+Every planned field, store, file type, event, queue payload, browser surface and outbound flow must carry or resolve the following decision families in this order: **purpose/authority**, **customer/applicability profile**, **record origin**, **rights**, **retention**, **legal hold**, **disclosure**, **transfer**, **incident**, **vendor/destination**, and **customer/Flowstate responsibility**. A record may reference a versioned approved catalog; it must not copy an invented legal value into a schema or configuration default.
+
+| Decision family | Minimum inventory fields | Legal input | Controls | PRD references | Operations record | Fail-closed behavior |
+|---|---|---|---|---|---|---|
+| Purpose/authority | Purpose code/reference, authority type/reference, collection/use/disclosure operation, subject/representative context, effective/expiry state | LEG-02, LEG-03, LEG-05 | LEG-01, CON-01, DAT-01 | FR-019, FR-032, NFR-002 | Applicability and policy catalog; customer responsibility matrix | Missing, expired, conflicting or unapproved purpose/authority denies collection/use/disclosure and keeps the module/profile `REVIEW_BLOCKED`. |
+| Customer/applicability profile | Profile/version, customer/entity facts, jurisdictions, service/modules, applicable-regime decision references, approvers and review date | LEG-01, LEG-02, LEG-03 | GOV-01, DAT-01 | FR-004, FR-005, FR-044 | Activation record and profile gate record | Unknown/conflicting profile blocks regulated activation; Virginia approval does not transfer to BC. |
+| Record origin and provenance | Source system/actor, patient-reported versus clinician-verified state, creation/import event, source record/version, mapping and reconciliation references | LEG-03, LEG-05 | DAT-01, CLN-01 | FR-015, FR-032, NFR-003 | Data/flow inventory and migration/reconciliation record | Unknown origin or unverifiable provenance rejects/quarantines import, release, finalization or migration. |
+| Rights and verification | Right/request type, verification and representative references, scope, assigned authority, decision/appeal state, delivery destination and evidence reference | LEG-06 | RGT-01 | FR-022, FR-034 | Rights procedure/register | Preserve and route the request; no automatic legal decision, denial, deadline or disclosure. |
+| Retention and disposition | Record class, policy/version, start/event inputs, review/disposition state, backup treatment, approver and evidence reference | LEG-07 | RET-01 | FR-033, NFR-014 | Lifecycle policy catalog/register | Unknown/conflicting policy blocks destruction and keeps the record in controlled review/retention state. |
+| Legal hold | Hold ID/reference, scope, authority, effective/release state, independent approver and affected stores/backups | LEG-07 | RET-01, OFF-01 | FR-033, FR-035 | Hold and offboarding register | Unknown or active hold blocks disposition; offboarding and cancellation cannot override it. |
+| Release, disclosure and accounting | Release state, authority/purpose reference, recipient/destination, minimum fields, representative context, revocation/expiry where approved, accounting reference | LEG-04, LEG-05, LEG-06 | RGT-01, OUT-01 | FR-029, FR-034, FR-040 | Rights/release procedure and disclosure ledger | Unknown authority/release/destination denies disclosure and records a reviewable outcome. |
+| Residency and transfer | Source/destination country/region, direction, support/control-plane path, transfer/PIA decision, agreement and onward-transfer references | LEG-04, LEG-10 | OUT-01, VEN-01 | FR-040, FR-044, NFR-006 | Vendor/destination register | Unknown destination, agreement, region, support path or transfer approval blocks transmission. |
+| Incident and notice decision | Event/incident reference, discovery/security facts, affected profile/data/store/destination, decision-matrix version, notice authority and evidence references | LEG-08 | INC-01, INC-02 | FR-039, NFR-019 | Incident register/runbook | Contain, preserve and escalate; no automated reportability, no-notice or communication decision. |
+| Vendor, agreement and destination | Provider/service/configuration ID, owner, purpose, fields/classes, region/support/subprocessors, agreement/expiry, retention/deletion and evidence references | LEG-04 | VEN-01, OUT-01 | FR-040, NFR-015, NFR-016 | Vendor/destination register | Unknown or expired input disables the destination and blocks queued transmission. |
+| Customer/Flowstate responsibility | Responsibility-matrix version, accountable customer/Flowstate functions, custody/control, rights/release/incident/support/offboarding allocations and escalation | LEG-02, LEG-04, LEG-06 | GOV-01, GOV-02, GOV-03 | FR-004, FR-031, FR-034, NFR-019 | Customer responsibility matrix and role register | Missing allocation blocks activation or routes the action to authorized human review; no actor inherits authority by default. |
+
+This is the data-owned inventory contract for the canonical `MAP-*` rows in [`control-and-evidence-matrix.md`](control-and-evidence-matrix.md#3-canonical-requirementcontrol-reconciliation-map). It references [`legal-applicability-matrix.md`](legal-applicability-matrix.md) for counsel inputs and [`operations-and-governance.md`](operations-and-governance.md) for human procedures; it does not duplicate their legal values or operating approvals.
+
+## 5. Profile-enabled data catalog
 
 | Domain | Planned examples | Base class | Activation rule |
 |---|---|---:|---|
@@ -71,7 +97,7 @@ Classification uses the highest applicable class until a reviewed field/purpose 
 | Audit/incident | PHI-free action metadata and signals; evidence references. | D8/D9 | Payload-free, append-only; human reportability decision. |
 | External migration | Source file/object, mappings, validation issues, provenance, reconciliation and import result. | D4/D5 | External clinical systems only; separate approved service and destination/source profile. |
 
-## 5. Data stores
+## 6. Data stores
 
 ### CURRENT — Standard stores (not reusable for Pro)
 
@@ -102,24 +128,24 @@ Classification uses the highest applicable class until a reviewed field/purpose 
 
 Cloud Run resources are regional and associated customer data is stored in the selected region.[3] This does not settle control-plane, support, identity, logging, build or third-party locations; each is a transfer-review item.
 
-## 6. Destination registry contract
+## 7. Destination registry contract
 
 No destination can receive `D2`–`D9` until a versioned registry entry is enabled for the exact plane/customer profile. Required fields:
 
-- stable destination/provider/service ID and owner;
+- stable destination/provider/service/configuration ID and accountable owner;
 - purpose and allowed operations;
 - allowed data classes and explicit minimized fields;
 - source/record origin and destination country/region;
 - transfer direction and onward/subprocessor handling;
 - authentication/encryption and key responsibility;
 - retention, deletion, backup and support-access behavior;
-- BAA/DPA/customer agreement status and evidence references;
+- BAA/DPA/customer/public-body agreement status, exact covered configuration and protected evidence references;
 - privacy impact/transfer approval status and dates;
 - tenant/profile enablement, rate/volume limits and operating envelope;
-- incident/contact/reconciliation method;
+- incident/contact/reconciliation and support-access method;
 - reviewer, effective/expiry/review dates and disable/rollback action.
 
-Unknown provider, service, region, class, agreement, transfer approval or deletion behavior is `BLOCKED`, never inherited from another service or a vendor marketing page.
+Unknown vendor, provider, service, exact configuration, region, class/field, agreement, support path, subprocessor, transfer approval, retention/deletion/backup behavior, owner or evidence reference is `BLOCKED`, never inherited from another service, profile, Virginia approval, or a vendor marketing page. The destination remains disabled and queued transmission remains blocked until a separately authorized versioned transition.
 
 ### Planned destination classes
 
@@ -136,7 +162,7 @@ Unknown provider, service, region, class, agreement, transfer approval or deleti
 | External clinical migration source | Approved export files/API data plus source provenance. | No Standard source; governed migration service only. |
 | Legal/regulator/law enforcement | Only reviewed scope through Legal/Privacy process. | No automated/routine destination; case-specific approval. |
 
-## 7. Planned end-to-end flows
+## 8. Planned end-to-end flows
 
 ```mermaid
 flowchart TD
@@ -191,7 +217,7 @@ flowchart TD
 | 17. Build/test | Synthetic generator/source → CI/apps/artifacts | D0/D1 synthetic only | Production export/import prohibited; canary scans; separate projects/secrets; artifact retention. |
 | 18. Exceptional support | Approved ticket/incident → JIT Flowstate identity → minimum metadata/data resource | D8; D3–D5 only if strictly necessary | No routine access or break-glass; device/MFA, scope/time/approval, audit/revocation/review. |
 
-## 8. Browser, URL, cache and telemetry flow rules
+## 9. Browser, URL, cache and telemetry flow rules
 
 - Names, email, phone, clinical text, search terms, tokens and provider-sensitive values do not enter URLs/query strings, redirect locations, Referer headers, filenames or route logs.
 - Browser cookies contain opaque session material only and are product/origin scoped, secure and HTTP-only.
@@ -200,7 +226,7 @@ flowchart TD
 - Sensitive responses/downloads use approved cache controls and safe content disposition; logout/expiry clears application-held sensitive state where feasible, while server authorization remains authoritative.
 - Traces, screenshots, console/network captures, test reports and support recordings are synthetic-only outside production. Production diagnostics use PHI-free metadata.
 
-## 9. Audit and log data flow
+## 10. Audit and log data flow
 
 ### Security audit (`D8`)
 
@@ -214,7 +240,7 @@ High-risk operations create durable intent before effect and terminal outcome af
 
 Allowlisted event codes, service/revision, route template, timing, status, bounded counts and correlation IDs only. No patient, clinical or arbitrary object serialization. Regional log sinks and immutable exports activate only with approved retention and read-back evidence. Bucket Lock can prevent objects from deletion/replacement before the retention period and a locked policy cannot be reduced or removed.[8]
 
-## 10. Residency and project topology
+## 11. Residency and project topology
 
 | Data plane | Primary | Same-country recovery | Allowed normal movement | Explicit transfer-review items |
 |---|---|---|---|---|
@@ -229,7 +255,7 @@ Cloud SQL HA synchronously replicates between zones in the primary region.[4] Th
 
 The Canadian target covers configurable application data, database, object bodies, backups, keys and logs in Canada. Patient CIAM, Google/Flowstate administrative control planes, workforce support access, build systems, billing, DNS/CDN and each subprocessor are explicit transfer-review items. No document may convert this target into a blanket “all data stays in Canada” or “BC-only” claim without verified evidence and counsel approval.
 
-## 11. Encryption flow
+## 12. Encryption flow
 
 At rest, every store/replica/backup/log/audit/artifact/restored copy requires verified provider encryption. Highest-sensitivity fields and file bodies use application-layer envelope encryption: a local DEK encrypts the value, a Cloud KMS KEK wraps the DEK, and storage retains ciphertext plus wrapped DEK and version metadata; the KEK remains in Cloud KMS.[7]
 
@@ -237,7 +263,7 @@ Authenticated context binds tenant, resource, field/class and schema/key version
 
 Encryption does not declassify data or permit a destination. KMS failure blocks encrypt/decrypt; there is no application-embedded key or plaintext fallback.
 
-## 12. File lifecycle
+## 13. File lifecycle
 
 | State | Body access | Transition requirement |
 |---|---|---|
@@ -255,7 +281,7 @@ Encryption does not declassify data or permit a destination. KMS failure blocks 
 
 DICOM/PACS bypasses this ordinary-upload model and remains disabled until its dedicated integration profile is approved.
 
-## 13. Record lifecycle, retention and deletion
+## 14. Record lifecycle, retention and deletion
 
 Every regulated root and file has a lifecycle/policy reference. A central versioned registry records classification date, policy version, scheduled review/disposition, legal hold, custody/offboarding state and last decision. Creation/update of lifecycle metadata is atomic with the regulated root; reconciliation detects missing/orphaned metadata.
 
@@ -273,7 +299,7 @@ Disposition is a state machine:
 
 Commercial cancellation/nonpayment never directly deletes or makes legally/emergency-required records inaccessible. Offboarding separately governs custody, continued access, export, holds, integrations, retention and destruction.
 
-## 14. Data minimization and default-disabled content
+## 15. Data minimization and default-disabled content
 
 The following remain disabled until an approved customer/applicability profile names the purpose, authority, exact fields, collection UI, roles/projections, encryption/search model, destinations and retention:
 
@@ -287,9 +313,13 @@ The following remain disabled until an approved customer/applicability profile n
 - cross-border replication or automatic transfer;
 - live data in non-production.
 
-A field or module not enabled by profile is absent/rejected, not merely hidden.
+A field or module not enabled by profile is absent/rejected, not merely hidden. D5 and other high-risk classes remain absent or disabled until approved purpose, authority, exact fields, access/projection, encryption/key treatment, destination/transfer, lifecycle/hold and profile/version all exist.
 
-## 15. Blocked inputs and required evidence
+## 16. Protected evidence and repository boundary
+
+The repository may store only non-sensitive evidence metadata/reference: artifact ID/type, control and `MAP-*` row, profile/candidate/configuration, producer, reviewer, time/result, hash/integrity metadata, retention/expiry, protected location and access class. Evidence bodies—including PHI, PII, secrets, contracts, legal advice, personnel/training/sanction records, incident material, assessor workpapers, customer exports and vendor-console captures—remain in the approved protected evidence system. A prose reference without retrievable, current, profile-bound evidence cannot satisfy a gate.
+
+## 17. Blocked inputs and required evidence
 
 The following must remain visibly `BLOCKED` until named owners approve them:
 
@@ -305,13 +335,15 @@ The following must remain visibly `BLOCKED` until named owners approve them:
 
 Before activation, the data inventory must enumerate every field and non-database store with classification, purpose, actors, read/write paths, repository/policy action, encryption state, destination IDs, residency, retention/lifecycle policy, reviewer and date. Automated drift checks must fail when schema, event, file type, log field, queue payload, vendor or browser flow lacks review.
 
+G0 remains `BLOCKED`; WP1.x is unauthorized. Completing this planning inventory does not implement a store/flow, approve a legal value or vendor, create protected evidence, or activate a profile.
+
 ## Sources
 
-[1] [HIPAA Compliance on Google Cloud](https://cloud.google.com/security/compliance/hipaa)  
-[2] [Google Cloud regions and zones](https://docs.cloud.google.com/compute/docs/regions-zones)  
-[3] [Cloud Run locations](https://docs.cloud.google.com/run/docs/locations)  
-[4] [Cloud SQL for PostgreSQL high availability](https://docs.cloud.google.com/sql/docs/postgres/high-availability)  
-[5] [Cloud SQL disaster recovery](https://docs.cloud.google.com/sql/docs/postgres/intro-to-cloud-sql-disaster-recovery)  
-[7] [Cloud KMS envelope encryption](https://cloud.google.com/kms/docs/envelope-encryption)  
-[8] [Cloud Storage Bucket Lock](https://docs.cloud.google.com/storage/docs/bucket-lock)  
+[1] [HIPAA Compliance on Google Cloud](https://cloud.google.com/security/compliance/hipaa)
+[2] [Google Cloud regions and zones](https://docs.cloud.google.com/compute/docs/regions-zones)
+[3] [Cloud Run locations](https://docs.cloud.google.com/run/docs/locations)
+[4] [Cloud SQL for PostgreSQL high availability](https://docs.cloud.google.com/sql/docs/postgres/high-availability)
+[5] [Cloud SQL disaster recovery](https://docs.cloud.google.com/sql/docs/postgres/intro-to-cloud-sql-disaster-recovery)
+[7] [Cloud KMS envelope encryption](https://cloud.google.com/kms/docs/envelope-encryption)
+[8] [Cloud Storage Bucket Lock](https://docs.cloud.google.com/storage/docs/bucket-lock)
 [10] [Google Cloud regulatory compliance and privacy guidance](https://docs.cloud.google.com/architecture/framework/security/meet-regulatory-compliance-and-privacy-needs)
