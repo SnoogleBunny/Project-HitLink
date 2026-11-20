@@ -1,0 +1,142 @@
+WP0.1 PRISMA INVENTORY
+Base snapshot commit: d4f2098b4940cae61b9f36345cb480bda33d990d
+WP0.1 documentation candidate: candidate-manifest.txt
+Captured: 2026-09-22
+
+Deterministic counts
+- Prisma models: 65
+- Prisma enums: 48
+- Committed migration SQL files: 16
+- Production delegate call expressions: 363 across 39 files
+- Production delegate call expressions outside packages/db: 299 across 36 files
+- Excluded test/fixture/script delegate call expressions: 181 across 6 files
+- Raw SQL call sites ($queryRaw/$executeRaw and Unsafe variants): 0
+
+Rules
+- Input files: `git ls-files` entries with extensions .ts, .tsx, .js, .jsx, .mjs, or .cjs.
+- Production exclusions: paths under tests/test/__tests__/fixtures/scripts; files named *.test.* or *.spec.*; and executable seed/verification files under packages/db/prisma.
+- Delegate expression: a call whose source text, across whitespace/newlines, matches `(prisma|db|tx).<schema delegate>.<method>(`, where delegates are generated from current Prisma model names by lowercasing the first character.
+- The parser counts direct call expressions, including multiline calls. It does not prove reachability, distinguish runtime branches, detect aliases other than prisma/db/tx, or classify calls hidden behind helper functions. These are static call-site counts, not query execution counts.
+- Raw SQL search covers call and tagged-template forms of `$queryRaw`, `$queryRawUnsafe`, `$executeRaw`, and `$executeRawUnsafe` in the same tracked code extensions.
+
+Reproduction commands
+  python3 - <<'PY'
+  import pathlib, re, subprocess
+  root = pathlib.Path('.')
+  schema = (root / 'packages/db/prisma/schema.prisma').read_text()
+  models = re.findall(r'^model\s+(\w+)\s*\{', schema, re.M)
+  enums = re.findall(r'^enum\s+(\w+)\s*\{', schema, re.M)
+  tracked = subprocess.check_output(['git', 'ls-files'], text=True).splitlines()
+  migrations = [p for p in tracked if re.fullmatch(r'packages/db/prisma/migrations/[^/]+/migration\.sql', p)]
+  print(len(models), len(enums), len(migrations))
+  PY
+
+  python3 - <<'PY'
+  from pathlib import Path
+  import re, subprocess
+
+  root = Path('.')
+  tracked = subprocess.check_output(['git', 'ls-files'], text=True).splitlines()
+  extensions = {'.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'}
+  schema = (root / 'packages/db/prisma/schema.prisma').read_text()
+  models = re.findall(r'^model\s+(\w+)\s*\{', schema, re.M)
+  delegates = {model[0].lower() + model[1:] for model in models}
+  delegate_call = re.compile(
+      r'\b(?:prisma|db|tx)\s*\.\s*('
+      + '|'.join(map(re.escape, sorted(delegates, key=len, reverse=True)))
+      + r')\s*\.\s*[A-Za-z_$][\w$]*\s*\(',
+      re.S,
+  )
+  raw_sql = re.compile(
+      r'\.(?:\$queryRaw|\$queryRawUnsafe|\$executeRaw|\$executeRawUnsafe)\s*(?:\(|`)'
+  )
+
+  def excluded(path):
+      file = Path(path)
+      return (
+          bool(set(file.parts) & {'test', 'tests', '__tests__', 'fixture', 'fixtures', 'script', 'scripts'})
+          or re.search(r'\.(?:test|spec)\.[^.]+$', file.name) is not None
+          or path in {
+              'packages/db/prisma/seed-demo.mjs',
+              'packages/db/prisma/verify-demo-seed.mjs',
+          }
+      )
+
+  production = {}
+  excluded_calls = {}
+  raw_calls = {}
+  for path in tracked:
+      if Path(path).suffix not in extensions:
+          continue
+      source = (root / path).read_text(errors='ignore')
+      delegate_count = len(delegate_call.findall(source))
+      raw_count = len(raw_sql.findall(source))
+      if delegate_count:
+          (excluded_calls if excluded(path) else production)[path] = delegate_count
+      if raw_count:
+          raw_calls[path] = raw_count
+
+  outside = {path: count for path, count in production.items() if not path.startswith('packages/db/')}
+  print(f'production_calls={sum(production.values())} production_files={len(production)}')
+  print(f'outside_db_calls={sum(outside.values())} outside_db_files={len(outside)}')
+  print(f'excluded_calls={sum(excluded_calls.values())} excluded_files={len(excluded_calls)}')
+  print(f'raw_sql_calls={sum(raw_calls.values())} raw_sql_files={len(raw_calls)}')
+  print('Production calls by file')
+  for path, count in sorted(production.items()):
+      print(f'{count:3d} {path}')
+  print('Excluded calls by file')
+  for path, count in sorted(excluded_calls.items()):
+      print(f'{count:3d} {path}')
+  print('Raw SQL calls by file')
+  for path, count in sorted(raw_calls.items()):
+      print(f'{count:3d} {path}')
+  PY
+
+Production calls by file
+  1 apps/admin-web/app/dashboard/forms/actions.ts
+  1 apps/admin-web/app/dashboard/programs/[programId]/edit/page.tsx
+  2 apps/admin-web/app/dashboard/programs/page.tsx
+  1 apps/admin-web/app/dashboard/rooms/[roomId]/edit/page.tsx
+  2 apps/admin-web/app/dashboard/rooms/page.tsx
+  1 apps/admin-web/app/login/actions.ts
+  2 apps/admin-web/app/signup/actions.ts
+ 21 apps/admin-web/lib/access-products.ts
+  8 apps/admin-web/lib/bookings.ts
+ 12 apps/admin-web/lib/class-templates.ts
+  4 apps/admin-web/lib/dashboard.ts
+  7 apps/admin-web/lib/failed-payments.ts
+ 13 apps/admin-web/lib/forms.ts
+ 21 apps/admin-web/lib/member-memberships.ts
+  6 apps/admin-web/lib/member-portal-access.ts
+ 12 apps/admin-web/lib/members.ts
+  9 apps/admin-web/lib/membership-plans.ts
+  6 apps/admin-web/lib/onboarding.ts
+  2 apps/admin-web/lib/operations-workspace.ts
+  2 apps/admin-web/lib/owner-workspace.ts
+  4 apps/admin-web/lib/programs.ts
+  5 apps/admin-web/lib/rooms.ts
+  9 apps/admin-web/lib/rosters.ts
+  7 apps/admin-web/lib/staff-invites.ts
+ 16 apps/admin-web/lib/stripe-billing.ts
+  4 apps/admin-web/lib/stripe-settings.ts
+ 74 apps/admin-web/lib/workspace-migration.ts
+  1 apps/member-web/app/login/actions.ts
+  2 apps/member-web/lib/member-auth.ts
+  8 apps/member-web/lib/member-billing.ts
+ 10 apps/member-web/lib/member-commerce.ts
+  1 apps/member-web/lib/member-membership.ts
+  2 apps/member-web/lib/member-portal.ts
+  6 apps/member-web/lib/self-service-bookings.ts
+ 14 apps/member-web/lib/trial-booking.ts
+  3 packages/auth/src/session.ts
+ 33 packages/db/src/class-access.ts
+ 26 packages/db/src/forms.ts
+  5 packages/db/src/notification-outbox.ts
+
+Excluded calls by file
+ 55 apps/admin-web/lib/workspace-migration-operations.integration.test.ts
+ 20 apps/admin-web/lib/workspace-migration.integration.test.ts
+ 32 packages/db/prisma/seed-demo.mjs
+ 52 packages/db/prisma/verify-demo-seed.mjs
+  6 tests/e2e/flowstate-demo.spec.ts
+ 16 tests/e2e/migration-first-onboarding.spec.ts

@@ -1,0 +1,58 @@
+WP0.1 STANDARD BASELINE SNAPSHOT
+Captured: 2026-09-22
+Worktree: /Users/alvinlo/Desktop/Project-HitLink-wp0-1
+Branch: hermes/pro-wp0-1-baseline
+HEAD: d4f2098b4940cae61b9f36345cb480bda33d990d
+Base revision requested: d4f2098
+WP0.1 documentation candidate: candidate-manifest.txt
+
+Commands:
+  git rev-parse --show-toplevel
+  git branch --show-current
+  git rev-parse HEAD
+  git status --porcelain=v1
+  git remote -v
+  node --version
+  pnpm --version
+  corepack --version
+  corepack pnpm --version
+  git --version
+  sw_vers
+  uname -m
+
+Redacted output:
+  worktree=/Users/alvinlo/Desktop/Project-HitLink-wp0-1
+  branch=hermes/pro-wp0-1-baseline
+  head=d4f2098b4940cae61b9f36345cb480bda33d990d
+  initial_status=?? docs/compliance/flowstate-pro/work-packets/
+  remote=origin git@github.com:[REDACTED]/Project-HitLink.git (fetch/push)
+  node=v22.23.0
+  pnpm=UNAVAILABLE_ON_PATH (pnpm: command not found)
+  corepack=0.34.6
+  corepack_pnpm=10.33.0
+  git=2.50.1 (Apple Git-155)
+  platform=macOS 26.6.2 build 25G83 arm64
+
+Limitations:
+- The initial dirty state was the untracked allowed work-packet directory containing WP0.1.
+- The original worktree's unrelated .DS_Store modification was not copied or modified.
+- node_modules was absent. No dependency installation was performed.
+- No .env file, database, customer/demo content, production credential, vendor console, or external system was inspected.
+
+Final candidate checks at 2026-09-22T11:01:21-0700:
+- `git diff --check` => PASS for tracked changes.
+- Candidate-wide Python content check => PASS for every modified/untracked payload and manifest file: UTF-8 decode, no NUL bytes, no merge markers, no trailing tabs, allowed paths only, and existing relative Markdown link targets.
+- `candidate-manifest.txt` reproduction => PASS after manifest regeneration.
+
+Final `git status --short -uall`:
+ M docs/compliance/flowstate-pro/control-and-evidence-matrix.md
+ M docs/compliance/flowstate-pro/data-classification-and-flows.md
+ M docs/compliance/flowstate-pro/decision-register-and-open-items.md
+ M docs/plans/2026-08-10-hipaa-canada-compliance-implementation-plan.md
+?? docs/compliance/flowstate-pro/current-standard-baseline.md
+?? docs/compliance/flowstate-pro/evidence/README.md
+?? docs/compliance/flowstate-pro/evidence/wp0.1-standard-baseline/candidate-manifest.txt
+?? docs/compliance/flowstate-pro/evidence/wp0.1-standard-baseline/prisma-inventory.txt
+?? docs/compliance/flowstate-pro/evidence/wp0.1-standard-baseline/root-command-results.txt
+?? docs/compliance/flowstate-pro/evidence/wp0.1-standard-baseline/snapshot-and-toolchain.txt
+?? docs/compliance/flowstate-pro/work-packets/WP0.1-freeze-evidence-and-boundaries.md

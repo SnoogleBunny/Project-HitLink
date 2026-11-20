@@ -1,0 +1,63 @@
+WP0.1 DOCUMENTATION CANDIDATE MANIFEST
+Captured: 2026-09-22
+Worktree: /Users/alvinlo/Desktop/Project-HitLink-wp0-1
+Branch: hermes/pro-wp0-1-baseline
+Base commit: d4f2098b4940cae61b9f36345cb480bda33d990d
+Payload file count: 10
+Payload bundle SHA-256: 257c4ed9c3260f6f2d3a159ddc7792dbd18b299532687237d277c6b8b777690f
+
+Definition
+- The exact uncommitted WP0.1 documentation candidate is the base commit plus the ten payload files below at their recorded SHA-256 values.
+- This manifest is metadata and excludes only itself from the payload to avoid a recursive self-hash.
+- Any payload edit invalidates the bundle digest and requires regenerating this manifest and rerunning review.
+
+SHA-256  bytes  path
+b044346082945c38e33c3466da25dfaebc30e8305439540fc61518f6192be8e0  24631  docs/compliance/flowstate-pro/control-and-evidence-matrix.md
+2d5cc1e5a2f092b39601885b1e3f25d100e34894648b912ea7cb80eb89497bab  19520  docs/compliance/flowstate-pro/current-standard-baseline.md
+c3d19252d590020561a7a3b97d99f5a3e36906668d832e275639ecbc95ffc598  33677  docs/compliance/flowstate-pro/data-classification-and-flows.md
+48e1c54d00aefb4f729fe7b9c490da065be5a2115789c477ae06b9de1ab43163  18382  docs/compliance/flowstate-pro/decision-register-and-open-items.md
+d76dee09203d52a62b76cfd95465c315289c23299df95a279c99bfb55c2160a4  2234  docs/compliance/flowstate-pro/evidence/README.md
+ecc37f046fc56a9609df6f18ee38dfaf957f5969d8c75d867f7cbe38e2c798ee  6448  docs/compliance/flowstate-pro/evidence/wp0.1-standard-baseline/prisma-inventory.txt
+7c77a60afdef3547bf7d6093d845ef18676ca81ba300c92e72efb3830bc7d431  1572  docs/compliance/flowstate-pro/evidence/wp0.1-standard-baseline/root-command-results.txt
+e451ef6cdd0868b155d0995d39ca9f658a72ca794dcf8f2f7896ec3fe78f383e  2669  docs/compliance/flowstate-pro/evidence/wp0.1-standard-baseline/snapshot-and-toolchain.txt
+3517e9f0eb37cbb1d0e2e98eb1241c39e774dadc3d8ddeac80fda2b3ec0a9537  16696  docs/compliance/flowstate-pro/work-packets/WP0.1-freeze-evidence-and-boundaries.md
+caa88cca13f3aaf26257ac29343b68d6c3ed3bb00c6bf5489e8803beb36de36c  59951  docs/plans/2026-08-10-hipaa-canada-compliance-implementation-plan.md
+
+Reproduction
+Run from the recorded worktree. The script fails closed if the payload path set or any hash differs.
+
+  python3 - <<'PY'
+  from pathlib import Path
+  import hashlib, subprocess
+
+  root = Path('.')
+  manifest = 'docs/compliance/flowstate-pro/evidence/wp0.1-standard-baseline/candidate-manifest.txt'
+  expected = {
+      'docs/compliance/flowstate-pro/control-and-evidence-matrix.md': 'b044346082945c38e33c3466da25dfaebc30e8305439540fc61518f6192be8e0',
+      'docs/compliance/flowstate-pro/current-standard-baseline.md': '2d5cc1e5a2f092b39601885b1e3f25d100e34894648b912ea7cb80eb89497bab',
+      'docs/compliance/flowstate-pro/data-classification-and-flows.md': 'c3d19252d590020561a7a3b97d99f5a3e36906668d832e275639ecbc95ffc598',
+      'docs/compliance/flowstate-pro/decision-register-and-open-items.md': '48e1c54d00aefb4f729fe7b9c490da065be5a2115789c477ae06b9de1ab43163',
+      'docs/compliance/flowstate-pro/evidence/README.md': 'd76dee09203d52a62b76cfd95465c315289c23299df95a279c99bfb55c2160a4',
+      'docs/compliance/flowstate-pro/evidence/wp0.1-standard-baseline/prisma-inventory.txt': 'ecc37f046fc56a9609df6f18ee38dfaf957f5969d8c75d867f7cbe38e2c798ee',
+      'docs/compliance/flowstate-pro/evidence/wp0.1-standard-baseline/root-command-results.txt': '7c77a60afdef3547bf7d6093d845ef18676ca81ba300c92e72efb3830bc7d431',
+      'docs/compliance/flowstate-pro/evidence/wp0.1-standard-baseline/snapshot-and-toolchain.txt': 'e451ef6cdd0868b155d0995d39ca9f658a72ca794dcf8f2f7896ec3fe78f383e',
+      'docs/compliance/flowstate-pro/work-packets/WP0.1-freeze-evidence-and-boundaries.md': '3517e9f0eb37cbb1d0e2e98eb1241c39e774dadc3d8ddeac80fda2b3ec0a9537',
+      'docs/plans/2026-08-10-hipaa-canada-compliance-implementation-plan.md': 'caa88cca13f3aaf26257ac29343b68d6c3ed3bb00c6bf5489e8803beb36de36c',
+  }
+  actual_paths = {
+      line[3:]
+      for line in subprocess.check_output(['git', 'status', '--porcelain=v1', '-uall'], text=True).splitlines()
+      if line[3:] != manifest
+  }
+  assert actual_paths == set(expected), (sorted(actual_paths), sorted(expected))
+  rows = []
+  for path in sorted(expected):
+      digest = hashlib.sha256((root / path).read_bytes()).hexdigest()
+      assert digest == expected[path], (path, digest, expected[path])
+      rows.append(f'{digest}  {path}\n')
+  bundle = hashlib.sha256(''.join(rows).encode()).hexdigest()
+  assert bundle == '257c4ed9c3260f6f2d3a159ddc7792dbd18b299532687237d277c6b8b777690f', bundle
+  assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == 'd4f2098b4940cae61b9f36345cb480bda33d990d'
+  assert subprocess.check_output(['git', 'branch', '--show-current'], text=True).strip() == 'hermes/pro-wp0-1-baseline'
+  print('candidate_manifest=PASS')
+  PY

@@ -1,0 +1,29 @@
+WP0.1 REQUIRED ROOT COMMAND RESULTS
+Base snapshot commit: d4f2098b4940cae61b9f36345cb480bda33d990d
+WP0.1 documentation candidate: candidate-manifest.txt
+Captured: 2026-09-22T11:01:21-0700
+Working directory: /Users/alvinlo/Desktop/Project-HitLink-wp0-1
+
+Environment blocker:
+- pnpm is not available on PATH.
+- node_modules is absent.
+- Corepack is installed and resolves the pinned pnpm version with `corepack pnpm --version` => 10.33.0, but the required commands were run exactly as written and no Corepack shim or dependency installation was introduced.
+
+Prerequisite commands and results:
+- `python3 -c 'import shutil; print(shutil.which("pnpm") or "UNAVAILABLE")'` => `UNAVAILABLE`
+- `python3 -c 'from pathlib import Path; print(Path("node_modules").is_dir())'` => `False`
+- `corepack pnpm --version` => `10.33.0`
+
+Timing method:
+- Python `subprocess.run(command, shell=True, executable="/bin/bash", capture_output=True, text=True)` wrapped with `time.perf_counter()`.
+
+command | exit | duration_seconds | result
+pnpm db:generate | 127 | 0.002887 | /bin/bash: pnpm: command not found
+pnpm db:validate | 127 | 0.002062 | /bin/bash: pnpm: command not found
+pnpm test | 127 | 0.001955 | /bin/bash: pnpm: command not found
+pnpm lint | 127 | 0.001940 | /bin/bash: pnpm: command not found
+pnpm check-types | 127 | 0.001774 | /bin/bash: pnpm: command not found
+pnpm build | 127 | 0.001891 | /bin/bash: pnpm: command not found
+pnpm exec playwright test --list | 127 | 0.001834 | /bin/bash: pnpm: command not found
+
+Status: BLOCKED, not passed. No database-mutating command ran.
