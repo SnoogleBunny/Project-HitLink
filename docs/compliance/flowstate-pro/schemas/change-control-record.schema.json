@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "flowstate-pro/change-control-record.schema.json",
+  "title": "Flowstate Pro change-control register",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "records"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/record" }
+    }
+  },
+  "$defs": {
+    "status": {
+      "enum": [
+        "DRAFT",
+        "PROPOSED",
+        "COUNSEL_REVIEW_REQUIRED",
+        "OWNER_APPROVAL_REQUIRED",
+        "APPROVED",
+        "SPECIFIED",
+        "IMPLEMENTED",
+        "TECHNICALLY_VERIFIED",
+        "OPERATIONALLY_EXERCISED",
+        "EVIDENCE_COMPLETE",
+        "LEGALLY_REVIEWED",
+        "APPROVED_FOR_PROFILE",
+        "BLOCKED",
+        "NOT_APPLICABLE",
+        "SUPERSEDED"
+      ]
+    },
+    "accountableFunction": {
+      "enum": [
+        "Architecture/Backend",
+        "Database",
+        "Legal/Privacy",
+        "Legal/counsel",
+        "Operations",
+        "Operations/QA-Assurance",
+        "Product",
+        "QA/Assurance",
+        "Security/Privacy"
+      ]
+    },
+    "profile": {
+      "type": "string",
+      "pattern": "^(ALL|VIRGINIA|BC_PRIVATE_CLINIC|[A-Z][A-Z0-9._-]{2,63})$"
+    },
+    "nonEmptyString": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "nonEmptySortedUniqueStrings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/nonEmptyString" }
+    },
+    "reference": {
+      "type": "string",
+      "maxLength": 256,
+      "anyOf": [
+        {
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*//)(?!.*\\u0000)(?=.{1,256}$)[^\\s]+/[^\\s]+$"
+        },
+        { "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+-]{1,255}$" }
+      ]
+    },
+    "referenceArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/reference" }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approver_name",
+        "approver_role",
+        "approved_at",
+        "scope",
+        "evidence_reference",
+        "candidate_identity"
+      ],
+      "properties": {
+        "approver_name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!(?:[Tt][Bb][Dd]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Nn]/[Aa]|[Ll][Ee][Gg][Aa][Ll]|[Rr][Ee][Vv][Ii][Ee][Ww][Ee][Rr]|[Rr][Ee][Dd][Aa][Cc][Tt][Ee][Dd]|\\[[Rr][Ee][Dd][Aa][Cc][Tt][Ee][Dd]\\]|(?:(?:[Aa][Cc][Tt][Ii][Nn][Gg]|[Ii][Nn][Tt][Ee][Rr][Ii][Mm]|[Dd][Ee][Pp][Uu][Tt][Yy]|[Aa][Ss][Ss][Oo][Cc][Ii][Aa][Tt][Ee]|[Aa][Ss][Ss][Ii][Ss][Tt][Aa][Nn][Tt]|[Ss][Ee][Nn][Ii][Oo][Rr]|[Cc][Hh][Ii][Ee][Ff]|[Gg][Ee][Nn][Ee][Rr][Aa][Ll]|[Ll][Ee][Gg][Aa][Ll]|[Ss][Tt][Aa][Ff][Ff]|[Ii][Nn]-[Hh][Oo][Uu][Ss][Ee]|[Pp][Rr][Ii][Vv][Aa][Cc][Yy]|[Ss][Ee][Cc][Uu][Rr][Ii][Tt][Yy]|[Cc][Oo][Mm][Pp][Ll][Ii][Aa][Nn][Cc][Ee]|[Pp][Rr][Oo][Dd][Uu][Cc][Tt]|[Dd][Aa][Tt][Aa]|[Pp][Rr][Oo][Tt][Ee][Cc][Tt][Ii][Oo][Nn]|[Rr][Ii][Ss][Kk]|[Oo][Pp][Ee][Rr][Aa][Tt][Ii][Oo][Nn][Ss]|[Ee][Xx][Ee][Cc][Uu][Tt][Ii][Vv][Ee]|[Cc][Oo][Rr][Pp][Oo][Rr][Aa][Tt][Ee]|[Oo][Uu][Tt][Ss][Ii][Dd][Ee]|[Ll][Ee][Aa][Dd])\\s+)*(?:[Cc][Oo][Uu][Nn][Ss][Ee][Ll]|[Oo][Ff][Ff][Ii][Cc][Ee][Rr]|[Dd][Ii][Rr][Ee][Cc][Tt][Oo][Rr]|[Oo][Ww][Nn][Ee][Rr]|[Mm][Aa][Nn][Aa][Gg][Ee][Rr]|[Ll][Ee][Aa][Dd]|[Aa][Dd][Mm][Ii][Nn][Ii][Ss][Tt][Rr][Aa][Tt][Oo][Rr]))$)\\S(?:.*\\S)?$",
+          "not": {
+            "pattern": "^(?:[Aa][Rr][Cc][Hh][Ii][Tt][Ee][Cc][Tt][Uu][Rr][Ee]/[Bb][Aa][Cc][Kk][Ee][Nn][Dd]|[Dd][Aa][Tt][Aa][Bb][Aa][Ss][Ee]|[Ll][Ee][Gg][Aa][Ll]/[Pp][Rr][Ii][Vv][Aa][Cc][Yy]|[Ll][Ee][Gg][Aa][Ll]/[Cc][Oo][Uu][Nn][Ss][Ee][Ll]|[Oo][Pp][Ee][Rr][Aa][Tt][Ii][Oo][Nn][Ss]|[Oo][Pp][Ee][Rr][Aa][Tt][Ii][Oo][Nn][Ss]/[Qq][Aa]-[Aa][Ss][Ss][Uu][Rr][Aa][Nn][Cc][Ee]|[Pp][Rr][Oo][Dd][Uu][Cc][Tt]|[Qq][Aa]/[Aa][Ss][Ss][Uu][Rr][Aa][Nn][Cc][Ee]|[Ss][Ee][Cc][Uu][Rr][Ii][Tt][Yy]/[Pp][Rr][Ii][Vv][Aa][Cc][Yy])$"
+          }
+        },
+        "approver_role": { "$ref": "#/$defs/accountableFunction" },
+        "approved_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^([0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01]))[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(?:\\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$",
+          "$comment": "The CLI checks Gregorian calendar dates and published leap seconds even when format is annotation-only."
+        },
+        "scope": { "$ref": "#/$defs/nonEmptyString" },
+        "evidence_reference": { "$ref": "#/$defs/reference" },
+        "candidate_identity": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from_status",
+        "to_status",
+        "prerequisite_evidence"
+      ],
+      "properties": {
+        "from_status": {
+          "$ref": "#/$defs/status",
+          "not": { "enum": ["BLOCKED", "NOT_APPLICABLE", "SUPERSEDED"] }
+        },
+        "to_status": { "$ref": "#/$defs/status" },
+        "prerequisite_evidence": {
+          "$comment": "The CLI rejects reference reuse across status arrays; standard uniqueItems applies only within one array.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/status" },
+          "additionalProperties": { "$ref": "#/$defs/referenceArray" }
+        },
+        "approval_reference": { "$ref": "#/$defs/reference" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "to_status": {
+                "enum": ["APPROVED", "LEGALLY_REVIEWED", "APPROVED_FOR_PROFILE"]
+              }
+            },
+            "required": ["to_status"]
+          },
+          "then": { "required": ["approval_reference"] },
+          "else": { "not": { "required": ["approval_reference"] } }
+        },
+        {
+          "if": {
+            "properties": { "to_status": { "enum": ["BLOCKED", "NOT_APPLICABLE", "SUPERSEDED"] } },
+            "required": ["to_status"]
+          },
+          "then": {
+            "anyOf": [
+              { "properties": { "from_status": { "const": "DRAFT" }, "prerequisite_evidence": { "required": ["DRAFT"] } } },
+              { "properties": { "from_status": { "const": "PROPOSED" }, "prerequisite_evidence": { "required": ["PROPOSED"] } } },
+              { "properties": { "from_status": { "const": "COUNSEL_REVIEW_REQUIRED" }, "prerequisite_evidence": { "required": ["COUNSEL_REVIEW_REQUIRED"] } } },
+              { "properties": { "from_status": { "const": "OWNER_APPROVAL_REQUIRED" }, "prerequisite_evidence": { "required": ["OWNER_APPROVAL_REQUIRED"] } } },
+              { "properties": { "from_status": { "const": "APPROVED" }, "prerequisite_evidence": { "required": ["APPROVED"] } } },
+              { "properties": { "from_status": { "const": "SPECIFIED" }, "prerequisite_evidence": { "required": ["SPECIFIED"] } } },
+              { "properties": { "from_status": { "const": "IMPLEMENTED" }, "prerequisite_evidence": { "required": ["IMPLEMENTED"] } } },
+              { "properties": { "from_status": { "const": "TECHNICALLY_VERIFIED" }, "prerequisite_evidence": { "required": ["TECHNICALLY_VERIFIED"] } } },
+              { "properties": { "from_status": { "const": "OPERATIONALLY_EXERCISED" }, "prerequisite_evidence": { "required": ["OPERATIONALLY_EXERCISED"] } } },
+              { "properties": { "from_status": { "const": "EVIDENCE_COMPLETE" }, "prerequisite_evidence": { "required": ["EVIDENCE_COMPLETE"] } } },
+              { "properties": { "from_status": { "const": "LEGALLY_REVIEWED" }, "prerequisite_evidence": { "required": ["LEGALLY_REVIEWED"] } } },
+              { "properties": { "from_status": { "const": "APPROVED_FOR_PROFILE" }, "prerequisite_evidence": { "required": ["APPROVED_FOR_PROFILE"] } } }
+            ]
+          },
+          "else": {
+            "anyOf": [
+              {"properties": {"from_status": {"const": "DRAFT"}, "to_status": {"const": "SPECIFIED"}}},
+              {"properties": {"from_status": {"const": "SPECIFIED"}, "to_status": {"const": "IMPLEMENTED"}}},
+              {"properties": {"from_status": {"const": "IMPLEMENTED"}, "to_status": {"const": "TECHNICALLY_VERIFIED"}}},
+              {"properties": {"from_status": {"const": "TECHNICALLY_VERIFIED"}, "to_status": {"const": "OPERATIONALLY_EXERCISED"}}},
+              {"properties": {"from_status": {"const": "OPERATIONALLY_EXERCISED"}, "to_status": {"const": "EVIDENCE_COMPLETE"}}},
+              {"properties": {"from_status": {"const": "COUNSEL_REVIEW_REQUIRED"}, "to_status": {"const": "LEGALLY_REVIEWED"}}},
+              {"properties": {"from_status": {"const": "OWNER_APPROVAL_REQUIRED"}, "to_status": {"const": "APPROVED"}}},
+              {"properties": {"from_status": {"const": "OWNER_APPROVAL_REQUIRED"}, "to_status": {"const": "APPROVED_FOR_PROFILE"}, "prerequisite_evidence": {"required": ["SPECIFIED", "IMPLEMENTED", "TECHNICALLY_VERIFIED", "OPERATIONALLY_EXERCISED", "EVIDENCE_COMPLETE", "LEGALLY_REVIEWED", "OWNER_APPROVAL_REQUIRED"]}}}
+            ]
+          }
+        }
+      ]
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "change_id",
+        "document_ids",
+        "status",
+        "owner",
+        "reason",
+        "source",
+        "affected_profiles",
+        "effective_date",
+        "superseded_text",
+        "required_review",
+        "evidence_references",
+        "transition",
+        "legal_value"
+      ],
+      "properties": {
+        "change_id": {
+          "type": "string",
+          "pattern": "^WP[0-9]+\\.[0-9]+-CC-[0-9]{3}$"
+        },
+        "document_ids": {
+          "$ref": "#/$defs/nonEmptySortedUniqueStrings"
+        },
+        "status": { "$ref": "#/$defs/status" },
+        "owner": { "$ref": "#/$defs/accountableFunction" },
+        "reason": { "$ref": "#/$defs/nonEmptyString" },
+        "source": { "$ref": "#/$defs/referenceArray" },
+        "affected_profiles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/profile" }
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "superseded_text": { "$ref": "#/$defs/nonEmptyString" },
+        "required_review": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/accountableFunction" }
+        },
+        "evidence_references": { "$ref": "#/$defs/referenceArray" },
+        "transition": { "$ref": "#/$defs/transition" },
+        "legal_value": { "type": "boolean" },
+        "approval": { "$ref": "#/$defs/approval" }
+      },
+      "oneOf": [
+        { "properties": { "status": { "const": "DRAFT" }, "transition": { "properties": { "to_status": { "const": "DRAFT" } } } } },
+        { "properties": { "status": { "const": "PROPOSED" }, "transition": { "properties": { "to_status": { "const": "PROPOSED" } } } } },
+        { "properties": { "status": { "const": "COUNSEL_REVIEW_REQUIRED" }, "transition": { "properties": { "to_status": { "const": "COUNSEL_REVIEW_REQUIRED" } } } } },
+        { "properties": { "status": { "const": "OWNER_APPROVAL_REQUIRED" }, "transition": { "properties": { "to_status": { "const": "OWNER_APPROVAL_REQUIRED" } } } } },
+        { "properties": { "status": { "const": "APPROVED" }, "transition": { "properties": { "to_status": { "const": "APPROVED" } } } } },
+        { "properties": { "status": { "const": "SPECIFIED" }, "transition": { "properties": { "to_status": { "const": "SPECIFIED" } } } } },
+        { "properties": { "status": { "const": "IMPLEMENTED" }, "transition": { "properties": { "to_status": { "const": "IMPLEMENTED" } } } } },
+        { "properties": { "status": { "const": "TECHNICALLY_VERIFIED" }, "transition": { "properties": { "to_status": { "const": "TECHNICALLY_VERIFIED" } } } } },
+        { "properties": { "status": { "const": "OPERATIONALLY_EXERCISED" }, "transition": { "properties": { "to_status": { "const": "OPERATIONALLY_EXERCISED" } } } } },
+        { "properties": { "status": { "const": "EVIDENCE_COMPLETE" }, "transition": { "properties": { "to_status": { "const": "EVIDENCE_COMPLETE" } } } } },
+        { "properties": { "status": { "const": "LEGALLY_REVIEWED" }, "transition": { "properties": { "to_status": { "const": "LEGALLY_REVIEWED" } } } } },
+        { "properties": { "status": { "const": "APPROVED_FOR_PROFILE" }, "transition": { "properties": { "to_status": { "const": "APPROVED_FOR_PROFILE" } } } } },
+        { "properties": { "status": { "const": "BLOCKED" }, "transition": { "properties": { "to_status": { "const": "BLOCKED" } } } } },
+        { "properties": { "status": { "const": "NOT_APPLICABLE" }, "transition": { "properties": { "to_status": { "const": "NOT_APPLICABLE" } } } } },
+        { "properties": { "status": { "const": "SUPERSEDED" }, "transition": { "properties": { "to_status": { "const": "SUPERSEDED" } } } } }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "anyOf": [
+              {
+                "properties": { "status": { "const": "APPROVED_FOR_PROFILE" } },
+                "required": ["status"]
+              },
+              {
+                "properties": {
+                  "legal_value": { "const": true },
+                  "status": { "enum": ["APPROVED", "LEGALLY_REVIEWED"] }
+                },
+                "required": ["legal_value", "status"]
+              }
+            ]
+          },
+          "then": { "required": ["approval"] },
+          "else": { "not": { "required": ["approval"] } }
+        }
+      ]
+    }
+  },
+  "x-ordering": {
+    "records": "change_id-ascending",
+    "array_fields": "lexicographic-ascending-unique"
+  },
+  "x-transition-rules": {
+    "adjacent": [
+      ["DRAFT", "SPECIFIED"],
+      ["SPECIFIED", "IMPLEMENTED"],
+      ["IMPLEMENTED", "TECHNICALLY_VERIFIED"],
+      ["TECHNICALLY_VERIFIED", "OPERATIONALLY_EXERCISED"],
+      ["OPERATIONALLY_EXERCISED", "EVIDENCE_COMPLETE"],
+      ["COUNSEL_REVIEW_REQUIRED", "LEGALLY_REVIEWED"],
+      ["OWNER_APPROVAL_REQUIRED", "APPROVED"]
+    ],
+    "approved_for_profile_from": "OWNER_APPROVAL_REQUIRED",
+    "approved_for_profile_prerequisites": [
+      "SPECIFIED",
+      "IMPLEMENTED",
+      "TECHNICALLY_VERIFIED",
+      "OPERATIONALLY_EXERCISED",
+      "EVIDENCE_COMPLETE",
+      "LEGALLY_REVIEWED",
+      "OWNER_APPROVAL_REQUIRED"
+    ],
+    "approval_required_to_statuses": [
+      "APPROVED",
+      "LEGALLY_REVIEWED",
+      "APPROVED_FOR_PROFILE"
+    ],
+    "terminal_dispositions": ["BLOCKED", "NOT_APPLICABLE", "SUPERSEDED"]
+  }
+}

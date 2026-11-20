@@ -55,20 +55,15 @@ The program is not complete when code compiles. It is complete for one named cus
 When sources disagree, stop the affected packet, record the conflict in the decision register, and obtain the required owner. Never silently select the easiest source.
 
 1. Approved entries in `docs/compliance/flowstate-pro/decision-register-and-open-items.md` for product decisions.
-2. Qualified-counsel-approved entries in the future legal applicability matrix and approved policy catalogs for legal values.
+2. Qualified-counsel-approved entries in `docs/compliance/flowstate-pro/legal-applicability-matrix.md` and approved policy catalogs for legal values.
 3. Current code and `packages/db/prisma/schema.prisma` for claims about implemented Flowstate Standard.
-4. The future Pro product requirements document for required behavior.
-5. The future Pro system design and security/privacy architecture for approved implementation detail.
-6. The future roadmap and this plan for sequence.
-7. The future competitor-parity matrix for dated benchmark evidence only.
+4. `docs/compliance/flowstate-pro/product-requirements-document.md` for specified required behavior.
+5. `docs/compliance/flowstate-pro/system-design.md` and `docs/compliance/flowstate-pro/security-privacy-architecture.md` for specified implementation detail.
+6. `docs/compliance/flowstate-pro/roadmap.md` and this plan for sequence.
+7. `docs/compliance/flowstate-pro/competitor-parity-matrix.md` for dated benchmark evidence only.
 8. `docs/HIPAA_Canada_Compliance_Agent_Directive.md` for execution protocol and acceptance themes; it cannot override approved Pro decisions or assert applicability.
 
-At this revision, only the following Flowstate Pro source package files exist:
-
-- `docs/compliance/flowstate-pro/README.md`
-- `docs/compliance/flowstate-pro/decision-register-and-open-items.md`
-
-Every other Pro dossier path named in this plan is marked **PROPOSED — FUTURE** and must not be described as current evidence until created, reviewed, and assigned a status.
+The Flowstate Pro dossier paths named in this plan exist and carry their own explicit status. A document marked `SPECIFIED` is a planning contract only; documents awaiting WP0.3 reconciliation retain their current draft/planning status. None is implementation, operating, legal, production, or profile-approval evidence unless its own status and named approvals say so.
 
 ---
 
@@ -272,39 +267,153 @@ Use RED-GREEN-REFACTOR for behavior. Database packets must prove fresh install a
 
 ### WP0.1 — Freeze evidence and boundaries
 
-**Existing files read-only:** Standard source, tests, `packages/db/prisma/schema.prisma`, root/project-required docs.
+**Packet status:** `TECHNICALLY_VERIFIED` on 2026-09-22; specialist and owner review remains required.
 
-**PROPOSED — FUTURE:** `docs/compliance/flowstate-pro/current-standard-baseline.md`, `docs/compliance/flowstate-pro/evidence/README.md`.
+**Exact candidate:** `d4f2098b4940cae61b9f36345cb480bda33d990d` on `hermes/pro-wp0-1-baseline` in `/Users/alvinlo/Desktop/Project-HitLink-wp0-1`.
 
-- Record commit, tree status, toolchain, current test/build state, 65-model/48-enum/16-migration facts, and pre-existing dirty/untracked files.
-- Regenerate Standard direct-database-access and sensitive-store counts used as boundary evidence.
-- Document what is implemented, schema-only, historical, or unknown.
-- Acceptance: reproducible commands and redacted outputs exist; no current failure is hidden and no Pro model is represented as implemented.
+**Artifacts:**
+
+- `docs/compliance/flowstate-pro/current-standard-baseline.md`
+- `docs/compliance/flowstate-pro/evidence/README.md`
+- `docs/compliance/flowstate-pro/evidence/wp0.1-standard-baseline/`
+- mandatory decision, control/evidence, data-flow, plan, and work-packet updates
+
+**Acceptance evidence:**
+
+- [x] Commit, branch/worktree, initial dirty state, redacted remote, Node, pnpm/Corepack, Git, and platform recorded.
+- [x] Regenerated 65 Prisma models, 48 enums, and 16 committed migration SQL files.
+- [x] Regenerated 363 production delegate calls across 39 files and 299 calls across 36 files outside `packages/db`, with explicit exclusions and limitations.
+- [x] Searched tracked code for Prisma raw-SQL APIs; found 0 call sites under the documented rules.
+- [x] Documented Standard applications, packages, route/action/API boundaries, sessions/auth, direct database access, files, Stripe/webhooks, notification helper, logs, browser/URL risks, and filesystem storage with exact paths.
+- [x] Separated `IMPLEMENTED`, `SCHEMA_ONLY`, `HISTORICAL`, and `UNKNOWN`; no Pro model/control is described as implemented.
+- [x] Ran every required root command exactly. All returned exit 127 because `pnpm` was unavailable on `PATH`; `node_modules` was absent. Results remain `BLOCKED`, not passed.
+- [x] Added redacted evidence artifacts and updated all four mandatory dossier/plan artifacts.
+- [x] Documentation/content checks and `git diff --check` completed; final allowed-path status is recorded in the WP0.1 handoff.
+
+**Deviations/limitations:** no dependency installation, Corepack shim, database, `.env`, production credential, customer/demo payload, vendor console, deployment, or external system was used. The blocked root gates must be rerun on an exact candidate with declared prerequisites before any later release claim.
+
+**Review/gate:** Database, Backend, Security/Privacy, QA/Assurance, and CEO/Product owner review remain required. Gate G0 remains `BLOCKED`; WP0.1 does not authorize Pro implementation.
+
+**Next authorized packet:** WP0.2.
 
 ### WP0.2 — Author the product and architecture specifications
 
-**PROPOSED — FUTURE:** `product-spec.md`, `product-requirements-document.md`, `roadmap.md`, `system-design.md`, `security-privacy-architecture.md` under `docs/compliance/flowstate-pro/`.
+**Packet status:** `COMPLETED` on 2026-09-22 after technical verification and explicit project-owner acceptance for all five required WP0.2 review roles; Gate G0 remains `BLOCKED`.
 
-- Convert approved decisions into testable requirements without filling blocked values.
-- Define exact v1 journeys, aggregate boundaries, API contracts, state machines, threat model, tenancy/RLS model, file pipeline, failure matrix, and module activation semantics.
-- Acceptance: every requirement links to decision IDs and acceptance evidence; Standard/Pro boundaries are consistent across all documents.
+**Changed files:**
+
+- `docs/compliance/flowstate-pro/product-spec.md`
+- `docs/compliance/flowstate-pro/product-requirements-document.md`
+- `docs/compliance/flowstate-pro/roadmap.md`
+- `docs/compliance/flowstate-pro/system-design.md`
+- `docs/compliance/flowstate-pro/security-privacy-architecture.md`
+- `docs/compliance/flowstate-pro/decision-register-and-open-items.md`
+- `docs/plans/2026-08-10-hipaa-canada-compliance-implementation-plan.md`
+- `docs/compliance/flowstate-pro/work-packets/WP0.2-author-product-and-architecture-specifications.md`
+
+**Acceptance checklist:**
+
+- [x] Reconciled product identity, target lanes/profiles, roles/surfaces, Pro-US v1 journey, deferred scope, patient release, commercial/offboarding boundaries, parity semantics, exclusions, decision sources, and blockers.
+- [x] Preserved all 44 `FR-*` and 20 `NFR-*` IDs; every requirement has scope, decision source, owner/approving role, requirement, concrete acceptance evidence, failure/rollback behavior, and blocked dependencies where applicable. The completed semantic audit documents an exact 50-requirement blocker set, including FR-029 release-policy/authority/revocation/expiry inputs and FR-031 legally/emergency-required access, custody, and offboarding inputs; exact-set validation detects drift but does not substitute for the audit.
+- [x] Specified the minimal modular-monolith/API/repository/RLS, identity/authority, clinical-integrity, outbox/job, audit, file, destination, activation, regional, failure, and rollback contracts. `LEASED` can CAS to `BLOCKED` after execution-time reauthorization; provider submission requires current unexpired lease ownership; recovery persists lease expiry before reconciliation/retry and rejects stale-owner submission.
+- [x] Reconciled trust boundaries, identity classes, data-bearing crossings, deny-by-default policy, support/break-glass, logging/audit, encryption/files, lifecycle/cross-border, threat, fail-closed, evidence, and non-claim behavior.
+- [x] Mapped roadmap M0–M9 to implementation-plan packets and G0–G4 without reordering packets or converting blocked inputs into defaults.
+- [x] Reconciled stale dossier-as-future/only-two-files claims and DRAFT-versus-SPECIFIED references without changing product decisions; validation is repository-relative and durable in the WP0.2 packet.
+- [x] Required deterministic requirement, cross-document/link, status-vocabulary, secret/regulated-data, complete-diff, and root `git diff --check` checks passed on 2026-09-22. The root status still includes nine inherited WP0.1 paths that this packet did not edit and cannot remove without violating scope; results are recorded in the WP0.2 work packet.
+- [x] Product owner/CEO review accepted by explicit project-owner authorization on 2026-09-22.
+- [x] Architecture/Backend review accepted by explicit project-owner authorization on 2026-09-22.
+- [x] Database review accepted by explicit project-owner authorization on 2026-09-22.
+- [x] Security/Privacy review accepted by explicit project-owner authorization on 2026-09-22.
+- [x] Operations/QA-Assurance review accepted by explicit project-owner authorization on 2026-09-22.
+
+**Unresolved blockers:** exact first customer/profile classifications; counsel-owned legal/policy values; patient CIAM; production vendors/configurations and agreements; BC excluded-lane applicability; pricing/packaging/envelopes/support/SLA/claims/insurance; and named accountable humans, counsel, assessor, and executive approvals.
+
+**Review/gate:** WP0.2 cannot self-approve. Gate G0 remains `BLOCKED`; no Milestone 1 application, schema, infrastructure, vendor, PHI-capable, or production work is authorized.
+
+**Next authorized packet:** WP0.3. Counsel-owned values remain blocked in WP0.3/G0; this approval does not authorize G0 or implementation.
 
 ### WP0.3 — Author legal, data, control, and operations specifications
 
-**PROPOSED — FUTURE:** `legal-applicability-matrix.md`, `data-classification-and-flows.md`, `control-and-evidence-matrix.md`, `operations-and-governance.md`, `competitor-parity-matrix.md`.
+**Packet status:** `COMPLETED` on 2026-09-23. Specification review is `PASS`; independent technical quality/security/evidence review is `APPROVED`; explicit project-owner acceptance is recorded for all six required WP0.3 review functions. WP0.4 is authorized but not started. G0 remains `BLOCKED`; WP1.x is unauthorized.
 
-- Counsel-owned values remain `COUNSEL_REVIEW_REQUIRED` until approved.
-- Map purpose/authority, customer profile, record origin, rights, retention, legal hold, disclosure, transfer, incident, vendor, and responsibility decisions.
-- Define accountable humans, access reviews, screening, training, sanctions, incident command, vendor review, risk analysis, penetration testing, insurance review, and protected evidence handling.
-- Acceptance: every applicable control has owner, implementation target, test, exercise, evidence reference, review cadence, and release gate.
+**Current WP0.3 path state:** all eight allowed WP0.3 paths are changed in the current checkout: `docs/compliance/flowstate-pro/legal-applicability-matrix.md`, `docs/compliance/flowstate-pro/data-classification-and-flows.md`, `docs/compliance/flowstate-pro/control-and-evidence-matrix.md`, `docs/compliance/flowstate-pro/operations-and-governance.md`, `docs/compliance/flowstate-pro/competitor-parity-matrix.md`, `docs/compliance/flowstate-pro/decision-register-and-open-items.md`, `docs/plans/2026-08-10-hipaa-canada-compliance-implementation-plan.md`, and `docs/compliance/flowstate-pro/work-packets/WP0.3-author-legal-data-control-and-operations-specifications.md`. The worktree also contains the inherited WP0.1/WP0.2 paths and hashes encoded by the WP0.3 validator; they are not WP0.3 edits and must remain byte-identical.
+
+**Independent specification review outcome:** `PASS`
+
+**Independent specification review date:** `2026-09-23`
+
+**Independent specification review candidate:** `WP0.3-MUTABLE-MANIFEST-V1` — base commit `d4f2098b4940cae61b9f36345cb480bda33d990d` plus the exact eight-path SHA-256 manifest recorded in the WP0.3 packet
+
+**Independent quality review outcome:** `APPROVED`
+
+**Independent quality review date:** `2026-09-23`
+
+**Independent quality review candidate:** `WP0.3-MUTABLE-MANIFEST-V1`
+
+**Acceptance checklist:**
+
+- [x] WP0.3 packet exists with the eight-path scope, exact `LEG-*`, control, `MAP-*`, blocker, review, gate, and validator contracts.
+- [x] Decision register records the five exact blockers `WP03-B01`–`WP03-B05` with category, `BLOCKED` status, owner, dependency/evidence, affected profiles/controls, and next review.
+- [x] Decision register records the five document roles, all 11 exact `MAP-*` IDs, stable treatment of all 35 control IDs, known contradictions, required reviews, G0 `BLOCKED`, and WP1.x unauthorized.
+- [x] Legal candidate preserves `LEG-01`–`LEG-11` as counsel-owned inputs with `COUNSEL_REVIEW_REQUIRED`; no legal approval is claimed.
+- [x] Data candidate preserves `D0`–`D9` and `DX` and adds the minimum decision-input, destination, protected-evidence, and fail-closed contracts without claiming implementation.
+- [x] Reconciled `control-and-evidence-matrix.md` to the exact 11-column control table, all 35 stable control rows, all 11 canonical `MAP-*` rows, substantive evidence/exercise/cadence/gate fields, and top-level status/release metadata.
+- [x] Reconciled `operations-and-governance.md` for accountable functions, named-human blockers, access/screening/training/sanctions, incident/vendor/risk/assessment/insurance procedures, exercises, protected evidence, cadence, G0, and WP1.x metadata without claiming staffing or completion.
+- [x] Reconciled `competitor-parity-matrix.md` for dated benchmark-only treatment, control/profile boundaries, G0, and WP1.x metadata without refreshing sources or creating procurement, legal, compliance, production, or release authority.
+- [x] Hardened the shared semantic scanner so inline code is not a blanket exemption and negation applies only to the matched claim's immediate grammar. Mutation fixture: `G0 approved.`; mutation fixture: `G0 PASS`; mutation fixture: `G0 is authorized.`; mutation fixture: `WP1.x authorized.`; mutation fixture: `Flowstate Pro is HIPAA-compliant`; mutation fixture: `Flowstate Pro is production-ready`. Clearly labelled quoted/example fixtures and legitimate negative/boundary statements remain allowed.
+- [x] Embedded validator passed on 2026-09-23 with exact output recorded in the WP0.3 packet, including mutable-manifest/self-hash verification, explicit review records, accountable-function coverage, legal-`DRAFT` semantics, hardened claim/status mutations, inherited hashes, exact scope, and `git diff --check`.
+- [x] Separate `git diff --check` returned exit 0 with no output; exact status contained the eight WP0.3 paths plus 13 byte-identical inherited paths; inherited hashes matched; relative links passed in the validator; and the complete eight-path diff was reviewed.
+- [x] Independent specification review returned `PASS` on 2026-09-23 for the exact manifested candidate.
+- [x] Independent technical quality/security/evidence review returned `APPROVED` on 2026-09-23 with no critical, important, or minor issues. Evidence: embedded validator exit 0; 11 legal decisions, 35 controls, 11 mappings, five blockers; exact transcripts; perfect-tense open 12/12 rejected; declared regressions 148/148 rejected, 48/48 allowed, independent matrix 34/34; perfect-tense matrix 72 rejected/0 bypasses and 72 allowed/0 false positives; bounded present/past/perfect/optional-now matrix 144 rejected/0 bypasses and 192 allowed/0 false positives; stale-identity expected failure, exact restore, and post-restore pass; mutable 8/8, inherited 13/13, exact scope 21 including untracked, and `git diff --check` exit 0. The packet canonical self-hash before recording approval was `99e9b81acfd376dcf1857d31b78450a79a19010029b4eab3e7bea3dd45c3f2a6`; the manifest is regenerated after this record.
+- [x] Human acceptance is recorded on 2026-09-23 by explicit project-owner authorization for all six required WP0.3 review functions: Product; Architecture; Database; Security/Privacy; Operations/QA; and legal/counsel. The acceptance applies to the exact pre-recording `WP0.3-MUTABLE-MANIFEST-V1` candidate with packet canonical self-hash `9bf74694d580ff123fca2033ecaa0bf1d25fa26c0839a7399766c61178c6d04a`. It accepts the specification within those functions' WP0.3 remit only; every counsel-owned value remains `COUNSEL_REVIEW_REQUIRED`, and vendor, customer/profile, named-human, evidence, exercise, assessor, commercial, compliance, and production blockers remain unresolved.
+- [x] WP0.3 is complete after validator success, specification `PASS`, quality `APPROVED`, required human acceptance, and explicit project-owner authorization. WP0.4 is authorized as the next packet but was not started.
+
+**Blockers:** `WP03-B01` first customer/profile and entity facts; `WP03-B02` counsel-owned legal/policy values; `WP03-B03` vendors/configurations/agreements/regions/support/transfers; `WP03-B04` commercial/claims/insurance/operating-envelope/production inputs; `WP03-B05` named accountable humans/protected evidence/exercises/assessor/coverage. All remain `BLOCKED` under the owners and evidence requirements in the decision register.
+
+**Review/gate:** Independent specification review is `PASS`, independent technical quality/security/evidence review is `APPROVED`, and required project-owner human acceptance is recorded for Product, Architecture, Database, Security/Privacy, Operations/QA, and legal/counsel. WP0.3 is complete. WP0.4 is authorized but not started. G0 remains `BLOCKED`; WP1.x is unauthorized.
+
+**Next packet:** `AUTHORIZED — NOT STARTED`. WP0.4 may begin only as a separate reviewed task. This authorization does not approve G0, WP1.x, production use, compliance status, a customer/profile, a vendor, or a counsel-owned value.
 
 ### WP0.4 — Establish change control and dossier validators
 
-**PROPOSED — FUTURE:** `docs/compliance/flowstate-pro/schemas/`, `scripts/pro-compliance/validate-dossier.mjs`, `tests/tooling/pro-compliance-dossier.test.mjs`.
+**Packet status (2026-11-19):** `IMPLEMENTED — INDEPENDENT REVIEWS AND HUMAN ACCEPTANCE PENDING` on `feat/flowstate-pro-implementation` at base `5b1b84b103a0cea9a521d5857c0b49fdeb710473`. The external handoff pins the exact current scope and verification inputs. G0 remains `BLOCKED`; WP1.x is unauthorized.
 
-- Validate required status vocabulary, owner, reason, source, affected profiles, effective date, superseded text, required review, and evidence reference.
-- Reject approved legal values without named approval metadata and reject plaintext contracts/secrets.
-- Acceptance: a deliberately incomplete fixture fails; current approved documents pass; status cannot jump from `SPECIFIED` to `APPROVED_FOR_PROFILE` without intermediate evidence.
+**Exact WP0.4 paths:**
+
+- `docs/compliance/flowstate-pro/schemas/change-control-record.schema.json`
+- `docs/compliance/flowstate-pro/schemas/dossier-document-metadata.schema.json`
+- `docs/compliance/flowstate-pro/dossier-manifest.json`
+- `docs/compliance/flowstate-pro/change-control-register.json`
+- `scripts/pro-compliance/validate-dossier.mjs`
+- `tests/tooling/pro-compliance-dossier.test.mjs`
+- `package.json`
+- `docs/compliance/flowstate-pro/decision-register-and-open-items.md`
+- this implementation plan
+- `docs/compliance/flowstate-pro/work-packets/WP0.4-establish-change-control-and-dossier-validators.md`
+
+**Historical implementation evidence and current gate checklist:**
+
+- [x] Two dependency-free JSON contracts, one deterministic manifest, one append-only register, one Node standard-library validator, and one focused Node test file were implemented.
+- [x] Recovery rerun found the preserved partial candidate already green at 12/12 tests and `VALIDATION_PASSED documents=18 records=1 files=22`; historical pre-rate-limit RED output was unavailable and was not fabricated.
+- [x] New behavior-first probes failed before repair for invalid profile vocabulary and governed-JSON symlink escape (`13 pass, 2 fail`), then for alphabetic bearer tokens and `client_secret` assignments (`14 pass, 1 fail`).
+- [x] The first independent specification review returned `FAIL` on 2026-09-23 with eight findings; the first through ninth exact-candidate re-reviews returned `FAIL` on the previously recorded gaps; the tenth exact-candidate re-review returned `FAIL` with four Important gaps and one Minor gap; and the eleventh through nineteenth exact-candidate re-reviews returned `FAIL` on 2026-09-24 with the recorded H1, reference-destination, and record-state gaps. The nineteenth review reported one Important finding: angle destinations accepted ASCII whitespace, C0 controls, and DEL, while bare destinations accepted a dangling final escape, allowing malformed definitions to suppress real Setext H1s. The bounded shared-destination remediation was implemented without broadening scope. The twentieth exact-candidate specification re-review returned `FAIL` on 2026-09-24 solely because this packet-status headline still reported the eighteenth failure remediated and nineteenth review pending. That governed-record inconsistency is remediated across the implementation plan, decision register, and WP0.4 work packet; the twenty-first exact-candidate specification re-review remains pending and no `PASS` or approval is claimed.
+- [x] Final focused test passes 51/51; an independent counted production-path harness passes all 51 tests with 1,697 validator executions. The independent 250-case status corpus and 261-case extension remain green. H1 verification passes the prior 15, 13, 19, 27, 11, 20, 24, 41, 8, 109, 15, and 115-case matrices plus the fresh destination-character corpus 38/38 after reproducing exactly eight pre-fix failures. One shared bounded recognizer rejects ASCII whitespace, C0 controls, DEL, and unmatched/nested angle syntax inside angle destinations; bare destinations require balanced parentheses, bounded nesting, and no dangling final escape before any continuation state is entered. The transition matrix passes 225/225; diagnostic/trust/error/nondisclosure checks pass; reference-path controls pass 6/6; complete schema-leaf mutation coverage, including `$schema`/`$id`, remains green. Separate angle-character and dangling-escape mutations fail in exactly six and two cases, then restore validator bytes identically at SHA-256 `a6ae890e267b4216498194df90456c1e49febe6b83c9cb248614ddfdd5be1b2a`; counted-harness instrumentation restores the test file identically at SHA-256 `7653ab2082f465f5129cd97e6f09f5fd204a7a7133e0e49794aab2a9199fbedb`.
+- [x] Incomplete and unknown metadata, duplicate IDs/paths, invalid and symlink-escaped paths, all 15 canonical declared statuses with matching and contradictory manifest values, lowercase/mixed-case and ASCII/NBSP/zero-width value variants, declarations after line 14, same-status duplicates, cross-syntax conflicts, malformed declaration-like lines including all sixth- and seventh-review families, bounded current approved-prose forms and contradictions, exact heading/bold declaration controls, ordinary bold `Status quo`, `Status indicators:`, and `Status page:` labels, ordinary `## Status indicators` and `## Status history` headings, ordinary status prose, an H1 title merely containing status, ignored inline/code-fenced examples, the inherited evidence README with no declaration, manifest status validation despite declaration absence, invalid vocabulary/date/timestamp, illegal transitions, missing profile-approval prerequisites, missing/placeholder named approval, fabricated-person owners/review functions, non-accountable approval roles, empty superseded text, secret-bearing invalid IDs without disclosure, missing/escaped references and intermediate/final symlinks across every governed reference field, readable-but-invalid schemas, every contract-bearing leaf in both schemas, secret/contract payloads, malformed JSON, missing files, invalid UTF-8, CLI misuse, deterministic diagnostics, safe redaction/reference controls, current dossier coverage, and exact dependency-free package scripts are exercised through the production validator path.
+- [x] Current dossier result is `VALIDATION_PASSED documents=18 records=1 files=22`.
+- [x] The September candidate was pinned to base commit `d4f2098b4940cae61b9f36345cb480bda33d990d` on `hermes/pro-wp0-3-controls` in `/Users/alvinlo/Desktop/Project-HitLink-wp0-3`, with its own ten-path SHA-256 manifest. That manifest is historical, not the current handoff.
+- [x] The inherited completed WP0.3 candidate was verified before WP0.4 documentation updates: all seven ordinary WP0.3 mutable hashes matched the accepted manifest, and inherited WP0.1–WP0.3 paths outside WP0.4 scope were not rewritten.
+- [x] No dependency or lockfile changed; no application, Prisma, migration, database, infrastructure, vendor, profile, production, or WP1.x behavior changed.
+- [ ] Independent specification re-review: pending for the current exact candidate after prerequisite key and handoff remediation.
+- [ ] Independent quality/security/evidence review: pending until specification review passes.
+- [ ] Required Product, Architecture/Backend, Database, Security/Privacy, Operations/QA-Assurance, and legal/counsel metadata-boundary acceptance: pending.
+
+**Boundaries:** the scanner is intentionally bounded to explicit credential shapes, Luhn-valid payment-card shapes, explicit contract-body markers, and prohibited JSON payload keys. Declared status is optional when absent: the packet requires the registered inherited evidence README to pass from schema-valid manifest metadata, while any present declaration must match the exact bounded grammar and reconcile without conflict. It does not classify natural-language agreements or decide legal authority. Every counsel-owned value remains `COUNSEL_REVIEW_REQUIRED`; `WP03-B01`–`WP03-B05` remain `BLOCKED`.
+
+**Next packet:** WP0.5 is identified only. Do not draft or start it until both WP0.4 independent reviews, required human acceptance, and explicit project-owner stop/review are complete.
+
+**November 19, 2026 review:** The recovered candidate did not pass independent specification review. The September record above remains historical. The [WP0.4 decision register disposition](../compliance/flowstate-pro/decision-register-and-open-items.md#wp04-review-disposition--2026-11-19) records the remediation and the project-owner direction for named profile approval and terminal dispositions. No completion checkoff or next packet authorization has been issued.
+
+**November 20 scope review:** Independent specification review failed on the prior candidate because manifest registration could include unrelated repository Markdown. The schema and CLI now limit registrations to the Pro dossier subtree and the existing implementation plan. The CLI checks resolved paths before reading dossier Markdown, while reference-only paths retain their existing contract. The new synthetic registration test failed before the repair and passed after it. Current-dossier validation also passed. A fresh exact-candidate specification review, subsequent quality/security/evidence review, and named human acceptance are pending. G0 remains blocked.
 
 ### WP0.5 — G0 review
 
@@ -678,7 +787,7 @@ A missing blocker never defaults to the least restrictive behavior. Implement in
 
 ### 14.3 Dossier update rule
 
-After every packet, update the future control/evidence matrix and affected specifications with:
+After every packet, update the control/evidence matrix and affected specifications with:
 
 - decision/control/requirement IDs;
 - exact implementation revision and configuration version;

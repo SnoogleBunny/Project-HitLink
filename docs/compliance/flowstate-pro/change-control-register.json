@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "records": [
+    {
+      "change_id": "WP0.4-CC-001",
+      "document_ids": [
+        "PRO-COMPETITOR-PARITY",
+        "PRO-CONTROL-EVIDENCE",
+        "PRO-DATA-FLOWS",
+        "PRO-DECISION-REGISTER",
+        "PRO-DOSSIER-INDEX",
+        "PRO-EVIDENCE-README",
+        "PRO-IMPLEMENTATION-PLAN",
+        "PRO-LEGAL-MATRIX",
+        "PRO-OPERATIONS-GOVERNANCE",
+        "PRO-PRD",
+        "PRO-PRODUCT-SPEC",
+        "PRO-ROADMAP",
+        "PRO-SECURITY-PRIVACY",
+        "PRO-SYSTEM-DESIGN",
+        "STANDARD-BASELINE",
+        "WP0.1-PACKET",
+        "WP0.2-PACKET",
+        "WP0.3-PACKET"
+      ],
+      "status": "SPECIFIED",
+      "owner": "Architecture/Backend",
+      "reason": "Adopt the machine-readable dossier manifest, change-control contract, deterministic validator, and focused test boundary for WP0.4 review.",
+      "source": [
+        "docs/compliance/flowstate-pro/README.md",
+        "docs/compliance/flowstate-pro/control-and-evidence-matrix.md",
+        "docs/compliance/flowstate-pro/roadmap.md",
+        "docs/compliance/flowstate-pro/work-packets/WP0.4-establish-change-control-and-dossier-validators.md"
+      ],
+      "affected_profiles": ["ALL"],
+      "effective_date": "2026-09-23",
+      "superseded_text": "NONE — no prior text superseded",
+      "required_review": [
+        "Architecture/Backend",
+        "Database",
+        "Legal/counsel",
+        "Operations/QA-Assurance",
+        "Product",
+        "Security/Privacy"
+      ],
+      "evidence_references": [
+        "docs/compliance/flowstate-pro/schemas/change-control-record.schema.json",
+        "docs/compliance/flowstate-pro/schemas/dossier-document-metadata.schema.json",
+        "scripts/pro-compliance/validate-dossier.mjs",
+        "tests/tooling/pro-compliance-dossier.test.mjs"
+      ],
+      "transition": {
+        "from_status": "DRAFT",
+        "to_status": "SPECIFIED",
+        "prerequisite_evidence": {
+          "DRAFT": ["docs/compliance/flowstate-pro/work-packets/WP0.4-establish-change-control-and-dossier-validators.md"]
+        }
+      },
+      "legal_value": false
+    }
+  ]
+}

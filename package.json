@@ -12,6 +12,8 @@
     "lint": "turbo run lint",
     "check-types": "corepack pnpm db:generate && turbo run check-types",
     "test": "turbo run test",
+    "validate:pro-compliance-dossier": "node scripts/pro-compliance/validate-dossier.mjs",
+    "test:pro-compliance-dossier": "node --test tests/tooling/pro-compliance-dossier.test.mjs",
     "test:tooling": "node --test tests/tooling/windows-bootstrap.test.mjs",
     "test:migration:integration": "corepack pnpm --filter admin-web test:migration:integration",
     "test:e2e:onboarding": "playwright test tests/e2e/migration-first-onboarding.spec.ts --project=chromium",
