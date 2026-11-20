@@ -131,6 +131,13 @@ The validator and this ledger are grouped in the WP0.4 technical checkpoint comm
 - [ ] Record explicit project-owner authorization to start WP0.5.
 - [ ] Complete G0 review and record named approval of the narrowed Phase 1 scope before the first implementation packet starts.
 
+### G0 scope feedback received
+
+- [x] A project reviewer approved limiting the first implementation packet to WP1.1 in the project conversation on 2026-11-20. The scope covers synthetic Standard–Pro and Pro web/API import-boundary tests, the boundary record, and the minimum manifests needed for the approved dependency graph.
+- [ ] Attach the reviewer’s name and review function to this dated approval and reconcile it with the other required G0 decisions.
+
+WP0.4 candidate acceptance, authorization to open WP0.5, and the G0 exit decision remain open in the checklist above.
+
 ## Approval forms for reviewer completion
 
 **Unsigned drafts.** Reviewers can copy the applicable form into their approved review channel. Return the completed decisions with the approver’s name, decision date, and evidence reference. Keep credentials, customer data, contracts, and legal advice out of the ledger.
