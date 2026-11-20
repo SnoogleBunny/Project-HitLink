@@ -151,6 +151,31 @@ The validator and this ledger are grouped in the WP0.4 technical checkpoint comm
 | WP03-B01–B05 timing | The [decision register](../compliance/flowstate-pro/decision-register-and-open-items.md#mandatory-blockers) lists review timing before G0 for five blockers. The [G0 plan](2026-08-10-hipaa-canada-compliance-implementation-plan.md#wp05--g0-review) retains unresolved dependencies as blockers and authorizes only Milestone 1 packets whose dependencies are satisfied. Have the named G0 reviewers record the timing and applicability of each blocker to synthetic WP1.1. All five remain open. |
 | G0 exit | Record the decision and exact authorized scope after the required reviews. WP1.1 is the only proposed implementation packet. |
 
+#### WP0.5 technical review results
+
+- [x] Map each open WP03 blocker to the proposed synthetic WP1.1 scope and to dependent work.
+- [x] Check the workspace layout, test entry points, and proposed file scope for WP1.1.
+- [x] Recheck the existing Standard tooling failure. The focused test still fails at the assertion requiring the old Turbo wrapper. The Playwright configuration starts individual workspaces. Standard owner disposition remains open.
+
+The two technical reviews below are inputs to G0. The implementation plan and decision register retain their earlier candidate status as reviewed evidence. The dated decisions in this ledger record subsequent progress.
+
+| Open blocker | WP1.1 technical review | Dependent work or G0 decision |
+| --- | --- | --- |
+| WP03-B01 · Customer and profile | Synthetic import fixtures require no applicant or customer profile. | Profile activation and P1 need verified applicant and scope information. |
+| WP03-B02 · Legal and policy | Import checks require no legal values, policy registration, or authority defaults. | Record applicable counsel review for G0. Activation and policy resolution require approved policy and authority inputs. |
+| WP03-B03 · Vendors and agreements | Synthetic prohibited-import cases require no SDK installation, vendor choice, or live account. | US non-production provisioning and external patient identity integration require their approved services, configurations, and agreements. |
+| WP03-B04 · Commercial, risk and claims | Import checks require no pricing, claims, insurance, or production inputs. | Customer activation needs the operating envelope. Operational, release, and claims gates carry the remaining decisions. |
+| WP03-B05 · People and operating evidence | The import checks require no production exercise. Named decision-makers and exact-candidate evidence remain G0 dependencies. | Record the required risk analysis under GOV-04 and the applicability of appointment, protected-evidence, and operational controls. |
+
+All five blockers remain open. Named G0 reviewers still need to reconcile the decision register’s timing before G0 with the plan’s dependency rule for narrow synthetic work.
+
+#### WP1.1 engineering readiness
+
+- The repository currently has four Standard app manifests and seven shared or Standard package manifests. It has no Pro workspace manifests or tracked CI workflow. The workspace already discovers `apps/*` and `packages/*`.
+- The plan names `tests/tooling/pro-product-boundaries.test.mjs` and `docs/compliance/flowstate-pro/architecture-boundaries.md`. The direct verification entry point would be `node --test tests/tooling/pro-product-boundaries.test.mjs`. The current root test commands do not target that file.
+- The proposed minimal graph has private manifests for `apps/pro-provider-web`, `apps/pro-patient-web`, `apps/pro-api`, and `packages/pro-db`. The API may declare a Pro DB workspace dependency. Provider and patient web reach the API over HTTP. The packet needs no shared runtime allowlist.
+- Record whether the approved packet should add the root test script and workspace lockfile importers. Registering real workspace manifests requires lockfile entries to keep frozen installation reproducible. A fixture-only packet can use the direct Node test until a later packet registers real workspaces.
+
 ## Approval forms for reviewer completion
 
 **Unsigned drafts.** Reviewers can copy the applicable form into their approved review channel. Return the completed decisions with the approver’s name, decision date, and evidence reference. Keep credentials, customer data, contracts, and legal advice out of the ledger.
