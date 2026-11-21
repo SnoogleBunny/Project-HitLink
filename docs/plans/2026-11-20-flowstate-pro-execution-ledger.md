@@ -275,6 +275,8 @@ The project owner requested continuing independent software tasks and skipping i
 | [ ] WP2.2 actual organization verification and activation | Verified customer/applicability facts, scoped agreements and policy decisions, approved CIAM, and authoritative registry/workflow wiring remain open. |
 | [x] WP2.3 provider-independent policy contract | `apps/pro-api/src/modules/policy/authorize.mjs` and `test:pro-policy-contract`. Verified decision bindings, minimal projections, assurance, and scoped proxy validity under synthetic approved inputs. |
 | [ ] WP2.3 approved policy operation | Requires the authoritative policy catalogue and verified profile, authority, relationship and destination decisions. No local role or rule grants activation. |
+| [x] WP2.4 provider-independent audit adapter contract | `apps/pro-api/src/modules/audit/operation.mjs` and `test:pro-audit-contract`. Synthetic tests verify reservation before execution, no payload in audit metadata, duplicate and outage behavior, and explicit reconciliation after uncertain results. |
+| [ ] WP2.4 durable operational audit | Requires the authoritative append-only adapter, transaction and recovery wiring, immutable export, retention configuration and read-back. The local adapter tests establish the caller contract. |
 
 #### Owner authorization to continue software work · 2026-11-22
 
