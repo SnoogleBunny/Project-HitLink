@@ -176,6 +176,23 @@ All five blockers remain open. Named G0 reviewers still need to reconcile the de
 - The proposed minimal graph has private manifests for `apps/pro-provider-web`, `apps/pro-patient-web`, `apps/pro-api`, and `packages/pro-db`. The API may declare a Pro DB workspace dependency. Provider and patient web reach the API over HTTP. The packet needs no shared runtime allowlist.
 - Record whether the approved packet should add the root test script and workspace lockfile importers. Registering real workspace manifests requires lockfile entries to keep frozen installation reproducible. A fixture-only packet can use the direct Node test until a later packet registers real workspaces.
 
+#### GOV-04 · Draft risk analysis for synthetic WP1.1
+
+- [x] Prepare technical risk input for the owner-endorsed synthetic WP1.1 scope at preflight commit `b82038a`.
+- [ ] Obtain named GOV-04 review, confirm the risk method and treatment owners, and record the residual-risk decision and its evidence reference.
+
+The scope is import-boundary tooling, the boundary record, and minimal private manifests. Ratings are provisional estimates before treatment. The review covers repository tooling with synthetic inputs. It does not assess a deployed service or a Virginia or BC profile. [GOV-04 control](../compliance/flowstate-pro/control-and-evidence-matrix.md)
+
+| Risk | Likelihood / impact | Proposed treatment and evidence | Proposed owner |
+| --- | --- | --- | --- |
+| A dependency crosses the Standard–Pro boundary or introduces data-bearing shared runtime code. | Possible / high | Verify allow and deny fixtures against the approved graph. Check manifest dependencies and the supported source import forms. | Architecture/Backend with Database and QA review |
+| Provider or patient web reaches persistence, policy internals, or a vendor SDK directly. | Possible / high | Verify both web apps with synthetic fixtures. Confirm the API-to-Pro-DB graph and HTTP boundary in the architecture record. | Architecture/Backend with Security and QA review |
+| Workspace registration breaks frozen installation or the test command fails to exercise the checker. | Possible / moderate | Verify the direct Node command and its focused root script if approved. Run frozen installation if real manifests are registered. Record Standard baseline results separately. | Engineering with Operations and QA review |
+| Fixtures or outputs contain live data or require credentials or an external service. | Possible / high | Inspect fixture and output contents. Run with installed tooling and without application credentials or live services. | Engineering with Privacy, Security and QA review |
+| Stale candidate evidence is relied on for deployment or release decisions. | Possible / high | Pin the exact candidate, scope, and commands. Record named review and protected evidence references. Recheck when scope or evidence changes. | Security Official with QA and executive risk review |
+
+The Security Official coordinates review with Privacy, Operations, Engineering, Database, the vendor owner, QA and the executive risk owner as applicable. Named owners, due dates, verification evidence and residual-risk acceptance are pending. WP03-B05 and G0 remain open.
+
 ## Approval forms for reviewer completion
 
 **Unsigned drafts.** Reviewers can copy the applicable form into their approved review channel. Return the completed decisions with the approver’s name, decision date, and evidence reference. Keep credentials, customer data, contracts, and legal advice out of the ledger.
