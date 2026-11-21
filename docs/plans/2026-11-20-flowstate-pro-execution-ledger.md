@@ -18,11 +18,11 @@
 
 ## Implementation checklist after G0
 
-All items below are open. Paths, interfaces, test commands and reviewers for each packet are governed by the linked plan and must be pinned before editing. Verify real consumer paths against synthetic fixtures and disposable PostgreSQL where applicable. Preserve tenant isolation, audit history, finalized clinical records and legal holds during rollback.
+Open items below follow the packet approvals. Paths, interfaces, test commands and reviewers for each packet are governed by the linked plan and must be pinned before editing. Verify real consumer paths against synthetic fixtures and disposable PostgreSQL where applicable. Preserve tenant isolation, audit history, finalized clinical records and legal holds during rollback.
 
 ### G1 · Isolated Pro foundation
 
-- [ ] WP1.1 Add boundary tests for Standard/Pro imports and Pro web/API separation.
+- [x] WP1.1 Add boundary tests for Standard/Pro imports and Pro web/API separation.
 - [ ] WP1.2 Build isolated provider web, patient web and API shells and validate origins, sessions and environment separation.
 - [ ] WP1.3 Create Pro-only Prisma schema, composite tenant integrity and RLS. Verify fresh and upgrade migrations and tenant-scoped transactions.
 - [ ] WP1.4 Add synthetic fixture and artifact controls. Verify PHI-free outputs and separation from production.
@@ -210,6 +210,15 @@ The Security Official coordinates review with Privacy, Operations, Engineering, 
 Alvin Lo, project owner and HIPAA compliance officer, confirmed in the project conversation that he holds approval, appointment and executive decision authority, directed sign-off and expressly authorized the next phase of work. His earlier named decisions cover the WP0.1 baseline, narrowed scope, and draft GOV-04 technical analysis. This entry records the owner decision and its stated basis. Reviewer appointments, counsel determinations and operational or release approvals require their own evidence when applicable.
 
 The authorized packet is WP1.1 only, on `feat/flowstate-pro-implementation`. It allows the Node boundary integration test, architecture boundary record, four private manifests at the agreed Pro roots, the focused root script, and reproducibility changes to the lockfile importers. Use existing TypeScript tooling and synthetic fixtures. The only cross-package Pro edge is Pro API to Pro DB. The web shells' future API access is HTTP only. There is no cross-product runtime sharing. Tests verify the four forbidden-edge categories and the actual workspace graph. Review the locked workspace installation and run the existing dossier validator. Roll back by reverting the WP1.1 changes. The decision grants no authority for subsequent packets, runtime scaffolding, vendor use, regulated data, deployment or profile activation.
+
+#### WP1.1 implementation result · 2026-11-22
+
+- [x] Add the four private manifests, the isolated Pro API-to-DB workspace edge, and importer-only frozen lockfile changes.
+- [x] Add [the architecture boundary record](../compliance/flowstate-pro/architecture-boundaries.md), ARC-01 evidence linkage, and the root `test:pro-product-boundaries` command.
+- [x] Verify the current workspace, the synthetic forbidden-edge cases, and the passing control graph. The initial negative assertions failed before implementation. The final focused suite passed 9/9 on Node 22.23.1.
+- [x] Verify the 16-project frozen offline install using the exact manifests and lockfile in a disposable directory. Lifecycle scripts were disabled for this dependency check. The dossier validator passed with 18 documents, one record and 22 files.
+
+The WP0.4 verification inventory below is historical and remains reproducible against published WP0.4 commit `c1fcddd`. WP1.1 subsequently updates the root script, lockfile and ARC-01 evidence entry. The static suite does not exercise computed import strings or deployed runtime boundaries. WP1.2 and G1 remain open. The known Standard Playwright orchestration assertion remains a failing baseline result.
 
 ## Approval forms for reviewer completion
 

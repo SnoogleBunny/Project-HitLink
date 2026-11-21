@@ -1,0 +1,7 @@
+{
+  "name": "@flowstate/pro-api",
+  "private": true,
+  "dependencies": {
+    "@flowstate/pro-db": "workspace:*"
+  }
+}
