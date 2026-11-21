@@ -271,6 +271,8 @@ The project owner requested continuing independent software tasks and skipping i
 | [x] Verify the existing WP1.3 baseline | Re-ran `test:pro-database-baseline` on disposable PostgreSQL 15. Fresh and upgrade deployments, RLS and composite repository access passed again. |
 | [x] WP2.1 provider-independent session acceptance contract | `apps/pro-api/src/modules/auth/session.mjs` and `test:pro-session-contract`. Both adapter-contract scenarios pass, covering all eight Pro roles, surface and tenant binding, MFA, revocation, idle/absolute expiry and step-up. All 10 static workspace boundary checks passed. |
 | [ ] WP2.1 full identity lifecycle | Requires approved CIAM, required agreements, authoritative persistence and credential/session wiring. Invitation issuance, recovery, rate limits, workforce JIT and account activation remain open. |
+| [x] WP2.2 provider-independent readiness contract | `apps/pro-api/src/modules/activation/readiness.mjs` and `test:pro-activation-contract`. Synthetic adapter tests pass for missing, conflicting, expired, cross-scope and non-independent evidence. Ready status permits invitation review only. |
+| [ ] WP2.2 actual organization verification and activation | Verified customer/applicability facts, scoped agreements and policy decisions, approved CIAM, and authoritative registry/workflow wiring remain open. |
 
 ## Approval forms for reviewer completion
 
