@@ -17,6 +17,7 @@
     "scan:pro-artifacts": "node tests/pro/fixtures/artifact-guard.mjs",
     "test:pro-application-shells": "node --test tests/tooling/pro-application-shells.test.mjs",
     "test:pro-database-baseline": "corepack pnpm --filter @flowstate/pro-db db:generate && node --test tests/pro/database-baseline.test.mjs",
+    "test:pro-policy-contract": "node --test tests/pro/policy-contract.test.mjs",
     "test:pro-activation-contract": "node --test tests/pro/activation-contract.test.mjs",
     "test:pro-session-contract": "node --test tests/pro/session-contract.test.mjs",
     "test:pro-product-boundaries": "node --test tests/tooling/pro-product-boundaries.test.mjs",

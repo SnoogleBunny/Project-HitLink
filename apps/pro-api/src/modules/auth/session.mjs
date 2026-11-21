@@ -13,6 +13,10 @@ const rolesBySurface = new Map([
   ],
   ["patient", new Set(["PATIENT", "GUARDIAN_OR_PROXY"])],
 ]);
+export function isProRole(role) {
+  return [...rolesBySurface.values()].some((roles) => roles.has(role));
+}
+
 const ceilings = {
   provider: {
     idleMs: 15 * minute,

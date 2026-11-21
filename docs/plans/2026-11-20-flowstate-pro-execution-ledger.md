@@ -273,6 +273,12 @@ The project owner requested continuing independent software tasks and skipping i
 | [ ] WP2.1 full identity lifecycle | Requires approved CIAM, required agreements, authoritative persistence and credential/session wiring. Invitation issuance, recovery, rate limits, workforce JIT and account activation remain open. |
 | [x] WP2.2 provider-independent readiness contract | `apps/pro-api/src/modules/activation/readiness.mjs` and `test:pro-activation-contract`. Synthetic adapter tests pass for missing, conflicting, expired, cross-scope and non-independent evidence. Ready status permits invitation review only. |
 | [ ] WP2.2 actual organization verification and activation | Verified customer/applicability facts, scoped agreements and policy decisions, approved CIAM, and authoritative registry/workflow wiring remain open. |
+| [x] WP2.3 provider-independent policy contract | `apps/pro-api/src/modules/policy/authorize.mjs` and `test:pro-policy-contract`. Verified decision bindings, minimal projections, assurance, and scoped proxy validity under synthetic approved inputs. |
+| [ ] WP2.3 approved policy operation | Requires the authoritative policy catalogue and verified profile, authority, relationship and destination decisions. No local role or rule grants activation. |
+
+#### Owner authorization to continue software work · 2026-11-22
+
+Alvin Lo explicitly approved proceeding with the next tasks and requested that the software decision be recorded under his name. This records owner authorization for the continuing local packets. The project conversation supplies no specific outside agreement identifiers, counterparty acceptances, provider configurations, or profile/legal decisions. Those evidence items and the earlier infrastructure deferral remain open.
 
 ## Approval forms for reviewer completion
 
