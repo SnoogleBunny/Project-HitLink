@@ -1,4 +1,8 @@
 {
   "name": "@flowstate/pro-patient-web",
-  "private": true
+  "private": true,
+  "scripts": {
+    "build": "node ../../infra/pro/build.mjs patient",
+    "start": "node dist/server.mjs"
+  }
 }

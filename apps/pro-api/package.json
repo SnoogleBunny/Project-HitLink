@@ -3,5 +3,9 @@
   "private": true,
   "dependencies": {
     "@flowstate/pro-db": "workspace:*"
+  },
+  "scripts": {
+    "build": "node ../../infra/pro/build.mjs api",
+    "start": "node dist/server.mjs"
   }
 }

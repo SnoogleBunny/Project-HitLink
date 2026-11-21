@@ -1,4 +1,8 @@
 {
   "name": "@flowstate/pro-provider-web",
-  "private": true
+  "private": true,
+  "scripts": {
+    "build": "node ../../infra/pro/build.mjs provider",
+    "start": "node dist/server.mjs"
+  }
 }

@@ -1,0 +1,12 @@
+{
+  "plane": "us",
+  "mode": "synthetic",
+  "primaryRegion": "us-east4",
+  "recoveryRegion": "us-east1",
+  "providerHost": "provider.us.pro.localhost",
+  "patientHost": "patient.us.pro.localhost",
+  "apiHost": "api.us.pro.localhost",
+  "databaseEnv": "FLOWSTATE_PRO_US_DATABASE_URL",
+  "stripeEnv": "FLOWSTATE_PRO_US_STRIPE_SECRET_KEY",
+  "keyEnv": "FLOWSTATE_PRO_US_KEY_REFERENCE"
+}

@@ -23,7 +23,7 @@ Open items below follow the packet approvals. Paths, interfaces, test commands a
 ### G1 · Isolated Pro foundation
 
 - [x] WP1.1 Add boundary tests for Standard/Pro imports and Pro web/API separation.
-- [ ] WP1.2 Build isolated provider web, patient web and API shells and validate origins, sessions and environment separation.
+- [x] WP1.2 Build isolated provider web, patient web and API shells and validate origins, sessions and environment separation.
 - [ ] WP1.3 Create Pro-only Prisma schema, composite tenant integrity and RLS. Verify fresh and upgrade migrations and tenant-scoped transactions.
 - [ ] WP1.4 Add synthetic fixture and artifact controls. Verify PHI-free outputs and separation from production.
 - [ ] WP1.5 Provision the approved US non-production topology with repeatable IaC and regional, IAM, storage, backup, log and key read-back.
@@ -219,6 +219,20 @@ The authorized packet is WP1.1 only, on `feat/flowstate-pro-implementation`. It 
 - [x] Verify the 16-project frozen offline install using the exact manifests and lockfile in a disposable directory. Lifecycle scripts were disabled for this dependency check. The dossier validator passed with 18 documents, one record and 22 files.
 
 The WP0.4 verification inventory below is historical and remains reproducible against published WP0.4 commit `c1fcddd`. WP1.1 subsequently updates the root script, lockfile and ARC-01 evidence entry. The static suite does not exercise computed import strings or deployed runtime boundaries. WP1.2 and G1 remain open. The known Standard Playwright orchestration assertion remains a failing baseline result.
+
+#### WP1.2 implementation result · 2026-11-22
+
+The project owner authorized WP1.2 in the project conversation. The packet adds three local synthetic application shells using Node HTTP and existing tooling, with independent artifacts from the Pro-only build tool and validated US and CA environment manifests. This implementation choice keeps the shells dependency-free. It verifies the configuration and HTTP boundaries before later framework-specific application work. See the [boundary and run records](../compliance/flowstate-pro/architecture-boundaries.md).
+
+| Checked item | Paths and verification |
+| --- | --- |
+| [x] Build provider, patient and API independently | Three Pro workspace manifests, `infra/pro/build.mjs` and `turbo.json`. Pro-only Turbo build passed 3/3. All three CA shell processes also passed a direct local readiness check. |
+| [x] Validate plane configuration, exact origin and health/readiness | `infra/pro/{us.json,ca.json,config.mjs,entry.mjs,shell.mjs}`. The local integration test exercises the actual built services and rejects unknown hosts, origins and invalid configurations. |
+| [x] Verify browser cookie isolation | `tests/tooling/pro-application-shells.test.mjs` passes using pinned Chromium and inert session-cookie fixtures across Standard, provider and patient hosts. |
+| [x] Recheck dependency boundaries and locked workspace | 9/9 boundary checks passed. Frozen offline lockfile validation passed for 16 projects. ARC-01 evidence and dossier validation updated. |
+| [x] Check Standard regression evidence | Workspace test command completed all 11 cached Turbo tasks. Their retained output includes 20 skipped DB integration tests. Standard Playwright discovery still lists 23 tests in seven files. The previously disclosed Standard tooling assertion remains open. |
+
+WP1.3 is the next open packet. This record authorizes no database schema changes, live services, deployment, credential use or production data.
 
 ## Approval forms for reviewer completion
 
