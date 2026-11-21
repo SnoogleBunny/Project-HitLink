@@ -24,7 +24,7 @@ Open items below follow the packet approvals. Paths, interfaces, test commands a
 
 - [x] WP1.1 Add boundary tests for Standard/Pro imports and Pro web/API separation.
 - [x] WP1.2 Build isolated provider web, patient web and API shells and validate origins, sessions and environment separation.
-- [ ] WP1.3 Create Pro-only Prisma schema, composite tenant integrity and RLS. Verify fresh and upgrade migrations and tenant-scoped transactions.
+- [x] WP1.3 Create Pro-only Prisma schema, composite tenant integrity and RLS. Verify fresh and upgrade migrations and tenant-scoped transactions.
 - [ ] WP1.4 Add synthetic fixture and artifact controls. Verify PHI-free outputs and separation from production.
 - [ ] WP1.5 Provision the approved US non-production topology with repeatable IaC and regional, IAM, storage, backup, log and key read-back.
 - [ ] WP1.6 Close G1 with exact-candidate architecture, CI, origin and database isolation evidence.
@@ -233,6 +233,19 @@ The project owner authorized WP1.2 in the project conversation. The packet adds 
 | [x] Check Standard regression evidence | Workspace test command completed all 11 cached Turbo tasks. Their retained output includes 20 skipped DB integration tests. Standard Playwright discovery still lists 23 tests in seven files. The previously disclosed Standard tooling assertion remains open. |
 
 WP1.3 is the next open packet. This record authorizes no database schema changes, live services, deployment, credential use or production data.
+
+#### WP1.3 implementation result · 2026-11-22
+
+The project owner authorized WP1.3. The separate Pro package now owns 13 foundation tables, composite tenant keys and relationships, and two ordered migrations. The runtime role is a non-owner with no RLS bypass, and patient lookups use the scoped repository export and parameterized transaction-local settings. Standard schema, migrations and application paths retain their prior contents.
+
+| Checked item | Evidence |
+| --- | --- |
+| [x] Pro schema and generated client | Prisma schema validation and separate generation passed. Frozen offline pnpm installation passed with a Pro-only importer update. |
+| [x] Fresh and upgrade deployments | The dedicated PostgreSQL 15 integration passed on a disposable socket-only cluster. The upgrade preserved rows seeded at the first migration. |
+| [x] Tenant isolation and repository boundary | The integration verifies absent/malformed context, non-owner forced RLS on all 13 tables, context clearing, guessed/swapped tenant IDs, cross-tenant foreign keys and audit delete denial. The static boundary suite passed 10/10. |
+| [x] Evidence and rollback | [Database boundary record](../compliance/flowstate-pro/architecture-boundaries.md#wp13-local-database-baseline), TEN-01 matrix and dossier validator. The migration history is additive. Local verification tears down disposable databases. Deployed migrations require reviewed forward fixes. |
+
+WP1.4 is the next packet. WP1.3 evidence covers a synthetic local database baseline. Cloud roles, identity providers, policy engines, and operational safeguards remain separately gated.
 
 ## Approval forms for reviewer completion
 

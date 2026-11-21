@@ -63,10 +63,14 @@ function isInstalledDependency(file) {
   return file.split(path.sep).includes("node_modules");
 }
 
-function* sourceFiles(directory) {
+function* sourceFiles(directory, ignoreGenerated = false) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const file = path.join(directory, entry.name);
-    if (entry.isDirectory() && !generatedDirectories.has(entry.name)) {
+    if (
+      entry.isDirectory() &&
+      !generatedDirectories.has(entry.name) &&
+      !(ignoreGenerated && entry.name === "generated")
+    ) {
       yield* sourceFiles(file);
     } else if (entry.isFile() && /\.(?:[cm]?[jt]s|[jt]sx)$/.test(entry.name)) {
       yield file;
@@ -177,7 +181,7 @@ function checkBoundaries(root) {
     );
   }
 
-  function checkEdge(from, to, location, specifier) {
+  function checkEdge(from, to, location, specifier, source = false) {
     if (from === to) return;
     if (from.pro !== to.pro) {
       violations.push(
@@ -189,6 +193,15 @@ function checkBoundaries(root) {
     ) {
       violations.push(
         `${location} ${from.name} references "${specifier}" across Pro workspaces (${to.name})`,
+      );
+    } else if (
+      from.name === "@flowstate/pro-api" &&
+      to.name === "@flowstate/pro-db" &&
+      source &&
+      specifier !== "@flowstate/pro-db/patients"
+    ) {
+      violations.push(
+        `${location} ${from.name} must use the published Pro patient repository instead of "${specifier}"`,
       );
     }
   }
@@ -260,7 +273,10 @@ function checkBoundaries(root) {
       }
     }
 
-    for (const file of sourceFiles(workspace.directory)) {
+    for (const file of sourceFiles(
+      workspace.directory,
+      workspace.name === "@flowstate/pro-db",
+    )) {
       for (const { specifier, line } of sourceReferences(file)) {
         const location = `${displayPath(root, file)}:${line}`;
         const explicitPath = specifier.startsWith("file:")
@@ -282,8 +298,16 @@ function checkBoundaries(root) {
         const target =
           (localPath && owner(localPath)) ??
           (!explicitPath && workspacesByName.get(packageName(specifier)));
-        if (target) {
-          checkEdge(workspace, target, location, specifier);
+        if (
+          workspace.pro &&
+          workspace.name !== "@flowstate/pro-db" &&
+          /^(@prisma\/|prisma(?:\/|$))/.test(specifier)
+        ) {
+          violations.push(
+            `${location} ${workspace.name} cannot import Prisma "${specifier}"`,
+          );
+        } else if (target) {
+          checkEdge(workspace, target, location, specifier, true);
         } else if (workspace.pro && (explicitPath || resolvedRepositoryPath)) {
           violations.push(
             `${location} ${workspace.name} references "${specifier}" outside of any workspace`,
@@ -449,7 +473,7 @@ test("synthetic workspace permits local and Standard imports and the Pro API dat
     private: true,
     dependencies: { "@flowstate/pro-db": "workspace:*" },
   });
-  write("apps/pro-api/entry.ts", 'import "@flowstate/pro-db/repository";');
+  write("apps/pro-api/entry.ts", 'import "@flowstate/pro-db/patients";');
   write(
     "apps/standard-web/entry.ts",
     [
@@ -512,4 +536,21 @@ test("synthetic Pro source cannot reach unowned repository code through a path a
     violations,
     /pro-api\/entry\.ts:1.*\$synthetic\/policy.*outside of any workspace/,
   );
+});
+
+test("Pro API can use the patient repository but cannot import either Prisma client", (t) => {
+  const { root, write } = fixture(t);
+  write(
+    "apps/pro-api/raw.mjs",
+    [
+      'import "@flowstate/pro-db/patients";',
+      'import "@flowstate/pro-db/generated/client/index.js";',
+      'import "../../packages/pro-db/generated/client/index.js";',
+      'import "@prisma/client";',
+    ].join("\n"),
+  );
+  const violations = checkBoundaries(root);
+  for (const line of [2, 3, 4])
+    assert.ok(violations.some((entry) => entry.includes(`raw.mjs:${line}`)));
+  assert.ok(!violations.some((entry) => entry.includes("raw.mjs:1")));
 });

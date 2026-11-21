@@ -14,6 +14,7 @@
     "test": "turbo run test",
     "validate:pro-compliance-dossier": "node scripts/pro-compliance/validate-dossier.mjs",
     "test:pro-application-shells": "node --test tests/tooling/pro-application-shells.test.mjs",
+    "test:pro-database-baseline": "corepack pnpm --filter @flowstate/pro-db db:generate && node --test tests/pro/database-baseline.test.mjs",
     "test:pro-product-boundaries": "node --test tests/tooling/pro-product-boundaries.test.mjs",
     "test:pro-compliance-dossier": "node --test tests/tooling/pro-compliance-dossier.test.mjs",
     "test:tooling": "node --test tests/tooling/windows-bootstrap.test.mjs",

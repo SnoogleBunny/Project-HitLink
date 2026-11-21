@@ -1,0 +1,192 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("FLOWSTATE_PRO_MIGRATION_DATABASE_URL")
+}
+
+enum IdentityKind {
+  WORKFORCE
+  PATIENT
+  REPRESENTATIVE
+}
+
+model Organization {
+  tenantId      String                    @id @db.Uuid
+  externalRef   String
+  activationRef String?
+  profileRef    String?
+  createdAt     DateTime                  @default(now())
+  version       Int                       @default(1)
+  sites         Site[]
+  identities    Identity[]
+  patients      Patient[]
+  roles         RoleAssignment[]
+  invitations   Invitation[]
+  authorities   RepresentativeAuthority[]
+  policies      PolicyVersion[]
+  lifecycles    LifecycleReference[]
+  operations    Operation[]
+  outbox        OutboxItem[]
+  audit         AuditEvent[]
+  disclosures   DisclosureRecord[]
+}
+
+model Site {
+  tenantId    String       @db.Uuid
+  id          String       @db.Uuid
+  locationRef String
+  tenant      Organization @relation(fields: [tenantId], references: [tenantId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([tenantId, id])
+}
+
+model Identity {
+  tenantId    String                    @db.Uuid
+  id          String                    @db.Uuid
+  kind        IdentityKind
+  subjectRef  String
+  tenant      Organization              @relation(fields: [tenantId], references: [tenantId], onDelete: Restrict, onUpdate: Restrict)
+  patients    Patient[]
+  roles       RoleAssignment[]
+  authorities RepresentativeAuthority[]
+
+  @@id([tenantId, id])
+  @@unique([tenantId, kind, subjectRef])
+}
+
+model Patient {
+  tenantId          String                    @db.Uuid
+  id                String                    @db.Uuid
+  identityId        String?                   @db.Uuid
+  policyId          String?                   @db.Uuid
+  lifecycleId       String?                   @db.Uuid
+  recordRef         String
+  classificationRef String?
+  profileRef        String?
+  createdAt         DateTime                  @default(now())
+  createdByRef      String?
+  updatedAt         DateTime                  @default(now()) @updatedAt
+  updatedByRef      String?
+  version           Int                       @default(1)
+  tenant            Organization              @relation(fields: [tenantId], references: [tenantId], onDelete: Restrict, onUpdate: Restrict)
+  identity          Identity?                 @relation(fields: [tenantId, identityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  policy            PolicyVersion?            @relation(fields: [tenantId, policyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  lifecycle         LifecycleReference?       @relation(fields: [tenantId, lifecycleId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  authorities       RepresentativeAuthority[]
+  disclosures       DisclosureRecord[]
+
+  @@id([tenantId, id])
+  @@unique([tenantId, recordRef])
+}
+
+model RoleAssignment {
+  tenantId   String       @db.Uuid
+  id         String       @db.Uuid
+  identityId String       @db.Uuid
+  role       String
+  tenant     Organization @relation(fields: [tenantId], references: [tenantId], onDelete: Restrict, onUpdate: Restrict)
+  identity   Identity     @relation(fields: [tenantId, identityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([tenantId, id])
+  @@unique([tenantId, identityId, role])
+}
+
+model Invitation {
+  tenantId      String       @db.Uuid
+  id            String       @db.Uuid
+  invitationRef String
+  expiresAt     DateTime
+  tenant        Organization @relation(fields: [tenantId], references: [tenantId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([tenantId, id])
+}
+
+model RepresentativeAuthority {
+  tenantId         String       @db.Uuid
+  id               String       @db.Uuid
+  patientId        String       @db.Uuid
+  representativeId String       @db.Uuid
+  authorityRef     String
+  tenant           Organization @relation(fields: [tenantId], references: [tenantId], onDelete: Restrict, onUpdate: Restrict)
+  patient          Patient      @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  representative   Identity     @relation(fields: [tenantId, representativeId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([tenantId, id])
+}
+
+model PolicyVersion {
+  tenantId  String       @db.Uuid
+  id        String       @db.Uuid
+  policyRef String
+  version   Int
+  tenant    Organization @relation(fields: [tenantId], references: [tenantId], onDelete: Restrict, onUpdate: Restrict)
+  patients  Patient[]
+
+  @@id([tenantId, id])
+  @@unique([tenantId, policyRef, version])
+}
+
+model LifecycleReference {
+  tenantId     String       @db.Uuid
+  id           String       @db.Uuid
+  lifecycleRef String
+  tenant       Organization @relation(fields: [tenantId], references: [tenantId], onDelete: Restrict, onUpdate: Restrict)
+  patients     Patient[]
+
+  @@id([tenantId, id])
+}
+
+model Operation {
+  tenantId       String       @db.Uuid
+  id             String       @db.Uuid
+  idempotencyKey String
+  intentRef      String
+  outcomeRef     String?
+  version        Int          @default(1)
+  tenant         Organization @relation(fields: [tenantId], references: [tenantId], onDelete: Restrict, onUpdate: Restrict)
+  outbox         OutboxItem[]
+  audit          AuditEvent[]
+
+  @@id([tenantId, id])
+  @@unique([tenantId, idempotencyKey])
+}
+
+model OutboxItem {
+  tenantId    String       @db.Uuid
+  id          String       @db.Uuid
+  operationId String       @db.Uuid
+  intentRef   String
+  createdAt   DateTime     @default(now())
+  tenant      Organization @relation(fields: [tenantId], references: [tenantId], onDelete: Restrict, onUpdate: Restrict)
+  operation   Operation    @relation(fields: [tenantId, operationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([tenantId, id])
+}
+
+model AuditEvent {
+  tenantId    String       @db.Uuid
+  id          String       @db.Uuid
+  operationId String?      @db.Uuid
+  eventRef    String
+  createdAt   DateTime     @default(now())
+  tenant      Organization @relation(fields: [tenantId], references: [tenantId], onDelete: Restrict, onUpdate: Restrict)
+  operation   Operation?   @relation(fields: [tenantId, operationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([tenantId, id])
+}
+
+model DisclosureRecord {
+  tenantId      String       @db.Uuid
+  id            String       @db.Uuid
+  patientId     String       @db.Uuid
+  disclosureRef String
+  createdAt     DateTime     @default(now())
+  tenant        Organization @relation(fields: [tenantId], references: [tenantId], onDelete: Restrict, onUpdate: Restrict)
+  patient       Patient      @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([tenantId, id])
+}
