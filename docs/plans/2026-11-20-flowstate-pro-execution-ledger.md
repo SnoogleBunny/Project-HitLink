@@ -247,6 +247,20 @@ The project owner authorized WP1.3. The separate Pro package now owns 13 foundat
 
 WP1.4 is the next packet. WP1.3 evidence covers a synthetic local database baseline. Cloud roles, identity providers, policy engines, and operational safeguards remain separately gated.
 
+#### WP1.4 synthetic data and artifact controls · 2026-11-22
+
+- [x] Generate the canonical multi-tenant fixture and verify all scalar/enum fields in the 13 Pro baseline models. Include inert adult, minor, representative, provider, clinical status, files, billing, rights, hold and cross-region cases without adding clinical tables.
+- [x] Reject noncanonical exports and known credential settings in the fixture lane. Run fixture admission in Docker with networking disabled and a read-only fixture mount.
+- [x] Verify artifact canary detection against generated build text, logs, structured reports, a ZIP trace and a Chromium screenshot. Check scanner exit codes and payload-free output.
+- [x] Configure the hosted test to drop inherited environment settings and execute under a loopback-only Linux network namespace after dependency setup.
+- [ ] Confirm the hosted run for the exact commit and obtain managed preview isolation read-back before closing the complete WP1.4 packet.
+
+See [the DEV-01 verification record](../compliance/flowstate-pro/architecture-boundaries.md#wp14-synthetic-fixtures-and-artifact-controls). The local integration passed. The scanner’s supported formats and OCR limits are documented.
+
+#### WP1.5 platform prerequisites
+
+The US non-production provisioning packet requires the owner-approved IaC tool, authorized GCP organization/billing and workload/recovery project scope, and sufficiently scoped access for provisioning and read-back. The current plan leaves the tool as an owner decision. The implementation worktree has no approved tool or managed project configuration. WP1.5 and G1 remain open.
+
 ## Approval forms for reviewer completion
 
 **Unsigned drafts.** Reviewers can copy the applicable form into their approved review channel. Return the completed decisions with the approver’s name, decision date, and evidence reference. Keep credentials, customer data, contracts, and legal advice out of the ledger.

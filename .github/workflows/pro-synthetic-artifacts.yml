@@ -1,0 +1,46 @@
+name: Pro synthetic artifact controls
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/pro-synthetic-artifacts.yml"
+      - "tests/pro/**"
+      - "packages/pro-db/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  push:
+    branches: ["feat/flowstate-pro-implementation"]
+    paths:
+      - ".github/workflows/pro-synthetic-artifacts.yml"
+      - "tests/pro/**"
+      - "packages/pro-db/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-artifacts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.1
+      - name: Prepare pinned local test tools
+        run: |
+          corepack pnpm install --frozen-lockfile --ignore-scripts
+          corepack pnpm --filter @flowstate/pro-db db:generate
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tesseract-ocr zip unzip
+          corepack pnpm exec playwright install --with-deps chromium
+      - name: Verify fixtures and canaries without external networking
+        run: |
+          sudo unshare --net -- sh -eu -c 'ip link set lo up; exec "$@"' sh \
+            setpriv --reuid "$(id -u)" --regid "$(id -g)" --clear-groups \
+            env -i HOME="$HOME" PATH="$PATH" FLOWSTATE_PRO_REQUIRE_NETWORK_ISOLATION=1 \
+            node --test tests/pro/artifact-controls.test.mjs
