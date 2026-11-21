@@ -10,7 +10,7 @@
 
 | Packet | Depends on | Files and outcome | Verification or outstanding approval | Started | Complete |
 | --- | --- | --- | --- | --- | --- |
-| WP0.1 Standard baseline | PR base | `current-standard-baseline.md`, `evidence/wp0.1-standard-baseline/` in dossier | Baseline evidence was independently reconciled. Named Database, Backend, Security/Privacy, QA and Product reviews remain open. The Standard owner also needs to disposition the existing Playwright orchestration failure. | [x] | [ ] |
+| WP0.1 Standard baseline | PR base | `current-standard-baseline.md`, `evidence/wp0.1-standard-baseline/` in dossier | Baseline evidence was independently reconciled. Owner and HIPAA compliance approvals are recorded. Named Database, Backend and QA reviews and the Standard owner’s Playwright disposition remain open. | [x] | [ ] |
 | WP0.2 Product and architecture | WP0.1 evidence | Dossier `product-spec.md`, PRD, roadmap, system and security designs | Retained register records exact-candidate technical verification and owner acceptance on 2026-09-22. | [x] | [x] |
 | WP0.3 Legal, data, control and operations specifications | WP0.2 | Dossier legal, data, control, operations and competitor matrices | Retained register records specification and quality reviews and owner acceptance on 2026-09-23. Legal decisions remain open. | [x] | [x] |
 | WP0.4 Change control and dossier validation | WP0.3 | Dossier schemas, manifest and register, `scripts/pro-compliance/validate-dossier.mjs`, `tests/tooling/pro-compliance-dossier.test.mjs`, root scripts | Validator, all 75 integration tests and both independent reviews passed for the pinned candidate. Alvin Lo’s dated project-owner acceptance completed Gate 3. | [x] | [x] |
@@ -126,7 +126,8 @@ The validator and this ledger are grouped in the WP0.4 technical checkpoint comm
 ## Current approval checklist
 
 - [x] Prepare unsigned reviewer forms for WP0.1, WP0.4 and the separate WP0.5 authorization.
-- [ ] Record WP0.1 named baseline reviews and Standard owner disposition of the known tooling failure.
+- [x] Record project-owner and HIPAA compliance approval of the WP0.1 baseline evidence.
+- [ ] Record WP0.1 Database, Backend and QA/Assurance coverage and the Standard owner’s disposition of the known tooling failure.
 - [x] Record dated project-owner acceptance of the pinned WP0.4 candidate.
 - [x] Reconcile WP0.4 Gate 3 with the packet. The recorded unqualified project-owner acceptance covers the packet’s six review functions. Legal/counsel scope is limited to validator approval metadata.
 - [x] Record explicit project-owner authorization to open WP0.5 for G0 review.
@@ -140,14 +141,24 @@ The validator and this ledger are grouped in the WP0.4 technical checkpoint comm
 | WP0.5 review authorized | Alvin Lo, project owner | Explicit authorization in the project conversation to open WP0.5 for G0 review. |
 | WP1.1 scope endorsed for G0 review | Alvin Lo, project owner and HIPAA compliance officer | Scope approval in the project conversation. Synthetic import-boundary tests for Standard–Pro and Pro web/API, the boundary record, and minimum manifests for the approved dependency graph. |
 
+### Owner and compliance decisions · 2026-11-21
+
+| Decision | Reviewer | Recorded scope |
+| --- | --- | --- |
+| WP0.1 baseline evidence accepted | Alvin Lo, project owner and HIPAA compliance officer | Approved the baseline decisions in the project conversation. The baseline remains usable as evidence with the known Standard Playwright tooling failure disclosed. |
+| G0 scope approved within stated remits | Alvin Lo, project owner and HIPAA compliance officer | Approved G0 scope in the project conversation. The scope is the synthetic WP1.1 packet recorded above. |
+| Draft GOV-04 risk analysis reviewed and approved within stated remits | Alvin Lo, project owner and HIPAA compliance officer | Approved the draft technical risk analysis below. Treatment verification and the separate residual-risk decision remain open. |
+
+For the remaining decisions, the [role register requirements](../compliance/flowstate-pro/operations-and-governance.md#2-accountability-authority-and-coverage) permit compatible functions to share a reviewer when their authority and conflict controls are recorded. The remaining review items below track functions and evidence.
+
 ### WP0.5 · G0 review intake
 
 **Status** — Review intake open. G0 exit remains blocked.
 
 | Review item | Decision or evidence still needed |
 | --- | --- |
-| WP0.1 evidence | Record the outstanding named baseline decisions and the Standard owner’s disposition of the Playwright failure. |
-| Narrow WP1.1 scope | Owner and HIPAA compliance scope positions are recorded above. Obtain the remaining named Database, Backend, Operations, QA, executive risk owner and applicable counsel decisions for the narrowed scope. |
+| WP0.1 evidence | Owner and HIPAA compliance decisions are recorded. Database, Backend and QA/Assurance reviews and the Standard owner’s Playwright disposition remain open. |
+| Narrow WP1.1 scope | Owner and HIPAA compliance scope approvals are recorded above. Obtain the remaining named Database, Backend, Operations, QA, executive risk owner and applicable counsel decisions for the narrowed scope. |
 | WP03-B01–B05 timing | The [decision register](../compliance/flowstate-pro/decision-register-and-open-items.md#mandatory-blockers) lists review timing before G0 for five blockers. The [G0 plan](2026-08-10-hipaa-canada-compliance-implementation-plan.md#wp05--g0-review) retains unresolved dependencies as blockers and authorizes only Milestone 1 packets whose dependencies are satisfied. Have the named G0 reviewers record the timing and applicability of each blocker to synthetic WP1.1. All five remain open. |
 | G0 exit | Record the decision and exact authorized scope after the required reviews. WP1.1 is the only proposed implementation packet. |
 
@@ -179,7 +190,8 @@ All five blockers remain open. Named G0 reviewers still need to reconcile the de
 #### GOV-04 · Draft risk analysis for synthetic WP1.1
 
 - [x] Prepare technical risk input for the owner-endorsed synthetic WP1.1 scope at preflight commit `b82038a`.
-- [ ] Obtain named GOV-04 review, confirm the risk method and treatment owners, and record the residual-risk decision and its evidence reference.
+- [x] Record Alvin Lo’s owner and HIPAA compliance approval of the draft risk analysis.
+- [ ] Complete named GOV-04 review coverage, confirm treatment owners, and record the residual-risk decision and evidence reference.
 
 The scope is import-boundary tooling, the boundary record, and minimal private manifests. Ratings are provisional estimates before treatment. The review covers repository tooling with synthetic inputs. It does not assess a deployed service or a Virginia or BC profile. [GOV-04 control](../compliance/flowstate-pro/control-and-evidence-matrix.md)
 
