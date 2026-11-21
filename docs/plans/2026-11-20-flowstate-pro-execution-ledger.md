@@ -262,6 +262,16 @@ See [the DEV-01 verification record](../compliance/flowstate-pro/architecture-bo
 
 The US non-production provisioning packet requires the owner-approved IaC tool, authorized GCP organization/billing and workload/recovery project scope, and sufficiently scoped access for provisioning and read-back. The current plan leaves the tool as an owner decision. The implementation worktree has no approved tool or managed project configuration. WP1.5 and G1 remain open.
 
+#### Software-only continuation · 2026-11-22
+
+The project owner requested continuing independent software tasks and skipping infrastructure immediately. WP1.5 provisioning is deferred. Managed preview evidence under WP1.4 and the infrastructure-dependent G1 exit under WP1.6 stay open. The implementation plan permits provider-independent interfaces and tests while CIAM is blocked. This continuation uses synthetic evidence and leaves account activation, managed services and release gates closed.
+
+| Local slice | Evidence and remaining gate |
+| --- | --- |
+| [x] Verify the existing WP1.3 baseline | Re-ran `test:pro-database-baseline` on disposable PostgreSQL 15. Fresh and upgrade deployments, RLS and composite repository access passed again. |
+| [x] WP2.1 provider-independent session acceptance contract | `apps/pro-api/src/modules/auth/session.mjs` and `test:pro-session-contract`. Both adapter-contract scenarios pass, covering all eight Pro roles, surface and tenant binding, MFA, revocation, idle/absolute expiry and step-up. All 10 static workspace boundary checks passed. |
+| [ ] WP2.1 full identity lifecycle | Requires approved CIAM, required agreements, authoritative persistence and credential/session wiring. Invitation issuance, recovery, rate limits, workforce JIT and account activation remain open. |
+
 ## Approval forms for reviewer completion
 
 **Unsigned drafts.** Reviewers can copy the applicable form into their approved review channel. Return the completed decisions with the approver’s name, decision date, and evidence reference. Keep credentials, customer data, contracts, and legal advice out of the ledger.
