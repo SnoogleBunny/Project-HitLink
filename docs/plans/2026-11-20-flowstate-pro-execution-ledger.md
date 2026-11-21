@@ -10,11 +10,11 @@
 
 | Packet | Depends on | Files and outcome | Verification or outstanding approval | Started | Complete |
 | --- | --- | --- | --- | --- | --- |
-| WP0.1 Standard baseline | PR base | `current-standard-baseline.md`, `evidence/wp0.1-standard-baseline/` in dossier | Baseline evidence was independently reconciled. Owner and HIPAA compliance approvals are recorded. Named Database, Backend and QA reviews and the Standard owner’s Playwright disposition remain open. | [x] | [ ] |
+| WP0.1 Standard baseline | PR base | `current-standard-baseline.md`, `evidence/wp0.1-standard-baseline/` in dossier | Baseline evidence was independently reconciled. Owner accepted the published baseline and its known Playwright tooling failure for use in this packet. | [x] | [x] |
 | WP0.2 Product and architecture | WP0.1 evidence | Dossier `product-spec.md`, PRD, roadmap, system and security designs | Retained register records exact-candidate technical verification and owner acceptance on 2026-09-22. | [x] | [x] |
 | WP0.3 Legal, data, control and operations specifications | WP0.2 | Dossier legal, data, control, operations and competitor matrices | Retained register records specification and quality reviews and owner acceptance on 2026-09-23. Legal decisions remain open. | [x] | [x] |
 | WP0.4 Change control and dossier validation | WP0.3 | Dossier schemas, manifest and register, `scripts/pro-compliance/validate-dossier.mjs`, `tests/tooling/pro-compliance-dossier.test.mjs`, root scripts | Validator, all 75 integration tests and both independent reviews passed for the pinned candidate. Alvin Lo’s dated project-owner acceptance completed Gate 3. | [x] | [x] |
-| WP0.5 Gate G0 | WP0.4 complete; owner authorization recorded | Review intake open for WP1.1-only scope | Complete required reviews and resolve blocker timing before issuing the G0 decision. | [x] | [ ] |
+| WP0.5 Gate G0 | WP0.4 complete; owner authorization recorded | Owner authorized synthetic WP1.1 only | Technical preflight and risk input reviewed. Five unresolved blockers remain tracked for dependent work. | [x] | [x] |
 
 ## Implementation checklist after G0
 
@@ -127,11 +127,11 @@ The validator and this ledger are grouped in the WP0.4 technical checkpoint comm
 
 - [x] Prepare unsigned reviewer forms for WP0.1, WP0.4 and the separate WP0.5 authorization.
 - [x] Record project-owner and HIPAA compliance approval of the WP0.1 baseline evidence.
-- [ ] Record WP0.1 Database, Backend and QA/Assurance coverage and the Standard owner’s disposition of the known tooling failure.
+- [x] Record the project owner’s full WP0.1 disposition for use in the synthetic packet. The retained Playwright tooling result is a failure.
 - [x] Record dated project-owner acceptance of the pinned WP0.4 candidate.
 - [x] Reconcile WP0.4 Gate 3 with the packet. The recorded unqualified project-owner acceptance covers the packet’s six review functions. Legal/counsel scope is limited to validator approval metadata.
 - [x] Record explicit project-owner authorization to open WP0.5 for G0 review.
-- [ ] Complete G0 review and record named approval of the narrowed Phase 1 scope before the first implementation packet starts.
+- [x] Record the project owner’s G0 authorization for the narrowed synthetic WP1.1 scope.
 
 ### Named owner decisions · 2026-11-20
 
@@ -153,14 +153,14 @@ For the remaining decisions, the [role register requirements](../compliance/flow
 
 ### WP0.5 · G0 review intake
 
-**Status** — Review intake open. G0 exit remains blocked.
+**Status** — Owner decision recorded for synthetic WP1.1 only. All later packets require their own authorization.
 
 | Review item | Decision or evidence still needed |
 | --- | --- |
-| WP0.1 evidence | Owner and HIPAA compliance decisions are recorded. Database, Backend and QA/Assurance reviews and the Standard owner’s Playwright disposition remain open. |
-| Narrow WP1.1 scope | Owner and HIPAA compliance scope approvals are recorded above. Obtain the remaining named Database, Backend, Operations, QA, executive risk owner and applicable counsel decisions for the narrowed scope. |
-| WP03-B01–B05 timing | The [decision register](../compliance/flowstate-pro/decision-register-and-open-items.md#mandatory-blockers) lists review timing before G0 for five blockers. The [G0 plan](2026-08-10-hipaa-canada-compliance-implementation-plan.md#wp05--g0-review) retains unresolved dependencies as blockers and authorizes only Milestone 1 packets whose dependencies are satisfied. Have the named G0 reviewers record the timing and applicability of each blocker to synthetic WP1.1. All five remain open. |
-| G0 exit | Record the decision and exact authorized scope after the required reviews. WP1.1 is the only proposed implementation packet. |
+| WP0.1 evidence | Owner accepted the baseline with its documented Playwright tooling failure for this synthetic packet. |
+| Narrow WP1.1 scope | Owner resolved the scope review and authorized the packet under his stated approval and appointment authority. |
+| WP03-B01–B05 timing | The [decision register](../compliance/flowstate-pro/decision-register-and-open-items.md#mandatory-blockers) lists review timing before G0 for five blockers. The [G0 plan](2026-08-10-hipaa-canada-compliance-implementation-plan.md#wp05--g0-review) retains unresolved dependencies as blockers and authorizes only Milestone 1 packets whose dependencies are satisfied. The owner authorized synthetic WP1.1 on the basis of the technical mapping below. All five blockers remain open for dependent work. |
+| G0 exit | Decision and authorized WP1.1 scope are recorded below. |
 
 #### WP0.5 technical review results
 
@@ -178,7 +178,7 @@ The two technical reviews below are inputs to G0. The implementation plan and de
 | WP03-B04 · Commercial, risk and claims | Import checks require no pricing, claims, insurance, or production inputs. | Customer activation needs the operating envelope. Operational, release, and claims gates carry the remaining decisions. |
 | WP03-B05 · People and operating evidence | The import checks require no production exercise. Named decision-makers and exact-candidate evidence remain G0 dependencies. | Record the required risk analysis under GOV-04 and the applicability of appointment, protected-evidence, and operational controls. |
 
-All five blockers remain open. Named G0 reviewers still need to reconcile the decision register’s timing before G0 with the plan’s dependency rule for narrow synthetic work.
+All five blockers remain open for dependent work. The owner’s narrow decision applies to the synthetic dependency check described below.
 
 #### WP1.1 engineering readiness
 
@@ -203,7 +203,13 @@ The scope is import-boundary tooling, the boundary record, and minimal private m
 | Fixtures or outputs contain live data or require credentials or an external service. | Possible / high | Inspect fixture and output contents. Run with installed tooling and without application credentials or live services. | Engineering with Privacy, Security and QA review |
 | Stale candidate evidence is relied on for deployment or release decisions. | Possible / high | Pin the exact candidate, scope, and commands. Record named review and protected evidence references. Recheck when scope or evidence changes. | Security Official with QA and executive risk review |
 
-The Security Official coordinates review with Privacy, Operations, Engineering, Database, the vendor owner, QA and the executive risk owner as applicable. Named owners, due dates, verification evidence and residual-risk acceptance are pending. WP03-B05 and G0 remain open.
+The Security Official coordinates review with Privacy, Operations, Engineering, Database, the vendor owner, QA and the executive risk owner as applicable. Named operational appointments, treatment evidence and any residual-risk acceptance for dependent work remain open under WP03-B05.
+
+#### G0 decision for WP1.1 · 2026-11-21
+
+Alvin Lo, project owner and HIPAA compliance officer, confirmed in the project conversation that he holds approval, appointment and executive decision authority, directed sign-off and expressly authorized the next phase of work. His earlier named decisions cover the WP0.1 baseline, narrowed scope, and draft GOV-04 technical analysis. This entry records the owner decision and its stated basis. Reviewer appointments, counsel determinations and operational or release approvals require their own evidence when applicable.
+
+The authorized packet is WP1.1 only, on `feat/flowstate-pro-implementation`. It allows the Node boundary integration test, architecture boundary record, four private manifests at the agreed Pro roots, the focused root script, and reproducibility changes to the lockfile importers. Use existing TypeScript tooling and synthetic fixtures. The only cross-package Pro edge is Pro API to Pro DB. The web shells' future API access is HTTP only. There is no cross-product runtime sharing. Tests verify the four forbidden-edge categories and the actual workspace graph. Review the locked workspace installation and run the existing dossier validator. Roll back by reverting the WP1.1 changes. The decision grants no authority for subsequent packets, runtime scaffolding, vendor use, regulated data, deployment or profile activation.
 
 ## Approval forms for reviewer completion
 
