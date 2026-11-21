@@ -253,7 +253,8 @@ WP1.4 is the next packet. WP1.3 evidence covers a synthetic local database basel
 - [x] Reject noncanonical exports and known credential settings in the fixture lane. Run fixture admission in Docker with networking disabled and a read-only fixture mount.
 - [x] Verify artifact canary detection against generated build text, logs, structured reports, a ZIP trace and a Chromium screenshot. Check scanner exit codes and payload-free output.
 - [x] Configure the hosted test to drop inherited environment settings and execute under a loopback-only Linux network namespace after dependency setup.
-- [ ] Confirm the hosted run for the exact commit and obtain managed preview isolation read-back before closing the complete WP1.4 packet.
+- [x] Confirm [the hosted run](https://github.com/SnoogleBunny/Project-HitLink/actions/runs/44931620942) for code commit `92e9343`. Both dependency preparation and the test step in the loopback-only namespace succeeded.
+- [ ] Obtain managed preview isolation read-back before closing WP1.4. No managed preview has been provisioned.
 
 See [the DEV-01 verification record](../compliance/flowstate-pro/architecture-boundaries.md#wp14-synthetic-fixtures-and-artifact-controls). The local integration passed. The scanner’s supported formats and OCR limits are documented.
 
