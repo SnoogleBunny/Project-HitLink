@@ -13,8 +13,8 @@
 | WP0.1 Standard baseline | PR base | `current-standard-baseline.md`, `evidence/wp0.1-standard-baseline/` in dossier | Baseline evidence was independently reconciled. Named Database, Backend, Security/Privacy, QA and Product reviews remain open. The Standard owner also needs to disposition the existing Playwright orchestration failure. | [x] | [ ] |
 | WP0.2 Product and architecture | WP0.1 evidence | Dossier `product-spec.md`, PRD, roadmap, system and security designs | Retained register records exact-candidate technical verification and owner acceptance on 2026-09-22. | [x] | [x] |
 | WP0.3 Legal, data, control and operations specifications | WP0.2 | Dossier legal, data, control, operations and competitor matrices | Retained register records specification and quality reviews and owner acceptance on 2026-09-23. Legal decisions remain open. | [x] | [x] |
-| WP0.4 Change control and dossier validation | WP0.3 | Dossier schemas, manifest and register, `scripts/pro-compliance/validate-dossier.mjs`, `tests/tooling/pro-compliance-dossier.test.mjs`, root scripts | Validator, all 75 integration tests and both independent reviews passed for the pinned candidate. Alvin Lo accepted the pinned candidate as project owner. Coverage for other required review functions remains open. | [x] | [ ] |
-| WP0.5 Gate G0 | Owner authorization recorded; WP0.4 functional review coverage open | Review intake open for WP1.1-only scope | Complete required reviews and resolve blocker timing before issuing the G0 decision. | [x] | [ ] |
+| WP0.4 Change control and dossier validation | WP0.3 | Dossier schemas, manifest and register, `scripts/pro-compliance/validate-dossier.mjs`, `tests/tooling/pro-compliance-dossier.test.mjs`, root scripts | Validator, all 75 integration tests and both independent reviews passed for the pinned candidate. Alvin Lo’s dated project-owner acceptance completed Gate 3. | [x] | [x] |
+| WP0.5 Gate G0 | WP0.4 complete; owner authorization recorded | Review intake open for WP1.1-only scope | Complete required reviews and resolve blocker timing before issuing the G0 decision. | [x] | [ ] |
 
 ## Implementation checklist after G0
 
@@ -121,14 +121,14 @@ All items below are open. Paths, interfaces, test commands and reviewers for eac
 - [x] Created separate local commits and pushed the Standard baseline evidence (`76f33ea`), Product and Architecture specifications (`65ddfb2`), and legal, data, control and operations specifications (`076ea34`) to `origin/feat/flowstate-pro-implementation`.
 - [x] Revalidated the WP0.4 publication inputs against the 35-file reviewed manifest. Direct validation and the three focused integration checks passed. The earlier 75/75 run applies to the identical governed bytes.
 
-The validator and this ledger are grouped in the WP0.4 technical checkpoint commit. The manifest records the source candidate's base and file bytes. The owner decision is recorded below. Required functional reviews and the G0 exit decision remain open.
+The validator and this ledger are grouped in the WP0.4 technical checkpoint commit. The manifest records the source candidate's base and file bytes. The owner decision is recorded below. The G0 exit decision remains open.
 
 ## Current approval checklist
 
 - [x] Prepare unsigned reviewer forms for WP0.1, WP0.4 and the separate WP0.5 authorization.
 - [ ] Record WP0.1 named baseline reviews and Standard owner disposition of the known tooling failure.
 - [x] Record dated project-owner acceptance of the pinned WP0.4 candidate.
-- [ ] Reconcile WP0.4 acceptance coverage for Architecture/Backend, Database, Operations/QA-Assurance, and Legal/counsel. Legal/counsel review is scoped to approval metadata.
+- [x] Reconcile WP0.4 Gate 3 with the packet. The recorded unqualified project-owner acceptance covers the packet’s six review functions. Legal/counsel scope is limited to validator approval metadata.
 - [x] Record explicit project-owner authorization to open WP0.5 for G0 review.
 - [ ] Complete G0 review and record named approval of the narrowed Phase 1 scope before the first implementation packet starts.
 
@@ -136,7 +136,7 @@ The validator and this ledger are grouped in the WP0.4 technical checkpoint comm
 
 | Decision | Approver and function | Scope and evidence |
 | --- | --- | --- |
-| WP0.4 candidate accepted | Alvin Lo, project owner and HIPAA compliance officer | Explicit acceptance in the project conversation. Commit `c1fcdddb405c9022115df786021bda07ef6bb51a` and 35-input manifest SHA-256 `b9798e3307214ba4e46eaba42ad9284793208145ec6e0e46481f71566023a541`. |
+| WP0.4 candidate accepted | Alvin Lo, project owner and HIPAA compliance officer | Explicit, unqualified project-owner acceptance in the project conversation. Gate 3 assigns acceptance of its six functional scopes to the project owner. This follows the [WP0.3 acceptance precedent](../compliance/flowstate-pro/decision-register-and-open-items.md#review-and-authorization-state). Commit `c1fcdddb405c9022115df786021bda07ef6bb51a` and 35-input manifest SHA-256 `b9798e3307214ba4e46eaba42ad9284793208145ec6e0e46481f71566023a541`. |
 | WP0.5 review authorized | Alvin Lo, project owner | Explicit authorization in the project conversation to open WP0.5 for G0 review. |
 | WP1.1 scope endorsed for G0 review | Alvin Lo, project owner and HIPAA compliance officer | Scope approval in the project conversation. Synthetic import-boundary tests for Standard–Pro and Pro web/API, the boundary record, and minimum manifests for the approved dependency graph. |
 
@@ -146,7 +146,7 @@ The validator and this ledger are grouped in the WP0.4 technical checkpoint comm
 
 | Review item | Decision or evidence still needed |
 | --- | --- |
-| WP0.1 evidence and WP0.4 functional coverage | Record the outstanding named baseline decisions, the Standard owner’s disposition of the Playwright failure, and the outstanding WP0.4 functional decisions. |
+| WP0.1 evidence | Record the outstanding named baseline decisions and the Standard owner’s disposition of the Playwright failure. |
 | Narrow WP1.1 scope | Owner and HIPAA compliance scope positions are recorded above. Obtain the remaining named Database, Backend, Operations, QA, executive risk owner and applicable counsel decisions for the narrowed scope. |
 | WP03-B01–B05 timing | The [decision register](../compliance/flowstate-pro/decision-register-and-open-items.md#mandatory-blockers) lists review timing before G0 for five blockers. The [G0 plan](2026-08-10-hipaa-canada-compliance-implementation-plan.md#wp05--g0-review) retains unresolved dependencies as blockers and authorizes only Milestone 1 packets whose dependencies are satisfied. Have the named G0 reviewers record the timing and applicability of each blocker to synthetic WP1.1. All five remain open. |
 | G0 exit | Record the decision and exact authorized scope after the required reviews. WP1.1 is the only proposed implementation packet. |
@@ -198,9 +198,9 @@ Review the baseline evidence published in `76f33ea`, including the [original can
 
 **Candidate** — published commit `c1fcdddb405c9022115df786021bda07ef6bb51a`, 35-input manifest SHA-256 `b9798e3307214ba4e46eaba42ad9284793208145ec6e0e46481f71566023a541`.
 
-**Project owner** — name ___ · decision date ___ · signed decision reference ___.
+**Project owner** — name ___ · decision date ___ · decision reference ___.
 
-Record **accept**, **request changes**, or **defer** for each function within your authority. For reviews supplied by another authorized reviewer, include their name, decision date, and evidence reference. Use the [WP0.4 packet](../compliance/flowstate-pro/work-packets/WP0.4-establish-change-control-and-dossier-validators.md#gate-3--required-human-acceptance) for review scope.
+Record the project-owner decision for the candidate. List individual functions when the decision limits its scope or requests changes. Use the [WP0.4 packet](../compliance/flowstate-pro/work-packets/WP0.4-establish-change-control-and-dossier-validators.md#gate-3--required-human-acceptance) for review scope.
 
 | Review function | Decision | Reviewer, date, and evidence reference |
 | --- | --- | --- |
